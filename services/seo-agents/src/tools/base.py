@@ -34,7 +34,9 @@ class OpportunitySource(Protocol):
 class GSCClient(Protocol):
     """Search Console-style data: which queries/pages are close to ranking (inward signal)."""
 
-    def search_analytics(self, site_url: str, days: int = 28, row_limit: int = 500) -> list[dict]: ...
+    def search_analytics(
+        self, site_url: str, days: int = 28, row_limit: int = 500
+    ) -> list[dict]: ...
 
 
 class AppAnalyticsClient(Protocol):
@@ -60,17 +62,17 @@ class AppAnalyticsClient(Protocol):
 
     def report(self, limit: int = 5) -> dict:
         """Returns:
-            {
-                "summary": str,            # free text about recent activity,
-                                            # tenant-authored; "" if there's nothing
-                                            # to report. Dropped into the prompt
-                                            # as-is — the system never parses it.
-                "highlights": list[dict],  # [{"label": str, "url": str}, ...],
-                                            # up to `limit` items, most-relevant
-                                            # first. The smallest shape that's true
-                                            # for any kind of content (a post, a
-                                            # product, an article). May be empty.
-            }
+        {
+            "summary": str,            # free text about recent activity,
+                                        # tenant-authored; "" if there's nothing
+                                        # to report. Dropped into the prompt
+                                        # as-is — the system never parses it.
+            "highlights": list[dict],  # [{"label": str, "url": str}, ...],
+                                        # up to `limit` items, most-relevant
+                                        # first. The smallest shape that's true
+                                        # for any kind of content (a post, a
+                                        # product, an article). May be empty.
+        }
         """
         ...
 
