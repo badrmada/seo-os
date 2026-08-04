@@ -6,10 +6,21 @@ from .. import prompts
 from ..graph.pipeline import build_graph
 from ..graph.stages import AnalyzeStage
 from ..graph.tools import Tools
+from ..observability import NullReporter, build_reporter, observe_tools
 from ..schemas.channel import Channel
 from ..schemas.io import AgentInput, AgentState
 from ..validators.input_validator import InputValidator
 from .tools_manager import ToolsManager
+
+
+def _reporter_from_config(config):
+    """A tenant can turn verbose on by default in its config; src/main.py's -v flag
+    overrides it by passing a reporter explicitly (the CLI always wins). Returns
+    NullReporter for the default verbose=0, so this costs nothing when unused."""
+    level = getattr(config, "verbose", 0) or 0
+    if not level:
+        return NullReporter()
+    return build_reporter(level, getattr(config, "verbose_format", "text"))
 
 
 def _build_agent_input(input_data: dict, channel: str = None) -> AgentInput:
@@ -36,17 +47,29 @@ class AgentRunner:
     config-driven providers (e.g. for tests); otherwise each run() builds its own
     default Tools bundle via ToolsManager, matching the per-call default the
     previous free-function seo_content_agent.run() had.
+
+    reporter (agent/observability/) is verbose mode's entry point — it wraps the
+    tools and the pipeline's stages so a run is followable while it happens.
+    Defaults to the config's own verbose level, and to NullReporter when that's 0,
+    so nothing about a non-verbose run changes.
     """
 
-    def __init__(self, config, tools: Tools = None) -> None:
+    def __init__(self, config, tools: Tools = None, reporter=None) -> None:
         self.config = config
         self.tools = tools
+        self.reporter = reporter if reporter is not None else _reporter_from_config(config)
         self._input_validator = InputValidator()
 
     def _resolve_tools(self, input_data: dict) -> Tools:
+        """Wrapping happens here rather than inside ToolsManager so it covers an
+        explicitly injected Tools(...) too — a caller supplying their own clients
+        still gets a followable run. observe_tools returns the bundle unchanged
+        when reporting is off, so there are no proxies in a normal run's call path."""
         if self.tools is not None:
-            return self.tools
-        return ToolsManager(self.config).build_all(input_data.get("model"))
+            tools = self.tools
+        else:
+            tools = ToolsManager(self.config).build_all(input_data.get("model"))
+        return observe_tools(tools, self.reporter)
 
     def run(self, input_data: dict, *, state_store: InMemoryStateStore = None) -> dict:
         """Always returns the same top-level shape (see agent/schemas/io.py's
@@ -58,8 +81,15 @@ class AgentRunner:
         propagating — never a raw traceback in place of the documented JSON shape.
         """
         run_id = input_data.get("run_id") or str(uuid.uuid4())
+        self.reporter.event(
+            "run_start",
+            run_id=run_id,
+            channel=input_data.get("channel") or "auto",
+            seed_keyword=input_data.get("seed_keyword", ""),
+            sources=len(self.config.discovery_sources),
+        )
         try:
-            return self._run(input_data, run_id, state_store)
+            result = self._run(input_data, run_id, state_store)
         except Exception as exc:  # noqa: BLE001 - this is the public run() boundary; see docstring
             failed_state = {
                 "run_id": run_id,
@@ -73,7 +103,19 @@ class AgentRunner:
             }
             if state_store is not None:
                 state_store.save(run_id, dict(failed_state))
+            self.reporter.event("run_end", run_id=run_id, phase="failed", error=str(exc))
             return failed_state
+
+        self.reporter.event(
+            "run_end",
+            run_id=run_id,
+            phase=result.get("phase"),
+            tokens=result.get("usage", {}).get("tokens", 0),
+            opportunities=len(result.get("discovery", {}).get("opportunities", ())),
+            tool_errors=len(result.get("discovery", {}).get("tool_errors", ())),
+            error=result.get("error") or "",
+        )
+        return result
 
     def _run(self, input_data: dict, run_id: str, state_store: InMemoryStateStore = None) -> dict:
         self._input_validator.validate(input_data, self.config)
@@ -87,7 +129,7 @@ class AgentRunner:
         )
 
         tools = self._resolve_tools(input_data)
-        graph = build_graph(tools, self.config)
+        graph = build_graph(tools, self.config, reporter=self.reporter)
 
         initial_state: AgentState = {
             "run_id": run_id,

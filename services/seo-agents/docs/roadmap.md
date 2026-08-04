@@ -82,6 +82,20 @@ about status and direction.
   exactly as before. See
   [architecture.md](architecture.md#how-the-pipeline-is-assembled).
 
+- **Verbose mode — a run you can watch.** `-v`/`-vv` (or `verbose` in tenant
+  config) reports every stage and every tool call as it happens, with timings,
+  outcomes, and — at `-vv` — truncated prompts, responses, and decisions. It
+  matters most for the failures the pipeline deliberately swallows: a degraded
+  analytics call or a failed discovery source used to surface only as a
+  `tool_errors` entry in the final JSON. Everything goes to stderr, so
+  `python src/main.py -v | jq` is unaffected; secrets are redacted by field
+  name and payloads truncated; and a reporter error can never fail a run.
+  Implemented by *wrapping*, not by editing: `observe_tools()` proxies each
+  client and `observed_node()` wraps each pipeline stage, so no stage — and no
+  tenant's `"custom"` class — contains any reporting code. With reporting off
+  (the default) the proxies aren't in the call path at all. See
+  [configuration.md](configuration.md#watching-a-run-happen-verbose-mode).
+
 ## Next
 
 Roughly in priority order:

@@ -451,6 +451,47 @@ Used when a specific run doesn't override them.
 
 ---
 
+## Watching a run happen (verbose mode)
+
+By default a run prints nothing until its final JSON. Verbose mode reports each
+stage and each tool call as it happens — which stage is running now, how long each
+call took, which tool failed and why.
+
+```bash
+python src/main.py -v      # stages and tool calls, with timings
+python src/main.py -vv     # also shows prompts, responses, and decisions
+```
+
+```text
+[  0.00s] > run 76e5ef96  channel=auto seed_keyword="static site seo" sources=3
+[  0.03s]   > discover_source [trends]
+[  0.03s]     > trends.discover
+[  0.03s]     < trends.discover  0ms  found=1
+[  0.03s]     ! broken.discover  0ms  error="RuntimeError: source 'broken' configured to fail"
+[  0.04s]     > llm.generate  grounded=True
+[  2.31s]     < llm.generate  2306ms  tokens=812 sources=3
+[  2.31s] < run 76e5ef96  phase=done tokens=812 opportunities=2 tool_errors=1
+```
+
+**All of it goes to stderr**, never stdout — stdout still carries only the result
+JSON, so `python src/main.py -v | jq` works exactly as before.
+
+The `!` lines are the reason this exists: the agent degrades rather than aborting
+when a tool fails, so a failed analytics call or discovery source otherwise only
+shows up as a `tool_errors` entry buried in the final JSON.
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `verbose` | `int` | `0` | `0` silent, `1` stages + tool calls + timings, `2` also payload previews. The `-v`/`-vv` flag always overrides this. |
+| `verbose_format` | `str` | `"text"` | `"text"` for humans, or `"json"` for newline-delimited events — one JSON object per event, for a UI or log pipeline. Override with `--verbose-format`. |
+
+Secrets are never printed: API keys, tokens, and auth headers are redacted by
+name wherever they appear, and prompts and responses are truncated rather than
+dumped whole. Verbose mode never changes a run's behavior or its output — if the
+reporter itself hits an error, it stays quiet rather than failing the run.
+
+---
+
 ## Self-review thresholds
 
 The quick automated checks that run on every draft. They add advisory notes to

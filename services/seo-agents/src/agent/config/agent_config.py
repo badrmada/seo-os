@@ -91,6 +91,18 @@ class AgentConfig:
     # a zero-config tenant.
     discovery_sources: list[dict] = field(default_factory=list)
 
+    # --- Verbose mode (agent/observability/) ---
+    # 0 = silent (the default; a run prints nothing but its final JSON result).
+    # 1 = lifecycle: each stage and each tool call, with timings and outcomes.
+    # 2 = adds truncated payload previews (prompts, LLM response text, discovered
+    #     topics, the channel decision and chosen keyword).
+    # Sets the *default* for a tenant; src/main.py's -v/-vv flag always wins. All
+    # output goes to stderr, never stdout — stdout carries the result JSON, so
+    # `python src/main.py -v | jq` keeps working. Secrets are never printed (see
+    # agent/observability/redaction.py) and payloads are truncated.
+    verbose: int = 0
+    verbose_format: str = "text"  # "text" (human-readable) or "json" (newline-delimited events)
+
     # --- Prompt content (folded into every draft prompt, see agent/graph/stages/) ---
     brand_description: str = (
         "A web platform that publishes content for its users and wants to grow its "

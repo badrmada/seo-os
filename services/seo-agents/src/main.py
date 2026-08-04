@@ -5,6 +5,7 @@ from pathlib import Path
 from agent.config import AgentConfigLoader
 from agent.graph import Tools
 from agent.managers import AgentRunner
+from agent.observability import build_reporter
 from state.memory_store import InMemoryStateStore
 
 # Default file names, resolved relative to the current working directory (where you
@@ -36,6 +37,23 @@ def _parse_args() -> argparse.Namespace:
         default=DEFAULT_INPUT_FILENAME,
         help="Path to the run input JSON (default: ./input.json in the current directory).",
     )
+    parser.add_argument(
+        "-v", "--verbose",
+        action="count",
+        default=None,  # None (not 0) means "not passed" — the tenant config's own
+                       # `verbose` setting then applies. Passing the flag always wins.
+        help=(
+            "Follow the run as it happens, on stderr: -v for stages and tool calls "
+            "with timings, -vv to also show truncated prompts, responses, and "
+            "decisions. stdout still carries only the result JSON, so `-v | jq` works."
+        ),
+    )
+    parser.add_argument(
+        "--verbose-format",
+        choices=("text", "json"),
+        default=None,
+        help="Verbose output format: human-readable text (default), or newline-delimited JSON events.",
+    )
     return parser.parse_args()
 
 
@@ -57,8 +75,18 @@ def main() -> None:
     config = AgentConfigLoader().load(str(tenant_path))
     run_input = json.loads(input_path.read_text(encoding="utf-8"))
 
+    # The CLI flag always wins over the tenant config's own verbose setting; when
+    # neither -v nor --verbose-format is passed, reporter=None lets AgentRunner fall
+    # back to the config (and to NullReporter for the default verbose=0).
+    reporter = None
+    if args.verbose is not None or args.verbose_format is not None:
+        reporter = build_reporter(
+            args.verbose if args.verbose is not None else config.verbose,
+            args.verbose_format or config.verbose_format,
+        )
+
     store = InMemoryStateStore()  # in-memory only; a single, in-process run
-    result = AgentRunner(config, tools=TOOLS).run(run_input, state_store=store)
+    result = AgentRunner(config, tools=TOOLS, reporter=reporter).run(run_input, state_store=store)
     print(json.dumps(result, indent=2))
 
 

@@ -45,3 +45,4 @@ DA_store/
 *.swo
 *~
 **service_account.json
+**tenant.json

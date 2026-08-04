@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from langgraph.graph import StateGraph, START, END
 from langgraph.types import Send
 
+from ..observability import NullReporter, observed_node
 from ..schemas.io import AgentState
 from .stages import (
     AnalyzeContextStage,
@@ -131,8 +132,13 @@ def _fanout_to_sources(tools: Tools):
     return route
 
 
-def build_graph(tools: Tools, config, spec: PipelineSpec = None):
+def build_graph(tools: Tools, config, spec: PipelineSpec = None, reporter=None):
+    """reporter (agent/observability/) instruments each stage for verbose mode.
+    Defaults to NullReporter, in which case observed_node returns each stage's run()
+    callable untouched — the assembled graph is then byte-for-byte what it was
+    before verbose mode existed."""
     spec = spec or _default_spec(config)
+    reporter = reporter or NullReporter()
 
     graph = StateGraph(AgentState)
     prev_exit = START
@@ -148,7 +154,7 @@ def build_graph(tools: Tools, config, spec: PipelineSpec = None):
                 factory = _STAGE_FACTORIES[stage.name]
             except KeyError:
                 raise ValueError(f"unknown pipeline stage {stage.name!r}") from None
-            graph.add_node(stage.name, factory(tools, config).run)
+            graph.add_node(stage.name, observed_node(reporter, stage.name, factory(tools, config).run))
             if pending_joins:
                 # A single multi-source add_edge is required here, not one call per
                 # source — StateGraph.add_edge([a, b], c) is an AND-join (c waits for
@@ -167,8 +173,14 @@ def build_graph(tools: Tools, config, spec: PipelineSpec = None):
                 raise ValueError(
                     f"parallel_by_source mode is only valid for the discover stage, got {stage.name!r}"
                 )
-            graph.add_node(_DISCOVER_SOURCE_NODE, DiscoverSourceStage(tools).run)
-            graph.add_node(_DISCOVER_JOIN_NODE, DiscoverJoinStage().run)
+            graph.add_node(
+                _DISCOVER_SOURCE_NODE,
+                observed_node(reporter, _DISCOVER_SOURCE_NODE, DiscoverSourceStage(tools).run),
+            )
+            graph.add_node(
+                _DISCOVER_JOIN_NODE,
+                observed_node(reporter, _DISCOVER_JOIN_NODE, DiscoverJoinStage().run),
+            )
             graph.add_conditional_edges(prev_exit, _fanout_to_sources(tools))
             graph.add_edge(_DISCOVER_SOURCE_NODE, _DISCOVER_JOIN_NODE)
             prev_exit = _DISCOVER_JOIN_NODE
@@ -178,7 +190,7 @@ def build_graph(tools: Tools, config, spec: PipelineSpec = None):
                     f"concurrent_from_start mode is only valid for analyze_context, got {stage.name!r}"
                 )
             factory = _STAGE_FACTORIES[stage.name]
-            graph.add_node(stage.name, factory(tools, config).run)
+            graph.add_node(stage.name, observed_node(reporter, stage.name, factory(tools, config).run))
             graph.add_edge(START, stage.name)
             pending_joins.append(stage.name)
         else:

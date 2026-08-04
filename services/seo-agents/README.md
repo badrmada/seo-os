@@ -275,6 +275,19 @@ run from:
 python src/main.py --tenant path/to/other-tenant.json --input path/to/other-input.json
 ```
 
+### 7. Watch it work (optional)
+
+A run is silent until its final JSON. Add `-v` to follow it live — every stage and
+every tool call, with timings, as they happen:
+
+```bash
+python src/main.py -v      # stages and tool calls
+python src/main.py -vv     # also prompts, responses, and decisions
+```
+
+Verbose output goes to stderr, so `python src/main.py -v | jq` still works. See
+[configuration.md](docs/configuration.md#watching-a-run-happen-verbose-mode).
+
 ### Learn by example
 
 The **[examples/](examples/)** folder has six complete, runnable setups for
