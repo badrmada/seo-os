@@ -1,5 +1,3 @@
-import importlib
-
 from tools.clients.analytics_templated import TemplatedAnalyticsClient
 from tools.clients.cloudflare import CloudflareAnalyticsClient
 from tools.clients.google_search_console import GoogleSearchConsoleClient
@@ -14,6 +12,7 @@ from tools.mocks.traffic_mock import MockTrafficClient
 from tools.mocks.traffic_null import NullTrafficClient
 
 from ..graph.tools import Tools
+from .plugin_loader import load_custom
 
 
 class ToolsManager:
@@ -26,35 +25,49 @@ class ToolsManager:
     def __init__(self, config) -> None:
         self.config = config
 
-    def _load_custom(self, class_path: str, field_name: str):
+    def _load_custom(self, class_path: str, field_name: str, options: dict = None):
         """Shared by every "custom" provider (analytics, traffic, discovery sources):
         a tenant registers their own class instead of forking this codebase.
         class_path is "module.path:ClassName"; the class is instantiated with the
-        tenant's AgentConfig so it can read whatever fields it needs."""
-        if not class_path:
-            raise ValueError(f'provider="custom" requires {field_name} to be set')
-        module_path, _, class_name = class_path.partition(":")
-        if not class_name:
-            raise ValueError(f'{field_name} must be "module.path:ClassName", got {class_path!r}')
-        module = importlib.import_module(module_path)
-        cls = getattr(module, class_name)
-        return cls(self.config)
+        tenant's AgentConfig so it can read whatever fields it needs.
+
+        The actual loading now lives in plugin_loader.load_custom, since output
+        sinks (and, later, the state store) need the identical behavior without
+        going through ToolsManager. See there for the optional second `options`
+        argument a class can opt into."""
+        return load_custom(class_path, field_name, self.config, options)
 
     def build_llm(self, model_override: str = None):
         """The single place a concrete LLM provider is chosen — everything downstream
-        (agent/graph/) only ever sees the LLMClient Protocol."""
+        (agent/graph/) only ever sees the LLMClient Protocol.
+
+        An unrecognized name raises rather than falling through to Gemini, matching
+        build_traffic()/build_analytics(). Silently treating llm_provider="openai"
+        as Gemini surfaces hours later as a confusing API error; the CLI's
+        list-tools also advertises this exact set of names, so accepting others
+        would make it a lie."""
         config = self.config
         if config.llm_provider == "mock":
             return MockLLMClient()
-        return GeminiClient(api_key=config.gemini_api_key, default_model=model_override or config.llm_model)
+        if config.llm_provider == "gemini":
+            return GeminiClient(
+                api_key=config.gemini_api_key, default_model=model_override or config.llm_model,
+            )
+        raise ValueError(
+            f'Unknown llm_provider {config.llm_provider!r}; must be "gemini" or "mock"'
+        )
 
     def build_gsc(self):
         """The single place a concrete GSCClient provider is chosen — mirrors
-        build_traffic()."""
+        build_traffic(), including failing fast on an unknown provider name."""
         config = self.config
         if config.gsc_provider == "mock":
             return MockGoogleSearchConsoleClient()
-        return GoogleSearchConsoleClient(key_file=config.gsc_key_file)
+        if config.gsc_provider == "google":
+            return GoogleSearchConsoleClient(key_file=config.gsc_key_file)
+        raise ValueError(
+            f'Unknown gsc_provider {config.gsc_provider!r}; must be "google" or "mock"'
+        )
 
     def build_traffic(self):
         """The single place a concrete SiteTrafficClient provider is chosen — mirrors

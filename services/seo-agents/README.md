@@ -147,7 +147,7 @@ Then run it from `src/` so it finds those files:
 
 ```bash
 cd src
-python main.py
+python main.py run
 ```
 
 That's a complete run against fake data — it prints the full result so you can
@@ -272,7 +272,7 @@ files and pass their paths explicitly — then it doesn't matter which folder yo
 run from:
 
 ```bash
-python src/main.py --tenant path/to/other-tenant.json --input path/to/other-input.json
+python src/main.py run --tenant path/to/other-tenant.json --input path/to/other-input.json
 ```
 
 ### 7. Watch it work (optional)
@@ -281,12 +281,27 @@ A run is silent until its final JSON. Add `-v` to follow it live — every stage
 every tool call, with timings, as they happen:
 
 ```bash
-python src/main.py -v      # stages and tool calls
-python src/main.py -vv     # also prompts, responses, and decisions
+python src/main.py run -v      # stages and tool calls
+python src/main.py run -vv     # also prompts, responses, and decisions
 ```
 
-Verbose output goes to stderr, so `python src/main.py -v | jq` still works. See
+Verbose output goes to stderr, so `python src/main.py run -v | jq` still works. See
 [configuration.md](docs/configuration.md#watching-a-run-happen-verbose-mode).
+
+### 8. The other commands (optional)
+
+`run` is what you get by default, but it isn't the only thing:
+
+```bash
+python src/main.py check-data       # validate the config and every tool, no LLM call
+python src/main.py show-graph       # which stages will actually run
+python src/main.py list-tools       # every provider available, with yours marked
+python src/main.py --help           # all of them
+```
+
+`check-data` is the one to reach for after editing a config — it catches a broken
+template, a missing credentials file, or an unimportable custom class before a
+run spends an API call. See [docs/cli.md](docs/cli.md).
 
 ### Learn by example
 
@@ -374,6 +389,7 @@ shape, including what a failed run looks like, is in
 
 | Doc | Read it for |
 |---|---|
+| [docs/cli.md](docs/cli.md) | Every command (`run`, `check-data`, `show-graph`, …), and how to add one of your own. |
 | [docs/architecture.md](docs/architecture.md) | How the whole thing is built: the pipeline, the swappable-tool pattern, how discovery scores opportunities, how errors are handled. |
 | [docs/configuration.md](docs/configuration.md) | Every config field, with the full Echooers example explained line by line. |
 | [docs/extending.md](docs/extending.md) | Plugging in your own code — analytics, traffic, or a custom opportunity finder (including one that's its own mini-agent) — without forking. |

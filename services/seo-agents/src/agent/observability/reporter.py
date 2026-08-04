@@ -60,12 +60,17 @@ _MARKER = {
 
 class NullReporter:
     """The default. Every call a no-op, so a non-verbose run pays nothing and no
-    call site needs a guard."""
+    call site needs a guard. Implements the same surface as StreamReporter —
+    including timed() — so a call site never has to check which one it holds."""
 
     level = 0
 
     def event(self, kind: str, **fields) -> None:
         pass
+
+    @contextmanager
+    def timed(self, start_kind: str, end_kind: str, error_kind: str, **fields):
+        yield {}
 
 
 class StreamReporter:

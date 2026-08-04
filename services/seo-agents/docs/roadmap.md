@@ -88,13 +88,42 @@ about status and direction.
   matters most for the failures the pipeline deliberately swallows: a degraded
   analytics call or a failed discovery source used to surface only as a
   `tool_errors` entry in the final JSON. Everything goes to stderr, so
-  `python src/main.py -v | jq` is unaffected; secrets are redacted by field
+  `python src/main.py run -v | jq` is unaffected; secrets are redacted by field
   name and payloads truncated; and a reporter error can never fail a run.
   Implemented by *wrapping*, not by editing: `observe_tools()` proxies each
   client and `observed_node()` wraps each pipeline stage, so no stage — and no
   tenant's `"custom"` class — contains any reporting code. With reporting off
   (the default) the proxies aren't in the call path at all. See
   [configuration.md](configuration.md#watching-a-run-happen-verbose-mode).
+
+- **Output sinks — the result goes where you want it.** `output_sinks` sends a
+  finished run to stdout, a file, a JSONL archive, an HTTP endpoint, or a class
+  of your own, in any combination. The default is a single `json` sink writing
+  the same indented document to stdout the agent has always printed, so nothing
+  changes for an existing tenant. Sinks run *after* the graph, at the
+  `AgentRunner`/CLI boundary — no stage can see one, and the result shape in
+  [output-schema.md](output-schema.md) is untouched. Build failures are fatal
+  before the run (a webhook with no url shouldn't be discovered after a pipeline
+  has spent real LLM calls); emit failures never are (the result already
+  exists). Custom sinks load through the same `load_custom()` every other
+  `"custom"` provider now uses, which also grew an optional second `options`
+  argument so a provider can carry its own settings and secrets — the original
+  `__init__(self, config)` form still works untouched. See
+  [configuration.md](configuration.md#where-the-result-goes-output-sinks).
+
+- **A real CLI.** `run`, `check-data`, `show-graph`, `list-tools`,
+  `list-specialists`, and `preview-prompt`, built on Typer. Every command is
+  explicit — a bare `python src/main.py` prints help and does nothing, and
+  `run` is the one command that does work. Commands are one self-contained
+  module each with a `register(app)`
+  hook and an explicit import list as the registry, so adding one touches
+  nothing that already exists. `check-data` reuses the same validators a real
+  run uses (rather than reimplementing their rules) and additionally *builds*
+  every configured provider, which is where a missing credentials file or an
+  unimportable custom class actually shows up; `show-graph` renders from the
+  `PipelineSpec` alone, so a purely structural question needs no API key.
+  `list-tools` reads a declarative provider catalog that a test pins against the
+  builders, so it can't drift. See [cli.md](cli.md).
 
 ## Next
 

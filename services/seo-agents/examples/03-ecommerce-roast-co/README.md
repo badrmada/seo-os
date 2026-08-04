@@ -72,7 +72,7 @@ Products you may reference naturally (add their link to internal_links):
 ## Run the full draft — and watch the self-review
 
 ```bash
-python ../../src/main.py
+python ../../src/main.py run
 ```
 
 The result includes a self-review note (real offline output):

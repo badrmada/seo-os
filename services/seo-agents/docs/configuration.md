@@ -22,7 +22,7 @@ different kinds of products**, not just the Echooers one.
   six runnable ones (SaaS, e-commerce, community, job board, MCP), simple to
   advanced.
 
-`python src/main.py --tenant path/to/tenant.json --input path/to/input.json`
+`python src/main.py run --tenant path/to/tenant.json --input path/to/input.json`
 loads your files. Unknown field names are rejected on load, so a typo fails
 immediately with a clear message instead of being silently ignored.
 
@@ -451,6 +451,52 @@ Used when a specific run doesn't override them.
 
 ---
 
+## Where the result goes (output sinks)
+
+By default a finished run prints one indented JSON document to stdout — exactly
+what this agent has always done. `output_sinks` lets you send it somewhere else,
+or to several places at once.
+
+```jsonc
+{
+  "output_sinks": [
+    { "name": "stdout",  "provider": "json" },
+    { "name": "archive", "provider": "json",
+      "options": { "path": "runs.jsonl", "append": true } },
+    { "name": "crm",     "provider": "webhook",
+      "options": { "url": "https://example.com/hooks/seo",
+                   "headers": { "Authorization": "Bearer ..." },
+                   "timeout_seconds": 10 } }
+  ]
+}
+```
+
+Sinks run in the order listed. Each one receives the **complete run result** — the
+same object stdout would show (`run_id`, `phase`, `output`, `discovery`, `usage`,
+`error`), not just the draft, since a consumer usually needs to know which run
+produced it and whether it succeeded.
+
+| Provider | Options | Notes |
+|---|---|---|
+| `json` | `path` (empty = stdout), `indent` (default `2`), `append` | With `append`, writes one compact JSON object per line (JSONL) — good for accumulating many runs. |
+| `webhook` | `url` (required), `method` (default `POST`), `headers`, `timeout_seconds` (default `10`) | Auth goes in `headers` — on the sink, not in the general config. No retries: reliable delivery is a queue's job. |
+| `custom` | `class` (`"module.path:ClassName"`), plus any `options` you like | One method: `emit(self, output: dict) -> None`. See [extending.md](extending.md#walkthrough-a-custom-output-sink). |
+
+Two behaviors worth knowing, because they're deliberate opposites:
+
+- **A broken sink *config* fails immediately, before the run.** A webhook with no
+  `url`, or a custom class that won't import, is caught up front rather than after
+  a full pipeline has spent real LLM calls.
+- **A sink that fails while *emitting* is never fatal.** By then the result is
+  already computed, so a failed webhook delivery doesn't discard a finished run or
+  skip the sinks after it. The failure is reported (as a warning on stderr, or as
+  an event when verbose mode is on) and the run moves on.
+
+Note that the list **replaces** the default rather than adding to it — if you want
+your own sink *and* the usual stdout JSON, list both, as the example above does.
+
+---
+
 ## Watching a run happen (verbose mode)
 
 By default a run prints nothing until its final JSON. Verbose mode reports each
@@ -458,8 +504,8 @@ stage and each tool call as it happens — which stage is running now, how long 
 call took, which tool failed and why.
 
 ```bash
-python src/main.py -v      # stages and tool calls, with timings
-python src/main.py -vv     # also shows prompts, responses, and decisions
+python src/main.py run -v      # stages and tool calls, with timings
+python src/main.py run -vv     # also shows prompts, responses, and decisions
 ```
 
 ```text
@@ -474,7 +520,7 @@ python src/main.py -vv     # also shows prompts, responses, and decisions
 ```
 
 **All of it goes to stderr**, never stdout — stdout still carries only the result
-JSON, so `python src/main.py -v | jq` works exactly as before.
+JSON, so `python src/main.py run -v | jq` works exactly as before.
 
 The `!` lines are the reason this exists: the agent degrades rather than aborting
 when a tool fails, so a failed analytics call or discovery source otherwise only

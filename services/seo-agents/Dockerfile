@@ -7,5 +7,7 @@ ENV PATH="/workspace/venv/bin:$PATH"
 RUN pip install --no-cache-dir -r requirements.txt
 COPY src ./src
 WORKDIR /workspace/src
-# Runs the one-shot example hardcoded in main.py (see agent/config/agent_config.py / main.py to change it).
+# Every command is explicit: `docker run <image> run --tenant t.json --input i.json`
+# runs the agent; `docker run <image> check-data` / `show-graph` / `--help` also work,
+# and a bare `docker run <image>` prints the help. See docs/cli.md.
 ENTRYPOINT ["python", "main.py"]

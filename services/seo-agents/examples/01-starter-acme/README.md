@@ -31,7 +31,7 @@ the brand voice.
 ## Run it
 
 ```bash
-python ../../src/main.py
+python ../../src/main.py run
 ```
 
 You get a full result object — `phase`, `input`, `output`, `discovery`, `usage`.

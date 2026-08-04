@@ -81,7 +81,7 @@ PingOwl's.)
 ## Run the full draft
 
 ```bash
-python ../../src/main.py
+python ../../src/main.py run
 ```
 
 ## Go live

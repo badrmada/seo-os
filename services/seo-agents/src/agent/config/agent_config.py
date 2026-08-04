@@ -91,6 +91,26 @@ class AgentConfig:
     # a zero-config tenant.
     discovery_sources: list[dict] = field(default_factory=list)
 
+    # --- Output sinks (tools/base.py's OutputSink Protocol) ---
+    # Where a finished run's result goes. Each entry:
+    #   {"name": str, "provider": "json" | "webhook" | "custom", "options": {...}}
+    # Read by agent/managers/output_manager.py's OutputManager, called from
+    # src/main.py *after* the run — never by a graph stage, and never affecting the
+    # result shape (docs/output-schema.md). Sinks run in the order listed; one
+    # failing is reported and skipped, never fatal.
+    #   - "json": indented JSON to stdout (options.path empty, the default) or to a
+    #     file (options.path, plus optional options.append for JSONL).
+    #   - "webhook": POSTs the result to options.url. Auth belongs in
+    #     options.headers — on the sink, not on this generic config.
+    #   - "custom": a tenant-registered class ("class": "module.path:ClassName"),
+    #     loaded exactly like every other custom provider.
+    # The default below is the behavior this agent has always had: one indented
+    # JSON document on stdout. Replacing the list replaces that entirely — list the
+    # json sink alongside your own if you want both.
+    output_sinks: list[dict] = field(
+        default_factory=lambda: [{"name": "stdout", "provider": "json"}]
+    )
+
     # --- Verbose mode (agent/observability/) ---
     # 0 = silent (the default; a run prints nothing but its final JSON result).
     # 1 = lifecycle: each stage and each tool call, with timings and outcomes.

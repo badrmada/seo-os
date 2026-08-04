@@ -83,7 +83,7 @@ class TrendingSearches:
 Your code lives in `code/`, so tell Python where to find it:
 
 ```bash
-PYTHONPATH=code python ../../src/main.py --input input.auto.json
+PYTHONPATH=code python ../../src/main.py run --input input.auto.json
 ```
 
 `PYTHONPATH=code` is what makes `analytics_growth` and `trending_finder`

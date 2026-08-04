@@ -31,6 +31,39 @@ class OpportunitySource(Protocol):
         ...
 
 
+class OutputSink(Protocol):
+    """Where a finished run's result goes. Unlike every other Protocol in this file,
+    a sink is not a tool the agent calls to do its work — it runs once, after the
+    graph has finished, at the AgentRunner/CLI boundary (see
+    agent/managers/output_manager.py's OutputManager, called from src/main.py). So
+    no stage ever sees a sink, and adding one changes nothing about the pipeline or
+    the result shape documented in docs/output-schema.md.
+
+    Several sinks can be configured; they run in the order listed. A sink that
+    raises is reported and skipped, never fatal — by the time any sink is called
+    the result is fully computed, and losing a webhook delivery is no reason to
+    throw away a finished run.
+
+    Implementations:
+      - tools/sinks/json_sink.py's JsonOutputSink — provider="json": the default,
+        writing the same indented JSON to stdout that this agent has always
+        printed, or to a file.
+      - tools/sinks/webhook_sink.py's WebhookOutputSink — provider="webhook":
+        POSTs the result to an HTTP endpoint.
+      - AgentConfig's output_sinks provider="custom" — a tenant-registered class,
+        loaded exactly like every other "custom" provider (see
+        agent/managers/plugin_loader.py's load_custom).
+    """
+
+    def emit(self, output: dict) -> None:
+        """`output` is the complete run result — the same dict AgentRunner.run()
+        returns and src/main.py prints (run_id, phase, input, output, discovery,
+        usage, error). Sinks receive the whole thing, not just the draft, since a
+        consumer usually needs to know *which* run produced it and whether it
+        succeeded."""
+        ...
+
+
 class GSCClient(Protocol):
     """Search Console-style data: which queries/pages are close to ranking (inward signal)."""
 

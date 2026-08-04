@@ -15,29 +15,33 @@ rest of this page is a worked walkthrough, plus the honest limits.
 
 ## How `"custom"` works under the hood
 
-Every `"custom"` provider is loaded by the same one method,
-`ToolsManager._load_custom()`
-([`src/agent/managers/tools_manager.py`](../src/agent/managers/tools_manager.py)):
+Every `"custom"` provider is loaded by the same one function,
+`load_custom()`
+([`src/agent/managers/plugin_loader.py`](../src/agent/managers/plugin_loader.py)):
 
 ```python
-def _load_custom(self, class_path: str, field_name: str):
+def load_custom(class_path, field_name, config, options=None):
     module_path, _, class_name = class_path.partition(":")
     module = importlib.import_module(module_path)
     cls = getattr(module, class_name)
-    return cls(self.config)
+    if options is not None and _accepts_options(cls):
+        return cls(config, options)
+    return cls(config)
 ```
 
 So the contract for your class is just this:
 
-- **Constructor:** `__init__(self, config)`. `config` is the tenant's full
-  `AgentConfig`, so you can read any existing field from it
-  (`config.brand_description`, and so on). You **can't** add brand-new named
-  fields to `AgentConfig` without editing `agent_config.py` — that's the one
-  thing that does require touching this repo. If your class needs its own
-  settings, have it load them itself: its own environment variables, its own
-  small config file, whatever suits your deployment. `config` gives you
-  everything the system already knows; it doesn't have to be your class's only
-  source of settings.
+- **Constructor:** either `__init__(self, config)` or
+  `__init__(self, config, options)` — the loader inspects your signature and
+  calls whichever you wrote. `config` is the tenant's full `AgentConfig`, so you
+  can read any existing field from it (`config.brand_description`, and so on).
+- **Your own settings:** if your class needs configuration of its own, take the
+  two-argument form and put it in that provider's `"options"` object in the
+  tenant JSON — it travels with the provider that uses it, which is also where
+  its secrets belong. (Older classes that take only `config` keep working
+  unchanged; they load their own settings from env vars or their own file
+  instead, and every example under [`examples/`](../examples/) still does it that
+  way.)
 - **Method:** whatever the target interface requires (table below).
 - **Importable:** the module path is resolved with a normal Python import — see
   [Making your module importable](#making-your-module-importable) below.
@@ -47,6 +51,7 @@ So the contract for your class is just this:
 | `analytics_custom_class` | `AppAnalyticsClient` | `report(self, limit: int = 5) -> dict` | `{"summary": str, "highlights": [{"label": str, "url": str}, ...]}` |
 | `traffic_custom_class` | `SiteTrafficClient` | `traffic_summary(self, days: int = 28) -> dict` | `{"summary": str}` |
 | `discovery_sources[i]["class"]` | `OpportunitySource` | `discover(self, context: dict) -> list[dict]` | a list of opportunity dicts (shape below) |
+| `output_sinks[i]["class"]` | `OutputSink` | `emit(self, output: dict) -> None` | nothing — it's a side effect |
 
 The return shapes are exactly what the `"templated"` provider produces, and the
 same ones documented in [configuration.md](configuration.md) — `"custom"` is
@@ -176,6 +181,53 @@ print(client.report(limit=3))   # eyeball the {summary, highlights} shape
 
 If that prints the right shape, the pipeline will accept it — the pipeline only
 ever calls that one method.
+
+## Walkthrough: a custom output sink
+
+A sink is the simplest interface here — one method, no return value. It runs once,
+after the run finishes, and receives the complete result. Say you want each
+finished draft to land in your CMS as an unpublished post:
+
+```python
+# src/my_tenant/cms_sink.py
+import requests
+
+class CmsDraftSink:
+    def __init__(self, config, options=None):
+        # Two-argument form: settings come from this sink's own "options" in the
+        # tenant JSON, so its API token lives with the sink that uses it.
+        options = options or {}
+        self._url = options["cms_url"]
+        self._token = options["cms_token"]
+
+    def emit(self, output: dict) -> None:
+        if output.get("phase") != "done":
+            return                      # nothing worth publishing from a failed run
+        draft = output["output"]
+        requests.post(
+            self._url,
+            json={"title": draft["title"], "body": draft["content"], "status": "draft"},
+            headers={"Authorization": f"Bearer {self._token}"},
+            timeout=10,
+        ).raise_for_status()
+```
+
+```jsonc
+{
+  "output_sinks": [
+    { "name": "stdout", "provider": "json" },
+    { "name": "cms", "provider": "custom",
+      "class": "my_tenant.cms_sink:CmsDraftSink",
+      "options": { "cms_url": "https://cms.example.com/api/posts",
+                   "cms_token": "..." } }
+  ]
+}
+```
+
+Your `emit` can raise — a sink failure is reported and skipped, never fatal, since
+the run is already complete by then. But a failure in your **constructor** is
+fatal, and deliberately so: sinks are built before the run starts, so a bad
+setting fails immediately instead of after a pipeline has spent real LLM calls.
 
 ## Walkthrough: an opportunity source that's itself an agent
 

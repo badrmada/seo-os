@@ -111,6 +111,12 @@ def _default_spec(config) -> PipelineSpec:
     return PipelineSpec(stages=tuple(stages))
 
 
+# Public alias: the CLI's `show-graph` renders a tenant's effective pipeline from
+# the spec alone, without building any tools (so it needs no API key to answer a
+# purely structural question).
+default_spec = _default_spec
+
+
 def _fanout_to_sources(tools: Tools):
     """Conditional-edge routing function: dynamically sends one Send per configured
     discovery source to the discover_source node, each with its own {source_name,

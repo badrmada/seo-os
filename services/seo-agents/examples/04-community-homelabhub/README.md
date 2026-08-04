@@ -25,7 +25,7 @@ agent **discover** what's worth engaging with and **decide the channel itself**.
 ### A) Let the agent decide
 
 ```bash
-python ../../src/main.py --input input.discover.json
+python ../../src/main.py run --input input.discover.json
 ```
 
 There's no `channel` in the input, so the agent runs discovery, then picks. Real
@@ -61,7 +61,7 @@ instead:
 ### B) Reply to a specific post
 
 ```bash
-python ../../src/main.py --input input.comment.json
+python ../../src/main.py run --input input.comment.json
 ```
 
 Here you give the exact `context_text` to reply to. The self-review confirms the
