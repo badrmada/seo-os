@@ -1,0 +1,14 @@
+{
+  "llm_provider": "mock",
+  "gsc_provider": "mock",
+  "traffic_provider": "none",
+  "analytics_provider": "mock",
+
+  "discovery_sources": [
+    { "name": "research_mcp", "provider": "custom", "class": "mcp_discovery:MCPResearchSource" }
+  ],
+  "default_channel": "site_article",
+
+  "brand_description": "Scribe is an AI writing assistant for teams: draft, edit, and keep a consistent voice across docs, and turn messy notes into clean writing.",
+  "agent_goal": "Grow signups from people searching for writing, editing, and productivity topics."
+}

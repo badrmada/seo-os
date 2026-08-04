@@ -1,0 +1,6 @@
+{
+  "channel": "site_article",
+  "gsc_domain": "sc-domain:pingowl.example.com",
+  "seed_keyword": "cron job monitoring",
+  "params": { "max_words": 900, "tone": "concise and technical" }
+}

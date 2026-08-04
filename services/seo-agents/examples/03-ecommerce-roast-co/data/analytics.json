@@ -1,0 +1,10 @@
+{
+  "period": "last_28_days",
+  "revenue": 42180.0,
+  "orders": 712,
+  "bestsellers": [
+    { "name": "Ethiopia Yirgacheffe", "handle": "ethiopia-yirgacheffe", "units": 210 },
+    { "name": "Colombia Huila", "handle": "colombia-huila", "units": 168 },
+    { "name": "Espresso Blend No. 5", "handle": "espresso-blend-5", "units": 140 }
+  ]
+}

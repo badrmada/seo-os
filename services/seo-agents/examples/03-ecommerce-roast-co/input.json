@@ -1,0 +1,10 @@
+{
+  "channel": "external_article",
+  "gsc_domain": "sc-domain:roast.example.com",
+  "seed_keyword": "pour over coffee guide for beginners",
+  "params": {
+    "platform_name": "Medium",
+    "tone": "warm and practical",
+    "max_words": 900
+  }
+}

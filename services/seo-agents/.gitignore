@@ -1,0 +1,47 @@
+# Environment files
+.env
+.env.*
+*.env
+*.env.*
+
+# Virtual environments and local Python environments
+.venv/
+venv/
+env/
+ENV/
+virtualenv/
+.python-version
+
+# Python bytecode and caches
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Build, packaging, and dependency artifacts
+build/
+dist/
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+
+# Local data and runtime artifacts
+DA_store/
+**/DA_store/
+*.log
+*.sqlite3
+*.db
+
+# Editor and OS junk files
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+**service_account.json

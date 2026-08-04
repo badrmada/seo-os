@@ -1,0 +1,23 @@
+[
+  {
+    "topic": "how to write better meeting notes",
+    "channel": "site_article",
+    "signal_strength": 0.8,
+    "intent": "informational",
+    "reason": "High, steady search demand; a strong how-to guide can own this query."
+  },
+  {
+    "topic": "best ai writing tools 2026",
+    "channel": "external_article",
+    "signal_strength": 0.55,
+    "intent": "commercial",
+    "reason": "Comparison intent; a guest article captures consideration-stage traffic."
+  },
+  {
+    "topic": "does ai writing help or hurt clarity",
+    "channel": "engagement_comment",
+    "signal_strength": 0.5,
+    "intent": "discussion",
+    "reason": "Active debate in writing communities; a genuine reply fits better than an article."
+  }
+]

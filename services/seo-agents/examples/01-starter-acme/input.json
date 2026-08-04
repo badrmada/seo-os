@@ -1,0 +1,6 @@
+{
+  "channel": "site_article",
+  "gsc_domain": "sc-domain:acme.example.com",
+  "seed_keyword": "getting started with acme",
+  "params": { "max_words": 700, "tone": "friendly and clear" }
+}

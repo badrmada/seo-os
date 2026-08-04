@@ -1,0 +1,282 @@
+{
+  "generated_at": "2026-08-03T01:27:14.415351+00:00",
+  "data": {
+    "overview": {
+      "total_ideas": 72,
+      "active": 72,
+      "reported": 0,
+      "archived": 0,
+      "total_upvotes": 31,
+      "total_downvotes": 1,
+      "total_views": 55,
+      "total_shares": 1,
+      "total_flags": 0,
+      "ideas_with_pools": 5,
+      "avg_votes_per_idea": 0.4,
+      "avg_views_per_idea": 0.8,
+      "avg_comments_per_idea": 0
+    },
+    "total_comments": 1,
+    "total_votes": 32,
+    "total_flags": 0,
+    "total_shares": 1,
+    "ideas_by_day": [
+      ["2026-07-07", 4],
+      ["2026-07-13", 4],
+      ["2026-07-15", 1],
+      ["2026-07-19", 4]
+    ],
+    "comments_by_day": [],
+    "votes_by_day": [
+      ["2026-07-08", 2],
+      ["2026-07-19", 1]
+    ],
+    "top_by_upvotes": [
+      {
+        "id": "18f4e30d2e71",
+        "content": "Imagine a platform built on one radical idea \u2014 #FreedomOfSpeech without compromise \ud83d\udde3\ufe0f. No algorithms silencing your voice, no hidden trackers following your every click, and no corporate agenda shaping what you see. Users speak their minds openly, debate boldly, and share authentically under a strict #NoTracking promise \ud83d\udd12. It's a digital town square where #YourVoiceMatters \u2014 raw, unfiltered, and truly free. \u270a",
+        "upvotes": 9,
+        "downvotes": 0,
+        "views": 17,
+        "comment_count": 1,
+        "status": "active"
+      },
+      {
+        "id": "7c53d17d485a",
+        "content": "\ud83d\udcda Reading Hack\nReplace 10 mins of doomscrolling with reading before bed. One book a month, 12 books a year \u2014 your future self will thank you.\n#ReadingHabit #BookLovers #PersonalGrowth",
+        "upvotes": 4,
+        "downvotes": 0,
+        "views": 2,
+        "comment_count": 0,
+        "status": "active"
+      },
+      {
+        "id": "21910966b02a",
+        "content": "We keep saying games were better back then \u2014 but were they, really? Or were we just younger, with more time and fewer bills? \ud83d\ude2c The gaming industry is drowning in remasters, reboots, and sequels nobody asked for because players refuse to let go of the past. #NostalgiaTrap is the biggest enemy of innovation right now.",
+        "upvotes": 2,
+        "downvotes": 0,
+        "views": 4,
+        "comment_count": 0,
+        "status": "active"
+      },
+      {
+        "id": "a4c53fc03b43",
+        "content": "NASA is playing beat-the-clock. NASA is in a race against time as the Swift Observatory telescope in orbit sinks closer to Earth. The $30 million salvage operation gets underway as soon as this week with the planned launch of a robotic lifesaver. Real-life space rescue mission. \ud83e\udd16 CBS NewsCBS News\nRoot for the robot. \ud83d\ude4f\n#NASA #SwiftObservatory #Space #SpaceRescue #Astronomy #STEM #Science",
+        "upvotes": 2,
+        "downvotes": 0,
+        "views": 4,
+        "comment_count": 0,
+        "status": "active"
+      },
+      {
+        "id": "4af09a134a30",
+        "content": "\u201cOur users love us\u201d is the most dangerous phrase in any startup. Love doesn\u2019t pay salaries. Dependency does. #startups #growth",
+        "upvotes": 2,
+        "downvotes": 0,
+        "views": 2,
+        "comment_count": 0,
+        "status": "active"
+      }
+    ],
+    "top_by_comments": [
+      {
+        "id": "18f4e30d2e71",
+        "content": "Imagine a platform built on one radical idea \u2014 #FreedomOfSpeech without compromise \ud83d\udde3\ufe0f. No algorithms silencing your voice, no hidden trackers following your every click, and no corporate agenda shaping what you see. Users speak their minds openly, debate boldly, and share authentically under a strict #NoTracking promise \ud83d\udd12. It's a digital town square where #YourVoiceMatters \u2014 raw, unfiltered, and truly free. \u270a",
+        "upvotes": 9,
+        "comment_count": 1,
+        "views": 17,
+        "status": "active"
+      },
+      {
+        "id": "7444bd602653",
+        "content": "Honestly the office was never about #productivity \u2014 it was about control. People do their best #DeepWork at home, in cafes, at 2am when inspiration hits. Forcing everyone into a building 9-to-5 is a relic. Trust your team or #hire better people. The results speak louder than the seat time.",
+        "upvotes": 0,
+        "comment_count": 0,
+        "views": 0,
+        "status": "active"
+      },
+      {
+        "id": "c34e211871f7",
+        "content": "hashtag should be with list and just shoz famous",
+        "upvotes": 0,
+        "comment_count": 0,
+        "views": 0,
+        "status": "active"
+      },
+      {
+        "id": "2e5f3b578d8e",
+        "content": "The AI price war is real. Google just cut Gemini AI Plus to $4.99/mo and doubled storage to 400GB. ChatGPT Go sits at $8, and Anthropic still has no budget tier under $20. TechCrunch called it a \"warning shot.\" Race to the bottom \u2014 or race to lock you in first? \ud83e\udd4a\n#AI #Gemini #ChatGPT #Claude #PriceWar",
+        "upvotes": 0,
+        "comment_count": 0,
+        "views": 0,
+        "status": "active"
+      },
+      {
+        "id": "279f581523dd",
+        "content": "AI is evolving faster than ever. But what keeps you up at night about it? #AI #Technology #FutureTech #Poll",
+        "upvotes": 0,
+        "comment_count": 0,
+        "views": 0,
+        "status": "active"
+      }
+    ],
+    "top_by_views": [
+      {
+        "id": "18f4e30d2e71",
+        "content": "Imagine a platform built on one radical idea \u2014 #FreedomOfSpeech without compromise \ud83d\udde3\ufe0f. No algorithms silencing your voice, no hidden trackers following your every click, and no corporate agenda shaping what you see. Users speak their minds openly, debate boldly, and share authentically under a strict #NoTracking promise \ud83d\udd12. It's a digital town square where #YourVoiceMatters \u2014 raw, unfiltered, and truly free. \u270a",
+        "views": 17,
+        "upvotes": 9,
+        "comment_count": 1,
+        "status": "active"
+      },
+      {
+        "id": "21910966b02a",
+        "content": "We keep saying games were better back then \u2014 but were they, really? Or were we just younger, with more time and fewer bills? \ud83d\ude2c The gaming industry is drowning in remasters, reboots, and sequels nobody asked for because players refuse to let go of the past. #NostalgiaTrap is the biggest enemy of innovation right now.",
+        "views": 4,
+        "upvotes": 2,
+        "comment_count": 0,
+        "status": "active"
+      },
+      {
+        "id": "a4c53fc03b43",
+        "content": "NASA is playing beat-the-clock. NASA is in a race against time as the Swift Observatory telescope in orbit sinks closer to Earth. The $30 million salvage operation gets underway as soon as this week with the planned launch of a robotic lifesaver. Real-life space rescue mission. \ud83e\udd16 CBS NewsCBS News\nRoot for the robot. \ud83d\ude4f\n#NASA #SwiftObservatory #Space #SpaceRescue #Astronomy #STEM #Science",
+        "views": 4,
+        "upvotes": 2,
+        "comment_count": 0,
+        "status": "active"
+      },
+      {
+        "id": "3b3086504c55",
+        "content": "#ArtificialIntelligence is reshaping how we learn, create, and connect \ud83e\udd1d \u2014 turning complex problems into approachable solutions. From healthcare to climate modeling, #AI amplifies human potential rather than replacing it \ud83e\udde0. The future isn't human vs. machine \u2014 it's human with machine. #FutureTech \u2728",
+        "views": 4,
+        "upvotes": 0,
+        "comment_count": 0,
+        "status": "active"
+      },
+      {
+        "id": "e2a8afb52425",
+        "content": "Some truths are too important to stay silent \u2014 yet too dangerous to say out loud \ud83d\udd75\ufe0f. #WhistleblowerJournalism gives everyday people the power to expose corruption, injustice, and abuse without ever revealing their identity. Built on encrypted channels and zero-log policies, these tools arm #AnonymousJournalism with the protection it deserves \ud83d\udd10. Because in a world where speaking up can cost everything, #TheTruthCantWait \u2014 and neither should the people brave enough to share it.",
+        "views": 3,
+        "upvotes": 0,
+        "comment_count": 0,
+        "status": "active"
+      }
+    ],
+    "flag_reasons": [],
+    "share_channels": [
+      {
+        "channel": "copy_link",
+        "count": 1
+      }
+    ],
+    "pool_stats": {
+      "total_pools": 5,
+      "total_responses": 10,
+      "multi_choice": 3,
+      "comments_disabled": 0
+    },
+    "token_stats": {
+      "total": 40,
+      "spent": 0,
+      "expired_unspent": 40
+    },
+    "moderation": {
+      "active_reports": 0,
+      "faded": 0,
+      "defended": 0
+    },
+    "rate_limit_activity": [
+      {
+        "action": "browse",
+        "total_events": 6
+      },
+      {
+        "action": "subnet_token_request",
+        "total_events": 1
+      },
+      {
+        "action": "token_request",
+        "total_events": 1
+      }
+    ],
+    "peak_hours": [
+      [0, 9],
+      [1, 5],
+      [3, 1],
+      [10, 4],
+      [15, 3],
+      [16, 3],
+      [18, 20],
+      [21, 12],
+      [22, 13],
+      [23, 2]
+    ],
+    "tag_top": [
+      {
+        "name": "ai",
+        "idea_count": 10
+      },
+      {
+        "name": "buildinpublic",
+        "idea_count": 6
+      },
+      {
+        "name": "startups",
+        "idea_count": 5
+      },
+      {
+        "name": "productivity",
+        "idea_count": 4
+      },
+      {
+        "name": "mindset",
+        "idea_count": 4
+      },
+      {
+        "name": "futureofwork",
+        "idea_count": 4
+      },
+      {
+        "name": "saas",
+        "idea_count": 4
+      },
+      {
+        "name": "indiehackers",
+        "idea_count": 3
+      },
+      {
+        "name": "poll",
+        "idea_count": 3
+      },
+      {
+        "name": "artificialintelligence",
+        "idea_count": 3
+      },
+      {
+        "name": "chatgpt",
+        "idea_count": 3
+      },
+      {
+        "name": "gemini",
+        "idea_count": 3
+      },
+      {
+        "name": "hottake",
+        "idea_count": 3
+      },
+      {
+        "name": "growth",
+        "idea_count": 3
+      },
+      {
+        "name": "claude",
+        "idea_count": 3
+      }
+    ],
+    "ideas_with_comments_pct": 1.4,
+    "vote_ratio": {
+      "up": 31,
+      "down": 1
+    }
+  }
+}

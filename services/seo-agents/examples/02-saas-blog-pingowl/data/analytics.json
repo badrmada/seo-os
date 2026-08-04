@@ -1,0 +1,12 @@
+{
+  "totals": {
+    "monitors": 3120,
+    "signups_30d": 214,
+    "checks_run_24h": 1900000
+  },
+  "top_posts": [
+    { "title": "How to monitor cron jobs the right way", "slug": "monitor-cron-jobs", "reads": 1840 },
+    { "title": "The dead man's switch pattern for backups", "slug": "dead-mans-switch", "reads": 1210 },
+    { "title": "Alert fatigue: send fewer, better alerts", "slug": "alert-fatigue", "reads": 980 }
+  ]
+}

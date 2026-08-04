@@ -1,0 +1,21 @@
+{
+  "llm_provider": "mock",
+  "gsc_provider": "mock",
+  "traffic_provider": "none",
+
+  "analytics_provider": "templated",
+  "analytics_source": "file",
+  "analytics_report_path": "data/analytics.json",
+  "analytics_highlights_limit": 3,
+  "analytics_summary_template": "{{ data.totals.signups_30d }} new signups in the last 30 days across {{ data.totals.monitors }} active monitors, {{ data.totals.checks_run_24h }} checks run in the last 24h.",
+  "analytics_highlights_template": "[{% for p in data.top_posts[:limit] %}{\"label\": {{ (p.title + \" (\" + p.reads|string + \" reads)\")|tojson }}, \"url\": {{ (\"https://pingowl.example.com/blog/\" + p.slug)|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}]",
+
+  "brand_description": "PingOwl is a cron job and uptime monitoring service for developers: schedule checks, get a 'dead man's switch' alert when a job fails to run, and see history and latency per monitor.",
+  "agent_goal": "Grow organic signups from developers searching for monitoring and reliability topics.",
+
+  "default_article_tone": "concise and technical",
+
+  "prompt_templates": {
+    "site_article": "You are a senior engineer writing for the PingOwl developer blog.\nProduct: {{ brand_description }}\nGoal: {{ agent_goal }}\nTarget keyword/topic: \"{{ keyword }}\"\nTone: {{ tone }}. Max words: {{ max_words }}.\nWrite for a technical audience: concrete, code-first, no marketing fluff. Short paragraphs, real examples, and a code snippet where it helps.\n{% if analytics_summary %}Recent product activity you may reference if it fits naturally: {{ analytics_summary }}\n{% endif %}{% if highlights %}Popular existing posts to link where relevant (add the link to internal_links):\n{% for item in highlights %}- \"{{ item.label[:200] }}\" — {{ item.url }}\n{% endfor %}{% endif %}"
+  }
+}
