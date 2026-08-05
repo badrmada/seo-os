@@ -4,6 +4,7 @@ import json
 import re
 
 from agent.schemas.opportunity import normalize_opportunity
+from agent.utils.async_utils import call as acall
 
 from .templated_json import render_text
 
@@ -77,7 +78,10 @@ class LLMOpportunitySource:
         self.max_opportunities = max_opportunities
         self.grounded = grounded
 
-    def discover(self, context: dict) -> list[dict]:
+    async def discover(self, context: dict) -> list[dict]:
+        """Async because the LLM client it holds may be (GeminiClient is) — and it
+        reaches that client through async_utils.call() rather than awaiting it
+        directly, so a sync client (MockLLMClient, a tenant's own) works here too."""
         prompt_context = {
             "brand_description": self.config.brand_description,
             "agent_goal": self.config.agent_goal,
@@ -86,7 +90,9 @@ class LLMOpportunitySource:
             "max_opportunities": self.max_opportunities,
         }
         body = render_text(self.prompt_template, prompt_context)
-        response = self.llm.generate(f"{body}\n{JSON_INSTRUCTION}", grounded=self.grounded)
+        response = await acall(
+            self.llm.generate, f"{body}\n{JSON_INSTRUCTION}", grounded=self.grounded
+        )
         items = _extract_json_array(response.text)[: self.max_opportunities]
 
         # Links are only verified against the search results when grounding

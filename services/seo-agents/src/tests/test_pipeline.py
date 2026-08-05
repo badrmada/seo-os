@@ -4,6 +4,8 @@ DiscoverSourceStage/DiscoverJoinStage pair in isolation, and an end-to-end
 build_graph().invoke() run with 2+ discovery sources, checked against what an
 equivalent sequential run produces."""
 
+import asyncio
+
 from agent.config.agent_config import AgentConfig
 from agent.graph.pipeline import PipelineStage, _default_spec, build_graph
 from agent.graph.stages.discover import DiscoverJoinStage, DiscoverSourceStage, DiscoverStage
@@ -89,7 +91,7 @@ def test_discover_stage_drops_malformed_item_keeps_the_rest():
     stage = DiscoverStage(tools, _config([]))
     state = {"input": {"seed_keyword": "widgets"}, "working": {}}
 
-    result = stage.run(state)
+    result = asyncio.run(stage.run(state))
 
     opportunities = result["working"]["opportunities"]
     assert len(opportunities) == 1
@@ -104,7 +106,7 @@ def test_discover_stage_sequential_degrades_on_one_source_failing():
     stage = DiscoverStage(tools, _config([]))
     state = {"input": {"seed_keyword": "widgets"}, "working": {}}
 
-    result = stage.run(state)
+    result = asyncio.run(stage.run(state))
 
     assert result["phase"] == "discover"
     opportunities = result["working"]["opportunities"]
@@ -123,7 +125,7 @@ def test_discover_source_stage_success():
     tools = _base_tools({"good": MockOpportunitySource("good")})
     stage = DiscoverSourceStage(tools)
 
-    result = stage.run({"source_name": "good", "context": {"seed_keyword": "widgets"}})
+    result = asyncio.run(stage.run({"source_name": "good", "context": {"seed_keyword": "widgets"}}))
 
     [entry] = result["discover_results"]
     assert entry["tool"] == "good"
@@ -135,7 +137,7 @@ def test_discover_source_stage_failure_degrades():
     tools = _base_tools({"bad": MockOpportunitySource("bad", fail=True)})
     stage = DiscoverSourceStage(tools)
 
-    result = stage.run({"source_name": "bad", "context": {}})
+    result = asyncio.run(stage.run({"source_name": "bad", "context": {}}))
 
     [entry] = result["discover_results"]
     assert entry["opportunities"] == []
@@ -150,7 +152,7 @@ def test_discover_join_stage_merges_all_branches():
     ]
     state = {"working": {}, "discover_results": discover_results}
 
-    result = DiscoverJoinStage().run(state)
+    result = asyncio.run(DiscoverJoinStage().run(state))
 
     assert result["phase"] == "discover"
     assert result["working"]["opportunities"] == [{"source": "a"}]
@@ -174,12 +176,12 @@ def test_build_graph_parallel_matches_sequential_merge_contract():
     config = _config(discovery_config)
     graph = build_graph(tools, config)
 
-    result = graph.invoke(
+    result = asyncio.run(graph.ainvoke(
         {
             "input": {"seed_keyword": "widgets", "gsc_domain": "sc-domain:example.com"},
             "working": {},
         }
-    )
+    ))
 
     opportunities = result["working"]["opportunities"]
     tool_errors = result["working"]["tool_errors"]
@@ -201,12 +203,12 @@ def test_build_graph_analyze_context_joins_correctly_with_one_source():
     config = _config([{"name": "good", "provider": "mock"}])
     graph = build_graph(tools, config)
 
-    result = graph.invoke(
+    result = asyncio.run(graph.ainvoke(
         {
             "input": {"seed_keyword": "widgets", "gsc_domain": "sc-domain:example.com"},
             "working": {},
         }
-    )
+    ))
 
     assert result["phase"] == "done"
     assert result["working"]["analytics_summary"]
@@ -223,12 +225,12 @@ def test_build_graph_analyze_context_joins_correctly_with_parallel_sources():
     config = _config([{"name": "a", "provider": "mock"}, {"name": "b", "provider": "mock"}])
     graph = build_graph(tools, config)
 
-    result = graph.invoke(
+    result = asyncio.run(graph.ainvoke(
         {
             "input": {"seed_keyword": "widgets", "gsc_domain": "sc-domain:example.com"},
             "working": {},
         }
-    )
+    ))
 
     assert result["phase"] == "done"
     assert result["working"]["analytics_summary"]

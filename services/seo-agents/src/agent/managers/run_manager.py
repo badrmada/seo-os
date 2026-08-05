@@ -1,3 +1,4 @@
+import asyncio
 import uuid
 
 from state.memory_store import InMemoryStateStore
@@ -9,6 +10,7 @@ from ..graph.tools import Tools
 from ..observability import NullReporter, build_reporter, observe_tools
 from ..schemas.channel import Channel
 from ..schemas.io import AgentInput, AgentState
+from ..utils.async_utils import deadline
 from ..validators.input_validator import InputValidator
 from .tools_manager import ToolsManager
 
@@ -52,6 +54,14 @@ class AgentRunner:
     tools and the pipeline's stages so a run is followable while it happens.
     Defaults to the config's own verbose level, and to NullReporter when that's 0,
     so nothing about a non-verbose run changes.
+
+    **`arun()` is the real entry point; `run()` is a thin sync wrapper.** The
+    pipeline is async end to end (see agent/utils/async_utils.py), which is what
+    lets many tenants' runs proceed concurrently in one process via
+    `asyncio.gather` rather than one thread each. A caller that already has an
+    event loop — a service layer, an HTTP handler, a queue worker — must call
+    `arun()`: `run()` uses `asyncio.run()`, which refuses to nest inside a running
+    loop.
     """
 
     def __init__(self, config, tools: Tools = None, reporter=None) -> None:
@@ -72,13 +82,26 @@ class AgentRunner:
         return observe_tools(tools, self.reporter)
 
     def run(self, input_data: dict, *, state_store: InMemoryStateStore = None) -> dict:
+        """Sync wrapper around arun(), for callers with no event loop of their own
+        (the CLI, tests, scripts). Carries arun()'s never-raises contract unchanged:
+        asyncio.run() re-raises whatever the coroutine raised, and arun() raises
+        nothing.
+
+        Not usable from inside a running event loop — asyncio.run() refuses to
+        nest. Anything already async (a service layer, an HTTP handler) calls
+        arun() directly.
+        """
+        return asyncio.run(self.arun(input_data, state_store=state_store))
+
+    async def arun(self, input_data: dict, *, state_store: InMemoryStateStore = None) -> dict:
         """Always returns the same top-level shape (see agent/schemas/io.py's
         AgentState) — this is the run() boundary a caller/UI depends on, so nothing
         past this point is allowed to raise. Bad input, a graph-node exception that
         wasn't already caught internally (e.g. an LLM or GSC call outside
-        DiscoverStage's own degrade-don't-abort handling), or anything else that
-        goes wrong lands as {"phase": "failed", "error": str(exc), ...} instead of
-        propagating — never a raw traceback in place of the documented JSON shape.
+        DiscoverStage's own degrade-don't-abort handling), a run that overran
+        config.run_timeout_seconds, or anything else that goes wrong lands as
+        {"phase": "failed", "error": str(exc), ...} instead of propagating — never
+        a raw traceback in place of the documented JSON shape.
         """
         run_id = input_data.get("run_id") or str(uuid.uuid4())
         self.reporter.event(
@@ -88,23 +111,21 @@ class AgentRunner:
             seed_keyword=input_data.get("seed_keyword", ""),
             sources=len(self.config.discovery_sources),
         )
+        timeout = getattr(self.config, "run_timeout_seconds", 0) or 0
+        bound = deadline(timeout)
         try:
-            result = self._run(input_data, run_id, state_store)
+            async with bound:
+                result = await self._run(input_data, run_id, state_store)
+        except TimeoutError as exc:
+            # str(TimeoutError()) is "", so an expired deadline has to say what
+            # happened. bound.expired() distinguishes it from a TimeoutError a tool
+            # raised on its own — relabeling that one would send whoever reads the
+            # error looking at the wrong timeout.
+            if bound.expired():
+                exc = TimeoutError(f"run exceeded run_timeout_seconds ({timeout:g}s)")
+            return self._failed(input_data, run_id, exc, state_store)
         except Exception as exc:  # noqa: BLE001 - this is the public run() boundary; see docstring
-            failed_state = {
-                "run_id": run_id,
-                "agent_type": "seo_content",
-                "phase": "failed",
-                "input": dict(input_data),
-                "output": None,
-                "discovery": {"opportunities": [], "channel_decision": None, "tool_errors": []},
-                "usage": {"tokens": 0, "cost_usd": 0},
-                "error": str(exc),
-            }
-            if state_store is not None:
-                state_store.save(run_id, dict(failed_state))
-            self.reporter.event("run_end", run_id=run_id, phase="failed", error=str(exc))
-            return failed_state
+            return self._failed(input_data, run_id, exc, state_store)
 
         self.reporter.event(
             "run_end",
@@ -117,7 +138,26 @@ class AgentRunner:
         )
         return result
 
-    def _run(self, input_data: dict, run_id: str, state_store: InMemoryStateStore = None) -> dict:
+    def _failed(self, input_data: dict, run_id: str, exc: BaseException, state_store) -> dict:
+        """The documented failure shape (docs/output-schema.md), built in one place
+        because arun() now has two ways to reach it — an ordinary exception and the
+        run deadline expiring."""
+        failed_state = {
+            "run_id": run_id,
+            "agent_type": "seo_content",
+            "phase": "failed",
+            "input": dict(input_data),
+            "output": None,
+            "discovery": {"opportunities": [], "channel_decision": None, "tool_errors": []},
+            "usage": {"tokens": 0, "cost_usd": 0},
+            "error": str(exc),
+        }
+        if state_store is not None:
+            state_store.save(run_id, dict(failed_state))
+        self.reporter.event("run_end", run_id=run_id, phase="failed", error=str(exc))
+        return failed_state
+
+    async def _run(self, input_data: dict, run_id: str, state_store: InMemoryStateStore = None) -> dict:
         self._input_validator.validate(input_data, self.config)
 
         # Explicit input.channel is always honored as-is. Omitted + discovery
@@ -148,11 +188,11 @@ class AgentRunner:
             # yields the accumulated state after each super-step.
             state_store.save(run_id, dict(initial_state))
             final_state = dict(initial_state)
-            for state in graph.stream(initial_state, stream_mode="values"):
+            async for state in graph.astream(initial_state, stream_mode="values"):
                 final_state = dict(state)
                 state_store.save(run_id, final_state)
         else:
-            final_state = dict(graph.invoke(initial_state))
+            final_state = dict(await graph.ainvoke(initial_state))
 
         working = final_state.pop("working", {})
         final_state["discovery"] = {
@@ -163,6 +203,11 @@ class AgentRunner:
         return final_state
 
     def preview_prompt(self, input_data: dict) -> dict:
+        """Sync wrapper around apreview_prompt(), for the CLI. Same nesting caveat
+        as run(): async callers use apreview_prompt()."""
+        return asyncio.run(self.apreview_prompt(input_data))
+
+    async def apreview_prompt(self, input_data: dict) -> dict:
         """Dry run: builds the exact prompt DraftStage would send to the LLM — runs the
         real AnalyzeStage (so it's real GSC/analytics/traffic data if configured, not
         fabricated) but never calls the LLM. Lets you review what a tenant's template
@@ -180,7 +225,7 @@ class AgentRunner:
         tools = self._resolve_tools(input_data)
         input_ = _build_agent_input(input_data, channel)
         state: AgentState = {"input": input_, "working": {}}
-        state.update(AnalyzeStage(tools, self.config).run(state))
+        state.update(await AnalyzeStage(tools, self.config).run(state))
         working = state["working"]
         params = input_.get("params", {})
 

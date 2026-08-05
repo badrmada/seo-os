@@ -73,4 +73,3 @@ output reflect *your* configuration and which are placeholders:
 So the **rendered prompt** (`preview-prompt`) is the best thing to look at
 offline — it's built entirely from your config and data. The full run still
 completes end to end so you can see the exact output shape.
-</content>

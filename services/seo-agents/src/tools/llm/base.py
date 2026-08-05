@@ -29,5 +29,11 @@ class LLMClient(Protocol):
     def generate(self, prompt: str, *, model: str = None, grounded: bool = False) -> LLMResponse:
         """Implementations that don't support grounding should ignore the
         `grounded` flag and leave LLMResponse.grounded False — callers degrade to
-        ungrounded behavior and say so, rather than silently losing data."""
+        ungrounded behavior and say so, rather than silently losing data.
+
+        May be `def` or `async def`, like every other Protocol here: the framework
+        awaits an async implementation and runs a sync one in a worker thread (see
+        agent/utils/async_utils.py). GeminiClient is async because google-genai has
+        a native coroutine API; MockLLMClient is sync, which is the branch a
+        tenant's own client will usually take."""
         ...

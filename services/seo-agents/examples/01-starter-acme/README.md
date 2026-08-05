@@ -53,4 +53,3 @@ not the words.
 
 [02 — PingOwl](../02-saas-blog-pingowl/) adds your own analytics data and a
 custom prompt, and shows how to watch your data flow into the prompt.
-</content>

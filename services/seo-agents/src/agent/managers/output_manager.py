@@ -8,12 +8,14 @@ AgentRunner.run()'s return shape (docs/output-schema.md) is untouched by any of
 this.
 """
 
+import asyncio
 import sys
 
 from tools.sinks.json_sink import JsonOutputSink
 from tools.sinks.webhook_sink import WebhookOutputSink
 
 from ..observability import NullReporter
+from ..utils.async_utils import call as acall
 from .plugin_loader import load_custom
 
 # provider name -> (config, options) -> an object with .emit(output). Adding a
@@ -61,8 +63,17 @@ class OutputManager:
         return sinks
 
     def emit(self, output: dict) -> list:
+        """Sync wrapper around aemit(), for callers with no event loop (the CLI).
+        Same nesting caveat as AgentRunner.run(): async callers use aemit()."""
+        return asyncio.run(self.aemit(output))
+
+    async def aemit(self, output: dict) -> list:
         """Hand the finished result to every sink, in configured order. Returns the
         names of the sinks that failed (empty on full success).
+
+        Each sink is invoked through async_utils.call, so a sink may be `def` or
+        `async def` — WebhookOutputSink is async (httpx), JsonOutputSink is a plain
+        file/stdout write, and a tenant's existing sync custom sink is unchanged.
 
         A sink raising is never fatal — the run is already complete, and losing one
         delivery is no reason to discard a finished result or to skip the sinks
@@ -75,7 +86,7 @@ class OutputManager:
         for name, sink in self.sinks:
             try:
                 with self.reporter.timed("tool_start", "tool_end", "tool_error", tool=name, method="emit"):
-                    sink.emit(output)
+                    await acall(sink.emit, output)
             except Exception as exc:  # noqa: BLE001 - a sink must never fail a finished run
                 failed.append(name)
                 if self.reporter.level < 1:

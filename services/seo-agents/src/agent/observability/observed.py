@@ -10,6 +10,15 @@ calls) and `observed_node()` below (pipeline stages). Neither is in a stage.
 Every proxy delegates unknown attributes to the wrapped client via __getattr__, so
 a client with extra public methods beyond its Protocol keeps working — the proxy
 is transparent for everything it doesn't explicitly instrument.
+
+**The sync/async fork lives here.** Every proxy method is `async def` and reaches
+the wrapped client through agent/utils/async_utils.py's `call()`, which awaits an
+async implementation and threads a sync one. Since the proxies already sit in
+front of every tool call, that is the only place the framework has to decide —
+and it means a tenant's existing sync "custom" class needs no change at all. The
+reporter's own `timed()` stays a plain sync context manager: an `await` inside a
+`with` block is exactly as correct as one outside it, and the block is what
+carries the timing across the await.
 """
 
 from __future__ import annotations
@@ -17,6 +26,7 @@ from __future__ import annotations
 import time
 from dataclasses import replace
 
+from ..utils.async_utils import call as acall
 from .redaction import preview
 from .reporter import (
     STAGE_END,
@@ -54,14 +64,14 @@ class ObservedLLMClient(_Observed):
     makes LLMOpportunitySource silently drop every link (see PLAN.md Step 2a), so
     surfacing it here turns a silent data-loss bug into a visible one."""
 
-    def generate(self, prompt: str, *, model: str = None, grounded: bool = False):
+    async def generate(self, prompt: str, *, model: str = None, grounded: bool = False):
         fields = {"grounded": grounded}
         if model:
             fields["model"] = model
         if self._reporter.level >= _DETAIL:
             fields["prompt"] = preview(prompt)
         with self._call("generate", **fields) as call:
-            response = self._inner.generate(prompt, model=model, grounded=grounded)
+            response = await acall(self._inner.generate, prompt, model=model, grounded=grounded)
             call["tokens"] = getattr(response, "tokens", 0)
             call["sources"] = len(getattr(response, "sources", ()) or ())
             if self._reporter.level >= _DETAIL:
@@ -80,17 +90,19 @@ class ObservedLLMClient(_Observed):
 
 
 class ObservedGSCClient(_Observed):
-    def search_analytics(self, site_url: str, days: int = 28, row_limit: int = 500):
+    async def search_analytics(self, site_url: str, days: int = 28, row_limit: int = 500):
         with self._call("search_analytics", days=days) as call:
-            rows = self._inner.search_analytics(site_url=site_url, days=days, row_limit=row_limit)
+            rows = await acall(
+                self._inner.search_analytics, site_url=site_url, days=days, row_limit=row_limit
+            )
             call["rows"] = len(rows or ())
             return rows
 
 
 class ObservedAnalyticsClient(_Observed):
-    def report(self, limit: int = 5) -> dict:
+    async def report(self, limit: int = 5) -> dict:
         with self._call("report", limit=limit) as call:
-            report = self._inner.report(limit=limit)
+            report = await acall(self._inner.report, limit=limit)
             call["highlights"] = len((report or {}).get("highlights", ()))
             if self._reporter.level >= _DETAIL:
                 call["summary"] = preview((report or {}).get("summary", ""))
@@ -98,9 +110,9 @@ class ObservedAnalyticsClient(_Observed):
 
 
 class ObservedTrafficClient(_Observed):
-    def traffic_summary(self, days: int = 28) -> dict:
+    async def traffic_summary(self, days: int = 28) -> dict:
         with self._call("traffic_summary", days=days) as call:
-            result = self._inner.traffic_summary(days=days)
+            result = await acall(self._inner.traffic_summary, days=days)
             if self._reporter.level >= _DETAIL:
                 call["summary"] = preview((result or {}).get("summary", ""))
             return result
@@ -111,9 +123,9 @@ class ObservedOpportunitySource(_Observed):
     with several sources configured (and especially under the parallel_by_source
     fan-out, where branches interleave) each line says which source it came from."""
 
-    def discover(self, context: dict) -> list:
+    async def discover(self, context: dict) -> list:
         with self._call("discover") as call:
-            opportunities = self._inner.discover(context)
+            opportunities = await acall(self._inner.discover, context)
             call["found"] = len(opportunities or ())
             if self._reporter.level >= _DETAIL and opportunities:
                 call["topics"] = [item.get("topic", "") for item in opportunities if isinstance(item, dict)]
@@ -162,11 +174,16 @@ def observed_node(reporter, name: str, run):
     gets all three, and costs one line in build_graph.
 
     Returns the original callable untouched when reporting is off.
+
+    The wrapper is async and goes through async_utils.call for the same reason the
+    tool proxies do: a stage may be `async def` (all the built-in ones are) or a
+    plain sync callable (a hand-registered node, a test double), and neither the
+    graph nor this function should care which.
     """
     if getattr(reporter, "level", 0) < 1:
         return run
 
-    def observed(state):
+    async def observed(state):
         # The parallel_by_source fan-out invokes one node per source with its own
         # {"source_name", "context"} payload instead of the full graph state — label
         # the branch so interleaved concurrent events stay tellable apart.
@@ -178,7 +195,7 @@ def observed_node(reporter, name: str, run):
         reporter.event(STAGE_START, **fields)
         started = time.perf_counter()
         try:
-            result = run(state)
+            result = await acall(run, state)
         except Exception as exc:  # noqa: BLE001 - reported, then re-raised untouched
             reporter.event(
                 STAGE_ERROR,

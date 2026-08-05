@@ -451,6 +451,29 @@ Used when a specific run doesn't override them.
 
 ---
 
+## How long a run may take
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `run_timeout_seconds` | `float` | `0` (unbounded) | An overall bound on one run. |
+
+Each client already bounds its own calls — the LLM gets 120 seconds, Search
+Console 30, an `api`-sourced template whatever its `*_api_timeout_seconds` says.
+Those bound **one request**. `run_timeout_seconds` bounds the **run**: a dozen
+individually-timely calls, or a `custom` class with no timeout of its own, can
+still occupy a slot far longer than you meant.
+
+```jsonc
+{ "run_timeout_seconds": 300 }
+```
+
+Leave it at `0` for a CLI you're watching — you can always press Ctrl-C. Set it
+in a server or worker, where nobody is watching and the slot is shared. A run
+that overruns comes back as `"phase": "failed"` with a clear error, in the same
+result shape as any other failure — never an exception.
+
+---
+
 ## A tenant is a folder
 
 Everything a tenant owns lives in one directory, and a run refers to it by name:
@@ -705,4 +728,3 @@ To adapt this for **your** product: change the brand voice, swap the analytics
 templates for your JSON's field names (Examples 1–3 above are closer starting
 points for a typical SaaS or store), set your vendor keys, and adjust the
 brand-mention keywords. You shouldn't need to touch any code.
-</content>

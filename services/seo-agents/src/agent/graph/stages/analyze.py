@@ -1,5 +1,8 @@
+import asyncio
+
 from ...schemas.channel import Channel
 from ...schemas.io import AgentState
+from ...utils.async_utils import call as acall
 from ...utils.tool_errors import record_tool_error
 from ..tools import Tools
 
@@ -68,19 +71,35 @@ class AnalyzeContextStage:
         self.tools = tools
         self.config = config
 
-    def run(self, state: AgentState) -> dict:
-        tool_errors: list = []
-        try:
-            analytics_report = self.tools.analytics.report(limit=self.config.analytics_highlights_limit)
-        except Exception as exc:  # noqa: BLE001 - degrade, don't abort the run
-            record_tool_error(tool_errors, "analytics", "analyze", exc)
-            analytics_report = {}
+    async def run(self, state: AgentState) -> dict:
+        # The two calls are independent of each other as well as of discovery, so
+        # they go out together rather than one after the other. return_exceptions
+        # keeps each one's failure to itself — same degrade-don't-abort contract as
+        # the sequential version, and gather preserves argument order, so
+        # tool_errors still records analytics before traffic regardless of which
+        # one failed first in wall-clock time.
+        analytics_report, traffic_result = await asyncio.gather(
+            acall(self.tools.analytics.report, limit=self.config.analytics_highlights_limit),
+            acall(self.tools.traffic.traffic_summary),
+            return_exceptions=True,
+        )
 
-        try:
-            traffic_summary = self.tools.traffic.traffic_summary().get("summary", "")
-        except Exception as exc:  # noqa: BLE001 - degrade, don't abort the run
-            record_tool_error(tool_errors, "traffic", "analyze", exc)
+        for result in (analytics_report, traffic_result):
+            # A cancellation (the run deadline expiring, the caller giving up) is
+            # not a tool failure and must not be degraded into one — it has to keep
+            # unwinding. Only ordinary exceptions become tool_errors.
+            if isinstance(result, BaseException) and not isinstance(result, Exception):
+                raise result
+
+        tool_errors: list = []
+        if isinstance(analytics_report, BaseException):
+            record_tool_error(tool_errors, "analytics", "analyze", analytics_report)
+            analytics_report = {}
+        if isinstance(traffic_result, BaseException):
+            record_tool_error(tool_errors, "traffic", "analyze", traffic_result)
             traffic_summary = ""
+        else:
+            traffic_summary = (traffic_result or {}).get("summary", "")
 
         return {
             "analyze_context": {
@@ -106,7 +125,7 @@ class AnalyzeStage:
         self.tools = tools
         self.config = config
 
-    def run(self, state: AgentState) -> dict:
+    async def run(self, state: AgentState) -> dict:
         """Reads: working.channel if ChooseChannelStage set one (see
         agent/graph/pipeline.py — only present when config.discovery_sources is
         configured), else input.channel/config.default_channel; input.gsc_domain,
@@ -142,7 +161,9 @@ class AnalyzeStage:
             tool_errors.extend(analyze_context["tool_errors"])
         else:
             try:
-                analytics_report = self.tools.analytics.report(limit=self.config.analytics_highlights_limit)
+                analytics_report = await acall(
+                    self.tools.analytics.report, limit=self.config.analytics_highlights_limit
+                )
             except Exception as exc:  # noqa: BLE001 - degrade, don't abort the run
                 record_tool_error(tool_errors, "analytics", "analyze", exc)
                 analytics_report = {}
@@ -150,7 +171,8 @@ class AnalyzeStage:
             working["analytics_highlights"] = analytics_report.get("highlights", [])
 
             try:
-                working["traffic_summary"] = self.tools.traffic.traffic_summary().get("summary", "")
+                traffic = await acall(self.tools.traffic.traffic_summary)
+                working["traffic_summary"] = (traffic or {}).get("summary", "")
             except Exception as exc:  # noqa: BLE001 - degrade, don't abort the run
                 record_tool_error(tool_errors, "traffic", "analyze", exc)
                 working["traffic_summary"] = ""
@@ -167,7 +189,9 @@ class AnalyzeStage:
             rows = []
             if gsc_domain:
                 try:
-                    rows = self.tools.gsc.search_analytics(site_url=gsc_domain)
+                    # googleapiclient is httplib2-based and sync-only; acall runs
+                    # it in a worker thread so it can't stall the event loop.
+                    rows = await acall(self.tools.gsc.search_analytics, site_url=gsc_domain)
                 except Exception as exc:  # noqa: BLE001 - degrade, don't abort the run
                     record_tool_error(tool_errors, "gsc", "analyze", exc)
             keyword, source_row = _pick_keyword(

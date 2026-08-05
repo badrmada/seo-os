@@ -42,7 +42,19 @@ So the contract for your class is just this:
   unchanged; they load their own settings from env vars or their own file
   instead, and every example under [`examples/`](../examples/) still does it that
   way.)
-- **Method:** whatever the target interface requires (table below).
+- **Method:** whatever the target interface requires (table below). Write it as
+  `def` **or** `async def` — both are complete, correct plugins:
+
+  ```python
+  def discover(self, context): ...        # blocking work: run in a worker thread
+  async def discover(self, context): ...  # a native async library: awaited directly
+  ```
+
+  The agent runs its pipeline on an event loop so that several tenants' runs
+  share one process, and it awaits an `async def` method while running a plain
+  `def` one in a worker thread — so a blocking call in your class can never
+  stall anyone else's run. Use `def` unless the library you're calling has a real
+  async API; there's no penalty for it, and every example in this document does.
 - **Where it lives:** a `.py` file in your tenant's `plugins/` folder, and the
   module name is that filename — see
   [the plugins folder](#where-your-code-goes-the-plugins-folder) below.
@@ -223,6 +235,13 @@ client = load_custom("analytics:PostgresAnalyticsClient", "analytics_custom_clas
 print(client.report(limit=3))   # eyeball the {summary, highlights} shape
 ```
 
+If you wrote the method as `async def`, await it the same way the agent does:
+
+```python
+import asyncio
+print(asyncio.run(client.report(limit=3)))
+```
+
 Going through `load_custom` rather than importing your file directly is the point
 — it resolves the module out of your tenant's `plugins/` folder exactly as a real
 run does, so "it imports here" and "it imports in a run" can't diverge.
@@ -339,15 +358,13 @@ discovery source is the most natural fit (an MCP server exposing search/research
 tools maps cleanly onto "find opportunities"), but analytics and traffic work the
 same way.
 
-There's one thing to know: the interface methods here are **synchronous**
-(`discover(self, context) -> list[dict]`), while the official
-[`mcp` Python SDK](https://github.com/modelcontextprotocol/python-sdk) is
-**async**. You bridge the two by running the async calls with `asyncio.run(...)`
-inside the sync method:
+The official [`mcp` Python SDK](https://github.com/modelcontextprotocol/python-sdk)
+is **async**, and so is this interface's `async def` form — so there's no bridge
+to write. Declare `async def discover` and await the SDK directly:
 
 ```python
 # userdata/acme/plugins/mcp_discovery.py
-import asyncio, os, json
+import os, json
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
 
@@ -361,10 +378,7 @@ class MCPDiscoverySource:
             args=os.environ.get("MCP_ARGS", "-y @acme/research-mcp").split(),
         )
 
-    def discover(self, context: dict) -> list[dict]:
-        return asyncio.run(self._discover(context))          # bridge async -> sync
-
-    async def _discover(self, context):
+    async def discover(self, context: dict) -> list[dict]:
         async with stdio_client(self._server) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
@@ -395,9 +409,11 @@ class MCPDiscoverySource:
 
 Worth knowing:
 
-- **`asyncio.run` per call is fine** — `discover()` runs once per `run()`. (If you
-  reused one instance across many runs and wanted a persistent session, you'd
-  manage a long-lived event loop instead — not needed for the one-shot model.)
+- **A sync class that bridges with `asyncio.run(...)` inside `discover()` still
+  works** — that's what [`examples/06-mcp-discovery/`](../examples/06-mcp-discovery/)
+  does, and it needs no change. It runs in a worker thread, which has no event
+  loop of its own, so the nested `asyncio.run` is legal. `async def` is simply
+  one less moving part now that the interface accepts it.
 - **Connection details and secrets** live in your class (an env var or its own
   file), since you can't add fields to `AgentConfig` without touching the repo.
 - **The result is still normalized** — a slightly-off item is dropped, not fatal.
@@ -435,4 +451,3 @@ what you need actually fits one of the existing four with a `"custom"` class.
 - [architecture.md](architecture.md) — why the system is shaped this way.
 - [configuration.md](configuration.md) — every config field, including every
   provider option.
-</content>

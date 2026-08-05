@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import json
 
-from .templated_json import load_raw, render_text
+from .templated_json import aload_raw, load_raw, render_text
 
-__all__ = ["load_raw", "render_report", "TemplatedAnalyticsClient"]
+__all__ = ["aload_raw", "load_raw", "render_report", "TemplatedAnalyticsClient"]
 
 
 def render_report(summary_template: str, highlights_template: str, raw: dict, limit: int) -> dict:
@@ -62,8 +62,8 @@ class TemplatedAnalyticsClient:
         self.api_headers = api_headers or {}
         self.api_timeout_seconds = api_timeout_seconds
 
-    def report(self, limit: int = 5) -> dict:
-        raw = load_raw(
+    async def report(self, limit: int = 5) -> dict:
+        raw = await aload_raw(
             self.source, report_path=self.report_path, api_url=self.api_url,
             api_method=self.api_method, api_headers=self.api_headers,
             api_timeout_seconds=self.api_timeout_seconds,

@@ -1,3 +1,19 @@
+"""The pluggable interfaces every tool in this system satisfies.
+
+**Every method below may be `def` or `async def`.** The framework awaits an async
+implementation and runs a sync one in a worker thread (agent/utils/async_utils.py's
+`call()`), so neither choice is wrong and neither is visible to a stage. Which to
+write:
+
+  - `def` if the work is local, or the library you're calling is blocking. It runs
+    off the event loop, so it can't stall the runs sharing the process. This is
+    what every existing "custom" class already does, and it keeps working
+    untouched — GoogleSearchConsoleClient itself is sync, because googleapiclient
+    cannot be anything else.
+  - `async def` if the library you're calling has a native coroutine API, as
+    google-genai and httpx do. Slightly cheaper (no thread), and it composes.
+"""
+
 from typing import Protocol
 
 

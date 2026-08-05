@@ -3,8 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+import httpx
 import jinja2
-import requests
 
 # Shared by tools/clients/analytics_templated.py and tools/clients/traffic_templated.py — both let a
 # tenant map their own raw JSON (a file or a live API) into a generic shape via
@@ -30,15 +30,47 @@ def load_raw(
     source: str, *, report_path: str = "", api_url: str = "", api_method: str = "GET",
     api_headers: dict | None = None, api_timeout_seconds: float = 10.0,
 ) -> dict:
-    """Fetches a tenant's raw JSON, from a file or a live API — used both at run time
-    and at config-save-time validation, so validating a template against source="api"
-    means an actual live request, not a fabricated sample."""
+    """Fetches a tenant's raw JSON, from a file or a live API — the **sync** path,
+    kept for config-save-time validation (agent/validators/template_validator.py),
+    which runs while a config is being loaded, outside any event loop. Validating a
+    template against source="api" means an actual live request, not a fabricated
+    sample, so this really does have to fetch.
+
+    At run time the clients below use aload_raw() instead."""
     if source == "file":
-        return json.loads(Path(report_path).read_text(encoding="utf-8"))
+        return _load_file(report_path)
     if source == "api":
-        response = requests.request(
-            api_method, api_url, headers=api_headers or {}, timeout=api_timeout_seconds,
-        )
+        with httpx.Client(follow_redirects=True) as client:
+            response = client.request(
+                api_method, api_url, headers=api_headers or {}, timeout=api_timeout_seconds,
+            )
         response.raise_for_status()
         return response.json()
     raise ValueError(f'source must be "file" or "api", got {source!r}')
+
+
+async def aload_raw(
+    source: str, *, report_path: str = "", api_url: str = "", api_method: str = "GET",
+    api_headers: dict | None = None, api_timeout_seconds: float = 10.0,
+) -> dict:
+    """The run-time path: same contract as load_raw, without holding the event loop
+    for the duration of an HTTP request.
+
+    The file branch stays a plain blocking read on purpose — a local JSON report is
+    a few milliseconds, and a thread hop to save them costs more than it saves.
+    That is a measurement, not a rule: if a tenant's report ever becomes large
+    enough to matter, this is the line to change."""
+    if source == "file":
+        return _load_file(report_path)
+    if source == "api":
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            response = await client.request(
+                api_method, api_url, headers=api_headers or {}, timeout=api_timeout_seconds,
+            )
+        response.raise_for_status()
+        return response.json()
+    raise ValueError(f'source must be "file" or "api", got {source!r}')
+
+
+def _load_file(report_path: str) -> dict:
+    return json.loads(Path(report_path).read_text(encoding="utf-8"))

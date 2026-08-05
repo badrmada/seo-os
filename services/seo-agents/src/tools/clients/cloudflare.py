@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+import asyncio
 from datetime import date, timedelta
 
-import requests
+import httpx
 
 GRAPHQL_URL = "https://api.cloudflare.com/client/v4/graphql"
 REST_URL = "https://api.cloudflare.com/client/v4"
@@ -51,13 +52,20 @@ class CloudflareAnalyticsClient:
     def __init__(self, api_token: str, zone_id: str = "", timeout: float = 15.0):
         self.zone_id = zone_id
         self.timeout = timeout
-        self.session = requests.Session()
-        self.session.headers.update({
+        self._headers = {
             "Authorization": f"Bearer {api_token}",
             "Content-Type": "application/json",
-        })
+        }
 
-    def list_zones(self) -> list[dict]:
+    def _client(self) -> httpx.AsyncClient:
+        """A client per call rather than one held for the object's lifetime: a
+        SiteTrafficClient has no close()/aclose() in its Protocol and is built
+        fresh per run, so a long-lived pool here would be a connection leak with
+        nowhere to put the cleanup. A run makes at most a handful of these calls,
+        and `async with` guarantees the sockets go back."""
+        return httpx.AsyncClient(headers=self._headers, timeout=self.timeout, follow_redirects=True)
+
+    async def list_zones(self) -> list[dict]:
         """List the zones (domains) this API token can see, via the REST API
         (GraphQL has no zone-listing query). Needs the token's "Zone" -> "Zone"
         -> "Read" permission. Use this to find the zone_id to pass into __init__
@@ -68,22 +76,21 @@ class CloudflareAnalyticsClient:
         """
         zones = []
         page = 1
-        while True:
-            resp = self.session.get(
-                f"{REST_URL}/zones", params={"page": page, "per_page": 50}, timeout=self.timeout,
-            )
-            resp.raise_for_status()
-            payload = resp.json()
-            if not payload.get("success", False):
-                raise RuntimeError(f"Cloudflare API error: {payload.get('errors')}")
-            zones.extend(
-                {"id": z["id"], "name": z["name"], "status": z["status"]}
-                for z in payload["result"]
-            )
-            info = payload.get("result_info", {})
-            if page >= info.get("total_pages", 1):
-                break
-            page += 1
+        async with self._client() as client:
+            while True:
+                resp = await client.get(f"{REST_URL}/zones", params={"page": page, "per_page": 50})
+                resp.raise_for_status()
+                payload = resp.json()
+                if not payload.get("success", False):
+                    raise RuntimeError(f"Cloudflare API error: {payload.get('errors')}")
+                zones.extend(
+                    {"id": z["id"], "name": z["name"], "status": z["status"]}
+                    for z in payload["result"]
+                )
+                info = payload.get("result_info", {})
+                if page >= info.get("total_pages", 1):
+                    break
+                page += 1
         return zones
 
     def _windows(self, days: int) -> tuple[str, str, str, str]:
@@ -96,8 +103,8 @@ class CloudflareAnalyticsClient:
 
     # -- Protocol method -------------------------------------------------------
 
-    def traffic_summary(self, days: int = 28) -> dict:
-        stats = self.traffic_split(days)
+    async def traffic_summary(self, days: int = 28) -> dict:
+        stats = await self.traffic_split(days)
         return {
             "summary": (
                 f"{stats['requests_total']:,} requests over the last {stats['period_days']} days, "
@@ -108,25 +115,40 @@ class CloudflareAnalyticsClient:
 
     # -- Bonus methods (not part of SiteTrafficClient, kept for direct use) ----
 
-    def traffic_split(self, days: int = 28) -> dict:
+    async def traffic_split(self, days: int = 28) -> dict:
         cur_start, cur_end, prior_start, prior_end = self._windows(days)
 
-        current = self._request_totals(cur_start, cur_end)
-        prior = self._safe(lambda: self._request_totals(prior_start, prior_end), default=None)
+        # Four independent GraphQL queries against the same API — issued together
+        # rather than one after another, which is most of what moving this client
+        # to httpx bought. Three of the four are already allowed to fail
+        # individually (see _safe and the class docstring), so gathering them
+        # changes nothing about how failures are handled; the first one still
+        # decides the whole call, since there is no useful traffic split without a
+        # request total.
+        current, prior, sources, bot_split = await asyncio.gather(
+            self._request_totals(cur_start, cur_end),
+            self._safe(self._request_totals(prior_start, prior_end), default=None),
+            self._safe(
+                self._referer_source_split(cur_start, cur_end),
+                default={"organic_search_pct": 0.0, "referral_pct": 0.0,
+                         "direct_pct": 0.0, "social_pct": 0.0},
+            ),
+            self._safe(
+                self._bot_human_split(cur_start, cur_end),
+                default={"human_pct": 0.0, "bot_pct": 0.0},
+            ),
+            # Everything runs to completion even when the first query fails —
+            # otherwise gather returns early and leaves three in-flight requests
+            # orphaned on a loop that may be about to close.
+            return_exceptions=True,
+        )
+        if isinstance(current, BaseException):
+            raise current
 
         requests_total = current["requests"]
         trend = 0.0
         if prior and prior["requests"]:
             trend = round((requests_total - prior["requests"]) / prior["requests"] * 100, 1)
-
-        sources = self._safe(
-            lambda: self._referer_source_split(cur_start, cur_end),
-            default={"organic_search_pct": 0.0, "referral_pct": 0.0, "direct_pct": 0.0, "social_pct": 0.0},
-        )
-        bot_split = self._safe(
-            lambda: self._bot_human_split(cur_start, cur_end),
-            default={"human_pct": 0.0, "bot_pct": 0.0},
-        )
 
         return {
             "period_days": days,
@@ -136,26 +158,30 @@ class CloudflareAnalyticsClient:
             **sources,
         }
 
-    def performance(self) -> dict:
+    async def performance(self) -> dict:
         cur_start, cur_end, _, _ = self._windows(1)
-        totals = self._request_totals(cur_start, cur_end)
+        totals, avg_ttfb_ms = await asyncio.gather(
+            self._request_totals(cur_start, cur_end),
+            self._safe(self._avg_ttfb_ms(cur_start, cur_end), default=None),
+            return_exceptions=True,
+        )
+        if isinstance(totals, BaseException):
+            raise totals
         cache_hit_ratio = round(totals["cachedRequests"] / totals["requests"], 4) if totals["requests"] else 0.0
-        avg_ttfb_ms = self._safe(lambda: self._avg_ttfb_ms(cur_start, cur_end), default=None)
         return {"avg_ttfb_ms": avg_ttfb_ms, "cache_hit_ratio": cache_hit_ratio}
 
     # -- GraphQL calls ---------------------------------------------------------
 
-    def _graphql(self, query: str, variables: dict) -> dict:
-        resp = self.session.post(
-            GRAPHQL_URL, json={"query": query, "variables": variables}, timeout=self.timeout,
-        )
+    async def _graphql(self, query: str, variables: dict) -> dict:
+        async with self._client() as client:
+            resp = await client.post(GRAPHQL_URL, json={"query": query, "variables": variables})
         resp.raise_for_status()
         payload = resp.json()
         if payload.get("errors"):
             raise RuntimeError(f"Cloudflare GraphQL error: {payload['errors']}")
         return payload["data"]
 
-    def _request_totals(self, start: str, end: str) -> dict:
+    async def _request_totals(self, start: str, end: str) -> dict:
         query = """
         query ZoneRequests($zoneTag: String!, $start: Date!, $end: Date!) {
           viewer {
@@ -167,14 +193,14 @@ class CloudflareAnalyticsClient:
           }
         }
         """
-        data = self._graphql(query, {"zoneTag": self.zone_id, "start": start, "end": end})
+        data = await self._graphql(query, {"zoneTag": self.zone_id, "start": start, "end": end})
         groups = data["viewer"]["zones"][0]["httpRequests1dGroups"]
         return {
             "requests": sum(g["sum"]["requests"] for g in groups),
             "cachedRequests": sum(g["sum"]["cachedRequests"] for g in groups),
         }
 
-    def _bot_human_split(self, start: str, end: str) -> dict:
+    async def _bot_human_split(self, start: str, end: str) -> dict:
         query = """
         query ZoneBotScores($zoneTag: String!, $start: Date!, $end: Date!) {
           viewer {
@@ -190,7 +216,7 @@ class CloudflareAnalyticsClient:
           }
         }
         """
-        data = self._graphql(query, {"zoneTag": self.zone_id, "start": start, "end": end})
+        data = await self._graphql(query, {"zoneTag": self.zone_id, "start": start, "end": end})
         groups = data["viewer"]["zones"][0]["httpRequestsAdaptiveGroups"]
         total = sum(g["count"] for g in groups)
         if not total:
@@ -198,7 +224,7 @@ class CloudflareAnalyticsClient:
         bot = sum(g["count"] for g in groups if g["dimensions"]["botScore"] < BOT_SCORE_THRESHOLD)
         return {"human_pct": round((total - bot) / total, 4), "bot_pct": round(bot / total, 4)}
 
-    def _referer_source_split(self, start: str, end: str) -> dict:
+    async def _referer_source_split(self, start: str, end: str) -> dict:
         query = """
         query ZoneReferers($zoneTag: String!, $start: Date!, $end: Date!) {
           viewer {
@@ -214,7 +240,7 @@ class CloudflareAnalyticsClient:
           }
         }
         """
-        data = self._graphql(query, {"zoneTag": self.zone_id, "start": start, "end": end})
+        data = await self._graphql(query, {"zoneTag": self.zone_id, "start": start, "end": end})
         groups = data["viewer"]["zones"][0]["rumPageloadEventsAdaptiveGroups"]
         total = sum(g["count"] for g in groups)
         if not total:
@@ -240,7 +266,7 @@ class CloudflareAnalyticsClient:
             "social_pct": round(social / total, 4),
         }
 
-    def _avg_ttfb_ms(self, start: str, end: str) -> float:
+    async def _avg_ttfb_ms(self, start: str, end: str) -> float:
         query = """
         query ZonePerf($zoneTag: String!, $start: Date!, $end: Date!) {
           viewer {
@@ -255,33 +281,39 @@ class CloudflareAnalyticsClient:
           }
         }
         """
-        data = self._graphql(query, {"zoneTag": self.zone_id, "start": start, "end": end})
+        data = await self._graphql(query, {"zoneTag": self.zone_id, "start": start, "end": end})
         groups = data["viewer"]["zones"][0]["rumPerformanceEventsAdaptiveGroups"]
         if not groups:
             return None
         return round(sum(g["avg"]["ttfb"] for g in groups) / len(groups), 1)
 
     @staticmethod
-    def _safe(fetch, default):
+    async def _safe(awaitable, default):
+        """Await something optional. Takes the coroutine itself rather than a
+        callable, so the call sites above can hand it straight to asyncio.gather
+        and have every query in flight at once."""
         try:
-            return fetch()
+            return await awaitable
         except Exception:
             return default
 
 
 if __name__ == "__main__":
     import os
-    api_token = os.environ.get("CLOUDFLARE_API_TOKEN", "")
 
-    client = CloudflareAnalyticsClient(api_token=api_token)
+    async def _main() -> None:
+        api_token = os.environ.get("CLOUDFLARE_API_TOKEN", "")
+        client = CloudflareAnalyticsClient(api_token=api_token)
 
-    zone_id = os.environ.get("CLOUDFLARE_ZONE_ID", "")  # replace with your zone ID
-    if not zone_id:
-        print("No CLOUDFLARE_ZONE_ID set — zones visible to this token:")
-        for z in client.list_zones():
-            print(f'  {z["id"]}  {z["name"]}  ({z["status"]})')
-        raise SystemExit(0)
+        zone_id = os.environ.get("CLOUDFLARE_ZONE_ID", "")  # replace with your zone ID
+        if not zone_id:
+            print("No CLOUDFLARE_ZONE_ID set — zones visible to this token:")
+            for z in await client.list_zones():
+                print(f'  {z["id"]}  {z["name"]}  ({z["status"]})')
+            return
 
-    client.zone_id = zone_id
-    print(client.traffic_split())
-    print(client.performance())
+        client.zone_id = zone_id
+        print(await client.traffic_split())
+        print(await client.performance())
+
+    asyncio.run(_main())

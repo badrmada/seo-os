@@ -2,6 +2,7 @@
 process happens to be running, and one that doesn't have to come from a file at
 all. Both are prerequisites for running several tenants in one server process."""
 
+import asyncio
 import json
 
 import pytest
@@ -42,7 +43,7 @@ def test_a_relative_path_resolves_against_the_config_not_the_cwd(tenant_dir, mon
     monkeypatch.chdir(tenant_dir.parent)  # deliberately NOT the tenant's own folder
 
     config = AgentConfigLoader().load(str(tenant_dir / "tenant.json"))
-    report = ToolsManager(config).build_analytics().report(limit=3)
+    report = asyncio.run(ToolsManager(config).build_analytics().report(limit=3))
 
     assert report["summary"] == "7 things."
 
@@ -58,7 +59,9 @@ def test_two_tenants_with_the_same_relative_path_read_different_files(tmp_path):
         (tenant / "tenant.json").write_text(json.dumps(TENANT))
         configs.append(AgentConfigLoader().load(str(tenant / "tenant.json")))
 
-    summaries = [ToolsManager(c).build_analytics().report()["summary"] for c in configs]
+    summaries = [
+        asyncio.run(ToolsManager(c).build_analytics().report())["summary"] for c in configs
+    ]
     assert summaries == ["1 things.", "2 things."]
 
 
@@ -96,7 +99,7 @@ def test_load_dict_accepts_an_already_parsed_config():
 
 def test_load_dict_takes_an_explicit_base_dir(tenant_dir):
     config = AgentConfigLoader().load_dict(TENANT, base_dir=str(tenant_dir))
-    assert ToolsManager(config).build_analytics().report()["summary"] == "7 things."
+    assert asyncio.run(ToolsManager(config).build_analytics().report())["summary"] == "7 things."
 
 
 def test_load_dict_rejects_unknown_fields_like_load_does():

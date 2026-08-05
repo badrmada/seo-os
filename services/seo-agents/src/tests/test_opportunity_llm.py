@@ -4,6 +4,7 @@ only trusts a claimed link that matches a real grounding citation, and drops
 malformed items (from any source, not just llm) via normalize_opportunity
 instead of raising or corrupting the rest of the batch."""
 
+import asyncio
 import json
 
 from agent.config.agent_config import AgentConfig
@@ -41,7 +42,7 @@ def test_discover_calls_llm_grounded_by_default():
     llm = FakeLLMClient(LLMResponse(text=_payload([]), sources=[]))
     source = LLMOpportunitySource("llm_source", llm, _config())
 
-    source.discover({})
+    asyncio.run(source.discover({}))
 
     assert llm.last_kwargs["grounded"] is True
 
@@ -50,7 +51,7 @@ def test_discover_respects_grounded_false():
     llm = FakeLLMClient(LLMResponse(text=_payload([]), sources=[]))
     source = LLMOpportunitySource("llm_source", llm, _config(), grounded=False)
 
-    source.discover({})
+    asyncio.run(source.discover({}))
 
     assert llm.last_kwargs["grounded"] is False
 
@@ -71,7 +72,7 @@ def test_grounded_link_kept_when_it_matches_a_real_citation():
     )
     source = LLMOpportunitySource("llm_source", llm, _config())
 
-    [opportunity] = source.discover({})
+    [opportunity] = asyncio.run(source.discover({}))
 
     assert opportunity["raw"]["link"] == real_url
     assert opportunity["raw"]["grounding_sources"] == [real_url]
@@ -96,7 +97,7 @@ def test_grounded_link_dropped_when_not_a_real_citation():
     )
     source = LLMOpportunitySource("llm_source", llm, _config())
 
-    [opportunity] = source.discover({})
+    [opportunity] = asyncio.run(source.discover({}))
 
     assert opportunity["raw"]["link"] == ""
 
@@ -112,7 +113,7 @@ def test_ungrounded_link_passes_through_unverified():
     )
     source = LLMOpportunitySource("llm_source", llm, _config(), grounded=False)
 
-    [opportunity] = source.discover({})
+    [opportunity] = asyncio.run(source.discover({}))
 
     assert opportunity["raw"]["link"] == "https://x.test/y"
 
@@ -132,7 +133,7 @@ def test_a_grounded_call_that_cited_nothing_still_drops_the_link():
     )
     source = LLMOpportunitySource("llm_source", llm, _config())
 
-    [opportunity] = source.discover({})
+    [opportunity] = asyncio.run(source.discover({}))
 
     assert opportunity["raw"]["link"] == ""
 
@@ -154,7 +155,7 @@ def test_links_survive_a_provider_that_cannot_ground():
     )
     source = LLMOpportunitySource("llm_source", llm, _config())  # grounded=True by default
 
-    [opportunity] = source.discover({})
+    [opportunity] = asyncio.run(source.discover({}))
 
     assert llm.last_kwargs["grounded"] is True   # it did ask
     assert opportunity["raw"]["link"] == real_url  # and kept the data anyway
@@ -177,7 +178,7 @@ def test_malformed_item_dropped_others_kept():
     )
     source = LLMOpportunitySource("llm_source", llm, _config())
 
-    opportunities = source.discover({})
+    opportunities = asyncio.run(source.discover({}))
 
     assert len(opportunities) == 1
     assert opportunities[0]["topic"] == "good one"
@@ -190,7 +191,7 @@ def test_out_of_range_signal_strength_is_clamped():
     )
     source = LLMOpportunitySource("llm_source", llm, _config())
 
-    [opportunity] = source.discover({})
+    [opportunity] = asyncio.run(source.discover({}))
 
     assert opportunity["signal_strength"] == 1.0
 
@@ -206,7 +207,7 @@ def test_invalid_intent_and_channel_hint_fall_back_to_defaults():
     )
     source = LLMOpportunitySource("llm_source", llm, _config())
 
-    [opportunity] = source.discover({})
+    [opportunity] = asyncio.run(source.discover({}))
 
     assert opportunity["intent"] == "informational"
     assert opportunity["suggested_channel_hint"] is None

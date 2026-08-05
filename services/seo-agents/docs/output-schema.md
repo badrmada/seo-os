@@ -1,18 +1,19 @@
 # Output schema
 
-`AgentRunner.run()` — the one method a UI or API layer should call — **always
-returns the same top-level keys, whether the run succeeded or failed**. It
-never raises past its own boundary: bad input, a failing GSC/analytics/
-traffic/LLM call, or any other exception is caught inside `run()` and mapped
-onto the same `"failed"` shape below, instead of propagating as a raw
+`AgentRunner.arun()` — the one method a UI or API layer should call, or `run()`
+if you have no event loop — **always returns the same top-level keys, whether the
+run succeeded or failed**. It never raises past its own boundary: bad input, a
+failing GSC/analytics/traffic/LLM call, a run that overran
+`run_timeout_seconds`, or any other exception is caught inside `arun()` and
+mapped onto the same `"failed"` shape below, instead of propagating as a raw
 traceback. See
 [`src/agent/managers/run_manager.py`](../src/agent/managers/run_manager.py)'s
-`AgentRunner.run()` for the try/except that enforces this — it's the one
+`AgentRunner.arun()` for the try/except that enforces this — it's the one
 place this contract is implemented, so it can't drift out of sync with this
 document because one stage forgot to handle its own errors.
 
 In practice this means you can build a UI directly against the table below.
-You never need a `try/except` around `run()`, and you never need to branch on
+You never need a `try/except` around `run()`/`arun()`, and you never need to branch on
 "did this tenant have discovery configured" before reading `discovery` — it's
 always there, just possibly empty.
 
@@ -177,4 +178,3 @@ in a "details" panel, not display verbatim to an end user without review.
   "error": "input.gsc_domain is required when channel=\"site_article\""
 }
 ```
-</content>

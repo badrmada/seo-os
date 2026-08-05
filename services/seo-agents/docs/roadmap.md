@@ -160,6 +160,28 @@ about status and direction.
   (120s) and `GoogleSearchConsoleClient` (30s) previously had no timeout at all,
   which on a queue worker is a slot held forever.
 
+- **Async execution.** A run is async end to end — `AgentRunner.arun()`, every
+  stage, every tool call — so several tenants' runs proceed concurrently in one
+  process on one event loop (`asyncio.gather`) instead of one thread each.
+  `GeminiClient` uses google-genai's native coroutine API, and the HTTP clients
+  (Cloudflare, `api`-sourced templates, the webhook sink) moved from `requests`
+  to `httpx.AsyncClient`.
+
+  The decision that made this non-invasive: **every Protocol accepts a sync *or*
+  an async implementation.** The framework awaits an async one and runs a sync
+  one in a worker thread ([`agent/utils/async_utils.py`](../src/agent/utils/async_utils.py)),
+  decided in one place — the proxies that already wrapped every tool call. So no
+  existing `"custom"` class had to change, and none of the examples did.
+  `GoogleSearchConsoleClient` stays sync because `googleapiclient` is
+  httplib2-based and cannot be otherwise; it runs threaded, correctly, rather
+  than pretending. `run()` remains as a thin `asyncio.run(arun(...))` wrapper for
+  the CLI and tests.
+
+  A run also has an optional overall deadline now (`run_timeout_seconds`, `0` =
+  unbounded) on top of the per-call timeouts — a dozen individually-timely calls
+  can still hold a worker slot far longer than intended. See
+  [architecture.md](architecture.md#how-a-run-executes-async-and-why-you-can-ignore-that).
+
 ## Next
 
 Roughly in priority order:
@@ -186,4 +208,3 @@ No queue, no worker pool, no persistence beyond a single in-process run
 gate, no scheduling, no CMS/community posting integration. Those are a
 worker/control-plane concern layered on top of `AgentRunner.run()`, not
 something this agent should grow into doing itself.
-</content>
