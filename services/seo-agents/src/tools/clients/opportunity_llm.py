@@ -89,6 +89,16 @@ class LLMOpportunitySource:
         response = self.llm.generate(f"{body}\n{JSON_INSTRUCTION}", grounded=self.grounded)
         items = _extract_json_array(response.text)[: self.max_opportunities]
 
+        # Links are only verified against the search results when grounding
+        # actually happened — which is not the same as having asked for it. A
+        # provider that ignores `grounded` returns no sources, and treating that
+        # as "nothing was cited" would strip every link from every opportunity
+        # while the run still reported success. Degrade to ungrounded handling
+        # instead: the claimed link passes through unverified, exactly as it does
+        # for a call that never asked for grounding. See tools/llm/base.py's
+        # LLMResponse.grounded.
+        verify_links = self.grounded and getattr(response, "grounded", False)
+
         opportunities = []
         for item in items:
             if not isinstance(item, dict):
@@ -97,10 +107,9 @@ class LLMOpportunitySource:
             # A grounded call's claimed link is only trusted if it's one of the URLs
             # the search tool actually returned — otherwise it's indistinguishable
             # from a hallucinated one, so it's dropped rather than propagated as if
-            # it were real. An ungrounded call has nothing to verify against, so its
-            # claimed link (if any) passes through unchanged.
+            # it were real.
             link = item.get("link") or ""
-            if self.grounded and link not in response.sources:
+            if verify_links and link not in response.sources:
                 link = ""
             item["link"] = link
             if response.sources:

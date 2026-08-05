@@ -164,9 +164,9 @@ def test_payload_previews_only_appear_at_level_2():
 
 
 def test_grounding_that_produced_no_sources_is_visible():
-    """A grounded call returning zero sources is exactly the condition that makes
-    LLMOpportunitySource silently drop every link (PLAN.md Step 2a) — reporting it
-    is what turns that from invisible into diagnosable."""
+    """A grounded call returning zero sources is the condition that used to make
+    LLMOpportunitySource silently drop every link (PLAN.md Step 2a). The dropping
+    is fixed; reporting the call's shape is what keeps it diagnosable."""
     stream = io.StringIO()
     reporter = build_reporter(1, "json", stream=stream)
     llm = observe_tools(_tools(), reporter).llm
@@ -197,3 +197,35 @@ def test_json_format_is_one_parseable_object_per_line():
 def test_unknown_verbose_format_fails_fast():
     with pytest.raises(ValueError):
         build_reporter(1, "yaml")
+
+
+def test_unperformed_grounding_is_reported_as_a_tool_error():
+    """Degrading to ungrounded discovery changes what the results mean, so it is
+    never silent — see PLAN.md Step 2a and tools/llm/base.py's LLMResponse.grounded."""
+    stream = io.StringIO()
+    reporter = build_reporter(1, "json", stream=stream)
+    llm = observe_tools(_tools(), reporter).llm  # MockLLMClient: does not ground
+
+    llm.generate("find me some topics", grounded=True)
+
+    events = _events(stream)
+    errors = [e for e in events if e["event"] == "tool_error"]
+    assert len(errors) == 1
+    assert "did not perform it" in errors[0]["error"]
+    assert next(e for e in events if e["event"] == "tool_end")["grounding_unsupported"] is True
+
+
+def test_a_provider_that_grounds_produces_no_such_warning():
+    stream = io.StringIO()
+    reporter = build_reporter(1, "json", stream=stream)
+
+    class GroundingClient:
+        def generate(self, prompt, *, model=None, grounded=False):
+            from tools.llm.base import LLMResponse
+            return LLMResponse(text="{}", grounded=grounded, sources=["https://x.test"])
+
+    tools = _tools()
+    tools.llm = GroundingClient()
+    observe_tools(tools, reporter).llm.generate("x", grounded=True)
+
+    assert not [e for e in _events(stream) if e["event"] == "tool_error"]

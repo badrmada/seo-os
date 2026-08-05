@@ -3,19 +3,24 @@ from google.genai import types
 
 from .base import LLMResponse
 
+# An LLM call is the slowest thing in a run and the one most likely to hang. On a
+# CLI that's someone pressing Ctrl-C; from a queue worker or an API it's a slot
+# held forever. So there is always a bound — generous, because a grounded call
+# does real searching before it answers, but never unlimited.
+DEFAULT_TIMEOUT_SECONDS = 120.0
+
 
 class GeminiClient:
-    def __init__(self, api_key: str, default_model: str):
+    def __init__(self, api_key: str, default_model: str, timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS):
         self._client = genai.Client(api_key=api_key)
         self._default_model = default_model
-
+        self._timeout_ms = int(timeout_seconds * 1000)  # google-genai takes milliseconds
 
     def generate(self, prompt: str, *, model: str = None, grounded: bool = False) -> LLMResponse:
-        config = None
-        if grounded:
-            config = types.GenerateContentConfig(
-                tools=[types.Tool(google_search=types.GoogleSearch())],
-            )
+        config = types.GenerateContentConfig(
+            http_options=types.HttpOptions(timeout=self._timeout_ms),
+            tools=[types.Tool(google_search=types.GoogleSearch())] if grounded else None,
+        )
         response = self._client.models.generate_content(
             model=model or self._default_model,
             contents=prompt,
@@ -24,7 +29,17 @@ class GeminiClient:
         tokens = 0
         if response.usage_metadata is not None:
             tokens = response.usage_metadata.total_token_count or 0
-        return LLMResponse(text=response.text or "", tokens=tokens, sources=_grounding_sources(response))
+        return LLMResponse(
+            text=response.text or "",
+            tokens=tokens,
+            sources=_grounding_sources(response),
+            # Gemini genuinely performs grounding when asked, so the request and
+            # the reality are the same thing here. A grounded call that cited
+            # nothing still reports grounded=True with empty sources — which is
+            # what tells LLMOpportunitySource that an unverifiable link really is
+            # unverifiable, rather than that this provider can't ground at all.
+            grounded=grounded,
+        )
 
 
 def _grounding_sources(response) -> list[str]:

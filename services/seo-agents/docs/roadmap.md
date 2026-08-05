@@ -148,6 +148,18 @@ about status and direction.
   image, on purpose: there is no per-tenant environment management. See
   [cli.md](cli.md) and [extending.md](extending.md#where-your-code-goes-the-plugins-folder).
 
+- **Grounding is a contract, not a hope.** `LLMResponse` now carries `grounded`
+  — whether grounding *actually happened*, not merely whether it was asked for.
+  This fixes real data loss: "grounded, and the search cited nothing" and "this
+  provider has no grounding at all" both looked identical from `sources` being
+  empty, so a provider that ignored the flag had every link stripped from every
+  opportunity while the run still reported success. Links are now verified only
+  when grounding genuinely ran; when it didn't, discovery degrades to ungrounded
+  handling and the reporter says so rather than quietly discarding data. Gemini's
+  behavior is unchanged. Every outbound call is also bounded now — `GeminiClient`
+  (120s) and `GoogleSearchConsoleClient` (30s) previously had no timeout at all,
+  which on a queue worker is a slot held forever.
+
 ## Next
 
 Roughly in priority order:

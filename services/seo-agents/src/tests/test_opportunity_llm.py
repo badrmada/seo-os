@@ -66,6 +66,7 @@ def test_grounded_link_kept_when_it_matches_a_real_citation():
                 [{"topic": "widgets", "signal_strength": 0.8, "reason": "trending", "link": real_url}]
             ),
             sources=[real_url],
+            grounded=True,
         )
     )
     source = LLMOpportunitySource("llm_source", llm, _config())
@@ -90,6 +91,7 @@ def test_grounded_link_dropped_when_not_a_real_citation():
                 ]
             ),
             sources=["https://example.com/a-different-real-page"],
+            grounded=True,
         )
     )
     source = LLMOpportunitySource("llm_source", llm, _config())
@@ -113,6 +115,49 @@ def test_ungrounded_link_passes_through_unverified():
     [opportunity] = source.discover({})
 
     assert opportunity["raw"]["link"] == "https://x.test/y"
+
+
+def test_a_grounded_call_that_cited_nothing_still_drops_the_link():
+    """Grounding ran and returned no citations, so a link the model claims is
+    unverifiable — exactly the case link-checking exists for."""
+    llm = FakeLLMClient(
+        LLMResponse(
+            text=_payload(
+                [{"topic": "widgets", "signal_strength": 0.8, "reason": "trending",
+                  "link": "https://example.com/made-up"}]
+            ),
+            sources=[],
+            grounded=True,
+        )
+    )
+    source = LLMOpportunitySource("llm_source", llm, _config())
+
+    [opportunity] = source.discover({})
+
+    assert opportunity["raw"]["link"] == ""
+
+
+def test_links_survive_a_provider_that_cannot_ground():
+    """The bug this guards: a provider that ignores grounded= returns no sources,
+    which used to be read as "nothing was cited" — silently stripping every link
+    from every opportunity while the run still reported success. An unperformed
+    grounding is not a failed verification."""
+    real_url = "https://example.com/a-real-thread"
+    llm = FakeLLMClient(
+        LLMResponse(
+            text=_payload(
+                [{"topic": "widgets", "signal_strength": 0.8, "reason": "trending", "link": real_url}]
+            ),
+            sources=[],       # this provider never returns citations...
+            grounded=False,   # ...because it does not ground at all
+        )
+    )
+    source = LLMOpportunitySource("llm_source", llm, _config())  # grounded=True by default
+
+    [opportunity] = source.discover({})
+
+    assert llm.last_kwargs["grounded"] is True   # it did ask
+    assert opportunity["raw"]["link"] == real_url  # and kept the data anyway
 
 
 # --- malformed items dropped individually, not raised ---

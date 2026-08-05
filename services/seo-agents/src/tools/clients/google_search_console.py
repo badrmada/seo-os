@@ -3,10 +3,19 @@ from __future__ import annotations
 import math
 from datetime import date, timedelta
 
+import google_auth_httplib2
+import httplib2
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
 
 SCOPES = ["https://www.googleapis.com/auth/webmasters.readonly"]
+
+# googleapiclient's default transport has no timeout at all, so a stalled
+# connection hangs the call indefinitely. On a CLI that's someone pressing
+# Ctrl-C; from a queue worker it's a slot held forever. One search_analytics()
+# makes several requests (current window, prior window, page mapping), so this
+# bounds each one, not the method.
+DEFAULT_TIMEOUT_SECONDS = 30.0
 
 # GSC data is only complete up to ~2-3 days ago; querying "today" returns partial rows.
 DATA_LAG_DAYS = 3
@@ -36,9 +45,18 @@ class GoogleSearchConsoleClient:
     row still comes back with opportunity/intent/score, just without trend/top_page.
     """
 
-    def __init__(self, key_file: str = "service_account.json", scopes=SCOPES):
+    def __init__(
+        self, key_file: str = "service_account.json", scopes=SCOPES,
+        timeout_seconds: float = DEFAULT_TIMEOUT_SECONDS,
+    ):
         creds = service_account.Credentials.from_service_account_file(key_file, scopes=scopes)
-        self.service = build("searchconsole", "v1", credentials=creds)
+        # Built explicitly rather than via build(credentials=...) purely so the
+        # underlying transport can carry a timeout — that path constructs its own
+        # httplib2.Http with none.
+        authorized = google_auth_httplib2.AuthorizedHttp(
+            creds, http=httplib2.Http(timeout=timeout_seconds),
+        )
+        self.service = build("searchconsole", "v1", http=authorized, cache_discovery=False)
 
     def _windows(self, days: int) -> tuple[str, str, str, str]:
         """Return (cur_start, cur_end, prior_start, prior_end) as ISO date strings.

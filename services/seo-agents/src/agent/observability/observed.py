@@ -66,6 +66,16 @@ class ObservedLLMClient(_Observed):
             call["sources"] = len(getattr(response, "sources", ()) or ())
             if self._reporter.level >= _DETAIL:
                 call["text"] = preview(getattr(response, "text", ""))
+            if grounded and not getattr(response, "grounded", False):
+                # Asked for grounding, didn't get it. The run degrades to
+                # ungrounded discovery rather than losing every link, but that is
+                # a real change in what the results mean, so it is never silent.
+                call["grounding_unsupported"] = True
+                self._reporter.event(
+                    TOOL_ERROR, tool=self._name, method="generate",
+                    error="grounding requested but this provider did not perform it; "
+                          "links are unverified",
+                )
             return response
 
 

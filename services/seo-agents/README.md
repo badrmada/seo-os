@@ -440,5 +440,12 @@ Issues and pull requests are welcome. If you're adding a whole new *kind* of
 provider (not just a new instance of an existing one), read
 [docs/extending.md](docs/extending.md#adding-a-new-provider-kind-not-just-a-new-instance)
 first.
+
+Running the tests:
+
+```bash
+pip install -r requirements.txt -r requirements-dev.txt
+pytest
+```
 </content>
 </invoke>
