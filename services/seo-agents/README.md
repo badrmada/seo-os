@@ -444,7 +444,7 @@ first.
 Running the tests:
 
 ```bash
-pip install -r requirements.txt -r requirements-dev.txt
+pip install -r requirements.txt
 pytest
 ```
 </content>

@@ -42,6 +42,7 @@ pydantic==2.13.4
 pydantic_core==2.46.4
 Pygments==2.20.0
 pyparsing==3.3.2
+pytest==9.1.1
 PyYAML==6.0.3
 requests-toolbelt==1.0.0
 requests==2.34.2
@@ -58,4 +59,3 @@ uuid_utils==0.17.0
 websockets==15.0.1
 xxhash==3.8.1
 zstandard==0.25.0
-pytest==9.1.1
