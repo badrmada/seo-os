@@ -42,7 +42,7 @@ def list_specialists(
     data.add_column("kind")
     data.add_column("provider")
     for kind, provider in (
-        ("llm", f"{config.llm_provider} ({config.llm_model})"),
+        ("llm", f"{config.llm_provider} ({config.llm_options.get('model', 'default')})"),
         ("gsc", config.gsc_provider),
         ("traffic", config.traffic_provider),
         ("analytics", config.analytics_provider),

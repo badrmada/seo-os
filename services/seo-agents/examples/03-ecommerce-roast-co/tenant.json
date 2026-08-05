@@ -2,19 +2,17 @@
   "llm_provider": "mock",
   "gsc_provider": "mock",
   "traffic_provider": "none",
-
   "analytics_provider": "templated",
-  "analytics_source": "file",
-  "analytics_report_path": "data/analytics.json",
+  "analytics_options": {
+    "source": "file",
+    "report_path": "data/analytics.json",
+    "summary_template": "${{ data.revenue|round|int }} from {{ data.orders }} orders in the {{ data.period|replace('_', ' ') }}. Top seller: {{ data.bestsellers[0].name }}.",
+    "highlights_template": "[{% for p in data.bestsellers[:limit] %}{\"label\": {{ (p.name + \" — \" + p.units|string + \" sold\")|tojson }}, \"url\": {{ (\"https://roast.example.com/products/\" + p.handle)|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}]"
+  },
   "analytics_highlights_limit": 3,
-  "analytics_summary_template": "${{ data.revenue|round|int }} from {{ data.orders }} orders in the {{ data.period|replace('_', ' ') }}. Top seller: {{ data.bestsellers[0].name }}.",
-  "analytics_highlights_template": "[{% for p in data.bestsellers[:limit] %}{\"label\": {{ (p.name + \" — \" + p.units|string + \" sold\")|tojson }}, \"url\": {{ (\"https://roast.example.com/products/\" + p.handle)|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}]",
-
   "brand_description": "Roast & Co. is an online specialty-coffee roaster: small-batch single-origin beans and blends, roasted to order and shipped fresh, with brewing guides for every method.",
   "agent_goal": "Reach new coffee drinkers through helpful guides on other platforms and turn them into first-time buyers.",
-
   "default_article_tone": "warm and practical",
-
   "prompt_templates": {
     "external_article": "You are writing a guest article for {{ platform_name|default('an external blog', true) }} on behalf of Roast & Co.\nProduct: {{ brand_description }}\nGoal: {{ agent_goal }}\nTarget topic: \"{{ keyword }}\"\nTone: {{ tone }}. Max words: {{ max_words }}.\nWrite a genuinely useful guide for coffee lovers, not an ad. End with ONE soft, honest mention of Roast & Co. — never a hard sell.\n{% if analytics_summary %}Context you may weave in only if it fits: {{ analytics_summary }}\n{% endif %}{% if highlights %}Products you may reference naturally (add their link to internal_links):\n{% for item in highlights %}- {{ item.label[:200] }} — {{ item.url }}\n{% endfor %}{% endif %}"
   }

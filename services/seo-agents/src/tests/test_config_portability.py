@@ -17,13 +17,21 @@ ANALYTICS = {"total": 7, "items": [{"title": "A post", "url": "https://example.c
 TENANT = {
     "llm_provider": "mock",
     "analytics_provider": "templated",
-    "analytics_report_path": "data/analytics.json",
-    "analytics_summary_template": "{{ data.total }} things.",
-    "analytics_highlights_template": (
-        "[{% for i in data['items'] %}{\"label\": {{ i.title|tojson }}, "
-        "\"url\": {{ i.url|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}]"
-    ),
+    "analytics_options": {
+        "report_path": "data/analytics.json",
+        "summary_template": "{{ data.total }} things.",
+        "highlights_template": (
+            "[{% for i in data['items'] %}{\"label\": {{ i.title|tojson }}, "
+            "\"url\": {{ i.url|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}]"
+        ),
+    },
 }
+
+
+def _with_report_path(path: str) -> dict:
+    """TENANT, pointed at a different report — the path now lives inside the
+    provider's options, so it can't be overridden with a flat key."""
+    return {**TENANT, "analytics_options": {**TENANT["analytics_options"], "report_path": path}}
 
 
 @pytest.fixture
@@ -120,13 +128,13 @@ def test_load_dict_does_no_data_io_by_default():
     """A server resolving a tenant config per request must not make an outbound
     call to validate a template. The config below points at a file that does not
     exist; loading it must still succeed."""
-    config = AgentConfigLoader().load_dict({**TENANT, "analytics_report_path": "nope.json"})
+    config = AgentConfigLoader().load_dict(_with_report_path("nope.json"))
     assert config.analytics_provider == "templated"
 
 
 def test_validation_can_be_requested_explicitly():
     loader = AgentConfigLoader()
-    config = loader.load_dict({**TENANT, "analytics_report_path": "nope.json"})
+    config = loader.load_dict(_with_report_path("nope.json"))
     with pytest.raises(ValueError, match="Could not load analytics data"):
         loader.validate_data_templates(config)
 
@@ -134,6 +142,6 @@ def test_validation_can_be_requested_explicitly():
 def test_load_from_file_still_validates_by_default(tmp_path):
     """Existing CLI behavior is unchanged: a broken templated config fails on load."""
     tenant = tmp_path / "tenant.json"
-    tenant.write_text(json.dumps({**TENANT, "analytics_report_path": "nope.json"}))
+    tenant.write_text(json.dumps(_with_report_path("nope.json")))
     with pytest.raises(ValueError, match="Could not load analytics data"):
         AgentConfigLoader().load(str(tenant))

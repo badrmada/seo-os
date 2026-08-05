@@ -1,21 +1,26 @@
 {
   "llm_provider": "mock",
   "gsc_provider": "mock",
-
   "traffic_provider": "templated",
-  "traffic_source": "file",
-  "traffic_report_path": "data/traffic.json",
-  "traffic_summary_template": "{{ data.visitors_30d }} visitors and {{ data.pageviews_30d }} pageviews in the last {{ days }} days, mostly {{ data.top_source }}.",
-
+  "traffic_options": {
+    "source": "file",
+    "report_path": "data/traffic.json",
+    "summary_template": "{{ data.visitors_30d }} visitors and {{ data.pageviews_30d }} pageviews in the last {{ days }} days, mostly {{ data.top_source }}."
+  },
   "analytics_provider": "custom",
   "analytics_custom_class": "analytics_growth:GrowthAnalytics",
   "analytics_highlights_limit": 3,
-
   "discovery_sources": [
-    { "name": "web_scout", "provider": "mock" },
-    { "name": "trending_searches", "provider": "custom", "class": "trending_finder:TrendingSearches" }
+    {
+      "name": "web_scout",
+      "provider": "mock"
+    },
+    {
+      "name": "trending_searches",
+      "provider": "custom",
+      "class": "trending_finder:TrendingSearches"
+    }
   ],
-
   "brand_description": "DevBoard is a job board for software engineers: curated remote and on-site roles, salary ranges shown up front, and honest company profiles.",
   "agent_goal": "Bring in engineers searching for jobs, and companies searching for engineers.",
   "default_article_tone": "practical"

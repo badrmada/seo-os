@@ -1,8 +1,8 @@
 """Resolving a tenant's file paths against *its own* config, not the process's
 working directory.
 
-Every path a tenant writes in its config — `analytics_report_path`,
-`traffic_report_path`, `gsc_key_file`, an output sink's `options.path` — used to
+Every path a tenant writes in its config — a templated provider's
+`report_path`, `gsc_options.key_file`, an output sink's `options.path` — used to
 be interpreted relative to wherever the command happened to be run from. That is
 survivable for one CLI user who `cd`s into the right folder, and wrong the moment
 the agent is called from a server, a queue worker, or anything with one working

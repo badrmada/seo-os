@@ -6,6 +6,35 @@ from .. import prompts
 from ..validators.template_validator import TemplateValidator
 from .agent_config import AgentConfig
 
+# Settings that used to sit at the top level of a config and now belong to the
+# provider that actually uses them (see AgentConfig's "Provider-owned settings").
+# Kept as a map rather than deleted quietly: "Unknown AgentConfig field
+# 'gemini_api_key'" is true but useless, and a tenant hitting it has no way to
+# guess where the value went. Naming the destination turns a broken config into a
+# two-second edit.
+MOVED_FIELDS = {
+    "llm_model": "llm_options.model",
+    "gemini_api_key": "llm_options.api_key",
+    "gsc_key_file": "gsc_options.key_file",
+    "cloudflare_api_token": "traffic_options.api_token",
+    "cloudflare_zone_id": "traffic_options.zone_id",
+    "traffic_source": "traffic_options.source",
+    "traffic_report_path": "traffic_options.report_path",
+    "traffic_api_url": "traffic_options.api_url",
+    "traffic_api_method": "traffic_options.api_method",
+    "traffic_api_headers": "traffic_options.api_headers",
+    "traffic_api_timeout_seconds": "traffic_options.api_timeout_seconds",
+    "traffic_summary_template": "traffic_options.summary_template",
+    "analytics_source": "analytics_options.source",
+    "analytics_report_path": "analytics_options.report_path",
+    "analytics_api_url": "analytics_options.api_url",
+    "analytics_api_method": "analytics_options.api_method",
+    "analytics_api_headers": "analytics_options.api_headers",
+    "analytics_api_timeout_seconds": "analytics_options.api_timeout_seconds",
+    "analytics_summary_template": "analytics_options.summary_template",
+    "analytics_highlights_template": "analytics_options.highlights_template",
+}
+
 
 class AgentConfigLoader:
     """Loads a tenant AgentConfig, overriding only the fields it sets — anything
@@ -60,6 +89,15 @@ class AgentConfigLoader:
         known = {f.name for f in fields(AgentConfig)}
         unknown = set(data) - known
         if unknown:
+            moved = sorted(name for name in unknown if name in MOVED_FIELDS)
+            if moved:
+                relocations = "\n".join(f"  {name} -> {MOVED_FIELDS[name]}" for name in moved)
+                raise ValueError(
+                    f"{len(moved)} field(s) in {source} now belong to the provider that uses "
+                    f"them, not to the config as a whole:\n{relocations}\n"
+                    "Move the value into that provider's options object — see "
+                    "docs/configuration.md."
+                )
             raise ValueError(f"Unknown AgentConfig field(s) in {source}: {sorted(unknown)}")
 
         data = dict(data)

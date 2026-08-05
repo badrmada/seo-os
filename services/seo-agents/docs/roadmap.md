@@ -211,12 +211,18 @@ about status and direction.
 
   `llm_provider: "custom"` (via `llm_custom_class`) closes the last gap in the
   `"custom"` mechanism — bringing your own model, gateway, or local LLM no longer
-  means forking. And each kind takes an `<kind>_options` object holding the
-  settings of the provider actually selected, with the top-level fields
-  (`gemini_api_key`, `gsc_key_file`, `cloudflare_api_token`, …) kept as working
-  **aliases**: an option wins where both are set, and no existing tenant config
-  has to be migrated. A credential now lives next to the thing that uses it, and
-  adding a provider never adds a top-level field.
+  means forking.
+
+  **Provider settings moved into the provider.** Each kind is now
+  `<kind>_provider` plus `<kind>_options`, and nothing provider-specific remains
+  at the top level of a config: `gemini_api_key`, `gsc_key_file`,
+  `cloudflare_api_token`, the `analytics_*`/`traffic_*` templated fields — all of
+  them live with the provider that reads them. Which settings are even meaningful
+  depends on the provider selected, so flattening them made every tenant carry
+  every provider's fields and left a `custom` class with nowhere to put its own.
+  **This is a breaking config change**, and the only one so far: the loader
+  rejects an old field and names its new location, so a stale config says exactly
+  what to move. The repo's own tenant and all six examples are migrated.
 
 ## Next
 

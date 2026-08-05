@@ -51,10 +51,26 @@ tenant's current choice marked. It reads the same registry the agent builds
 from, so it can't tell you about a provider that doesn't exist, or omit one that
 does.
 
-### Two ways to write a provider's settings
+### Nothing here is mandatory
 
-Each job also takes an `<job>_options` object, holding the settings of **the
-provider you actually picked**:
+Gemini, Google Search Console and Cloudflare are **built-in conveniences, not
+requirements** — they exist so a first run against real data takes minutes. Drop
+any of them, or all of them:
+
+- No Cloudflare? `"traffic_provider": "templated"` maps any traffic tool's JSON,
+  `"custom"` runs your own code, and `"none"` turns traffic off entirely.
+- No Search Console? `"gsc_provider": "mock"`. The agent picks its topic from
+  your seed keyword, your analytics, or what discovery found instead.
+- Different model, a local one, or a gateway? `"llm_provider": "custom"`.
+- Analytics in your own database? `"analytics_provider": "custom"`.
+
+A `tenant.json` of `{}` runs. Every job has a working default, and no job
+requires a vendor account.
+
+### Each job is two fields
+
+**`<job>_provider`** picks the implementation; **`<job>_options`** holds that
+implementation's own settings — including its credentials:
 
 ```jsonc
 {
@@ -63,19 +79,19 @@ provider you actually picked**:
 }
 ```
 
-The older top-level fields (`gemini_api_key`, `llm_model`, `gsc_key_file`,
-`cloudflare_api_token`, …) **keep working exactly as before** — they're aliases
-for the same settings, and every example on this page still uses them. If you set
-both, the option wins.
+Settings live with the provider that uses them, never at the top level of the
+config, because *which settings are even meaningful depends on which provider you
+picked*: `api_token` and `zone_id` mean something to Cloudflare and nothing to a
+templated feed. That also gives a `custom` class of yours somewhere to put its
+own settings, and it means a credential sits next to the thing that needs it.
 
-| Prefer `options` when | Prefer the top-level field when |
-|---|---|
-| You're writing a new config, or a `custom` class that needs settings of its own. | You already have a working config. There is nothing to migrate. |
+Each job's section below lists the option names for every provider it offers.
 
-The reason for the shape: a setting belongs next to the provider that uses it —
-that's where its credential belongs too — and it means adding a provider never
-adds another top-level field to every tenant's config. The per-job tables below
-list each provider's option names alongside the field they alias.
+> **Upgrading a config written before this?** Settings like `gemini_api_key`,
+> `gsc_key_file`, `cloudflare_api_token`, `analytics_report_path` and
+> `analytics_summary_template` used to sit at the top level. They now belong to
+> their provider's options — the loader rejects the old spelling and names the
+> new location for each one, so a stale config tells you exactly what to move.
 
 The rest of this page goes job by job.
 
@@ -88,13 +104,20 @@ The model that writes your drafts.
 | Field | Type | Default | Notes |
 |---|---|---|---|
 | `llm_provider` | `str` | `"mock"` | `"mock"` (offline, no key), `"gemini"`, or `"custom"`. |
-| `llm_model` | `str` | `"gemini-2.0-flash"` | Model name passed to Gemini. Alias for `llm_options.model`. |
-| `gemini_api_key` | `str` | `""` | Required when `llm_provider` is `"gemini"`. Get one from [Google AI Studio](https://aistudio.google.com/apikey). Alias for `llm_options.api_key`. |
 | `llm_custom_class` | `str` | `""` | `"module:ClassName"`, when `llm_provider` is `"custom"`. |
-| `llm_options` | `dict` | `{}` | The selected provider's own settings — for `"gemini"`: `api_key`, `model`, `timeout_seconds` (default 120). For `"custom"`: whatever your class wants. |
+| `llm_options` | `dict` | `{}` | The selected provider's settings — see below. |
+
+| `llm_options` for `"gemini"` | Default | Notes |
+|---|---|---|
+| `api_key` | `""` | Required. Get one from [Google AI Studio](https://aistudio.google.com/apikey). |
+| `model` | `"gemini-2.0-flash"` | Any Gemini model name. A run can override it with `input.model`. |
+| `timeout_seconds` | `120` | Per call. Generous because a grounded call really searches first. |
 
 ```jsonc
-{ "llm_provider": "gemini", "llm_model": "gemini-pro-latest", "gemini_api_key": "YOUR_GEMINI_API_KEY" }
+{
+  "llm_provider": "gemini",
+  "llm_options": { "api_key": "YOUR_GEMINI_API_KEY", "model": "gemini-pro-latest" }
+}
 ```
 
 **Bringing your own model.** `"custom"` points at a class of yours implementing
@@ -123,8 +146,15 @@ can push you onto page one.
 | Field | Type | Default | Notes |
 |---|---|---|---|
 | `gsc_provider` | `str` | `"mock"` | `"mock"` or `"google"`. |
-| `gsc_key_file` | `str` | `"service_account.json"` | Path to your Google **service-account key file** (see below). Alias for `gsc_options.key_file`. |
-| `gsc_options` | `dict` | `{}` | For `"google"`: `key_file`, `timeout_seconds` (default 30, per request). |
+| `gsc_options` | `dict` | `{}` | For `"google"`: `key_file` (default `"service_account.json"` — your Google **service-account key file**, see below) and `timeout_seconds` (default 30, per request). |
+
+```jsonc
+{ "gsc_provider": "google", "gsc_options": { "key_file": "data/service_account.json" } }
+```
+
+Not using Search Console? Leave `gsc_provider` at `"mock"`. The agent picks its
+target topic from your seed keyword, your analytics highlights, or whatever
+discovery found — see [`_pick_keyword`](../src/agent/graph/stages/analyze.py).
 
 ### Setting up the service account (one-time)
 
@@ -140,11 +170,11 @@ to trust that service account. Steps:
 3. Create a **service account** (IAM & Admin → Service Accounts → Create).
 4. On that service account, create a **key** of type **JSON** and download it.
    This downloaded file is your key file.
-5. Put the key file where the app can read it, and point `gsc_key_file` at it.
+5. Put the key file where the app can read it, and point `gsc_options.key_file` at it.
    By default the app looks for `service_account.json` inside your tenant's
    folder; `"data/service_account.json"` puts it in `data/` alongside your other
    files, and an absolute path like `"/etc/secrets/gsc.json"` also works. In a
-   container, this is the file you **mount** in and point `gsc_key_file` at.
+   container, this is the file you **mount** in and point `gsc_options.key_file` at.
 6. Copy the service account's email address — it looks like
    `something@your-project.iam.gserviceaccount.com`.
 7. In [Google Search Console](https://search.google.com/search-console) → your
@@ -177,17 +207,15 @@ reference. You have four ways to provide it.
 | Field | Type | Default | Used with |
 |---|---|---|---|
 | `traffic_provider` | `str` | `"mock"` | `"none"`, `"mock"`, `"cloudflare"`, `"templated"`, `"custom"`. |
-| `cloudflare_api_token` | `str` | `""` | `"cloudflare"` |
-| `cloudflare_zone_id` | `str` | `""` | `"cloudflare"` |
 | `traffic_custom_class` | `str` | `""` | `"custom"` — `"module:ClassName"` — a file in your tenant's `plugins/` folder. |
-| `traffic_source` | `str` | `"file"` | `"templated"` — read from a `"file"` or a live `"api"`. |
-| `traffic_report_path` | `str` | `""` | `"templated"` + `source="file"`. |
-| `traffic_api_url` | `str` | `""` | `"templated"` + `source="api"`. |
-| `traffic_api_method` | `str` | `"GET"` | `"templated"` + `source="api"`. |
-| `traffic_api_headers` | `dict` | `{}` | `"templated"` + `source="api"` (e.g. an auth header). |
-| `traffic_api_timeout_seconds` | `float` | `10.0` | `"templated"` + `source="api"`. |
-| `traffic_summary_template` | `str` | `""` | `"templated"` — produces the `summary` text. |
-| `traffic_options` | `dict` | `{}` | The selected provider's own settings. For `"cloudflare"`: `api_token`, `zone_id`, `timeout_seconds` (default 15). For `"templated"`: `source`, `report_path`, `api_url`, `api_method`, `api_headers`, `api_timeout_seconds`, `summary_template` — each aliasing the `traffic_*` field of the same name above. For `"custom"`: whatever your class wants. |
+| `traffic_options` | `dict` | `{}` | The selected provider's settings — see below. |
+
+| `traffic_options` for… | Keys |
+|---|---|
+| `"cloudflare"` | `api_token`, `zone_id`, `timeout_seconds` (default 15) |
+| `"templated"` | `source` (`"file"` or `"api"`), `report_path`, `api_url`, `api_method`, `api_headers`, `api_timeout_seconds`, and `summary_template` — the Jinja2 template producing the `summary` text |
+| `"custom"` | whatever your class reads |
+| `"mock"`, `"none"` | none |
 
 - **`"none"`** — you have no traffic tool. The `summary` stays empty and prompts
   skip it cleanly. Perfectly fine.
@@ -206,8 +234,8 @@ reference. You have four ways to provide it.
    - **Zone → Zone → Read** — lets it see the zone (read the DNS zone).
    - **Zone → Analytics → Read** — lets it read the traffic analytics.
 3. Scope it to the specific zone (or all zones), create it, and copy the token
-   into `cloudflare_api_token`.
-4. Set `cloudflare_zone_id`: open the domain's **Overview** page in the
+   into `traffic_options.api_token`.
+4. Set `traffic_options.zone_id`: open the domain's **Overview** page in the
    dashboard — the Zone ID is in the right-hand "API" sidebar.
 
 If Cloudflare Web Analytics / Bot Management isn't enabled on the zone, the
@@ -229,17 +257,15 @@ things for the writer:
 | Field | Type | Default | Used with |
 |---|---|---|---|
 | `analytics_provider` | `str` | `"mock"` | `"mock"`, `"templated"`, `"custom"`. |
-| `analytics_report_path` | `str` | `"tools/report.json"` | `"templated"` + `source="file"`. |
 | `analytics_custom_class` | `str` | `""` | `"custom"` — `"module:ClassName"` — a file in your tenant's `plugins/` folder. |
-| `analytics_highlights_limit` | `int` | `3` | How many highlights the model gets. |
-| `analytics_source` | `str` | `"file"` | `"file"` or `"api"`. |
-| `analytics_api_url` | `str` | `""` | `"templated"` + `source="api"`. |
-| `analytics_api_method` | `str` | `"GET"` | `"templated"` + `source="api"`. |
-| `analytics_api_headers` | `dict` | `{}` | `"templated"` + `source="api"`. |
-| `analytics_api_timeout_seconds` | `float` | `10.0` | `"templated"` + `source="api"`. |
-| `analytics_summary_template` | `str` | `""` | `"templated"` — produces the `summary`. |
-| `analytics_highlights_template` | `str` | `""` | `"templated"` — produces the `highlights` JSON array. |
-| `analytics_options` | `dict` | `{}` | The selected provider's own settings, aliasing the `analytics_*` fields above the same way `traffic_options` does. For `"custom"`: whatever your class wants. |
+| `analytics_highlights_limit` | `int` | `3` | How many highlights the model gets. Not provider-specific — it's what the *agent* asks for, whichever provider answers. |
+| `analytics_options` | `dict` | `{}` | The selected provider's settings — see below. |
+
+| `analytics_options` for… | Keys |
+|---|---|
+| `"templated"` | `source` (`"file"` or `"api"`), `report_path`, `api_url`, `api_method`, `api_headers`, `api_timeout_seconds`, plus `summary_template` and `highlights_template` |
+| `"custom"` | whatever your class reads |
+| `"mock"` | none |
 
 How to connect it: **use `"templated"` if your analytics is JSON you can map
 with a snippet** (the common case — covered in depth next). Use `"custom"` if it
@@ -269,9 +295,9 @@ blanks" idea as a mail merge.
    - analytics templates get **`limit`** (how many highlights to include),
    - traffic templates get **`days`** (the time window, e.g. 28).
 2. **What each template must produce.**
-   - `analytics_summary_template` and `traffic_summary_template` → **plain
+   - `summary_template` (analytics and traffic) → **plain
      text** (one line).
-   - `analytics_highlights_template` → a **JSON array** of `{"label": ...,
+   - `highlights_template` (analytics) → a **JSON array** of `{"label": ...,
      "url": ...}` objects. This one is stricter because you're writing JSON by
      hand; the [highlights walkthrough](#building-the-highlights-array-step-by-step)
      below shows exactly how.
@@ -304,13 +330,15 @@ Config:
 ```jsonc
 {
   "analytics_provider": "templated",
-  "analytics_source": "file",
-  "analytics_report_path": "tenant-data/report.json",
   "analytics_highlights_limit": 3,
+  "analytics_options": {
+    "source": "file",
+    "report_path": "tenant-data/report.json",
 
-  "analytics_summary_template": "{{ data.totals.signups_30d }} new signups in the last 30 days, {{ data.totals.active_users }} active users, ${{ data.totals.mrr_usd }} MRR.",
+    "summary_template": "{{ data.totals.signups_30d }} new signups in the last 30 days, {{ data.totals.active_users }} active users, ${{ data.totals.mrr_usd }} MRR.",
 
-  "analytics_highlights_template": "[{% for p in data.top_posts[:limit] %}{\"label\": {{ (p.title + \" (\" + p.reads|string + \" reads)\")|tojson }}, \"url\": {{ (\"https://myapp.com/blog/\" + p.slug)|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}]"
+    "highlights_template": "[{% for p in data.top_posts[:limit] %}{\"label\": {{ (p.title + \" (\" + p.reads|string + \" reads)\")|tojson }}, \"url\": {{ (\"https://myapp.com/blog/\" + p.slug)|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}]"
+  }
 }
 ```
 
@@ -348,18 +376,20 @@ Config:
 ```jsonc
 {
   "analytics_provider": "templated",
-  "analytics_source": "api",
-  "analytics_api_url": "https://shop.example.com/internal/analytics",
-  "analytics_api_headers": { "Authorization": "Bearer YOUR_INTERNAL_API_KEY" },
   "analytics_highlights_limit": 3,
+  "analytics_options": {
+    "source": "api",
+    "api_url": "https://shop.example.com/internal/analytics",
+    "api_headers": { "Authorization": "Bearer YOUR_INTERNAL_API_KEY" },
 
-  "analytics_summary_template": "${{ data.revenue|round|int }} in revenue from {{ data.orders }} orders over the {{ data.period|replace('_', ' ') }}.",
+    "summary_template": "${{ data.revenue|round|int }} in revenue from {{ data.orders }} orders over the {{ data.period|replace('_', ' ') }}.",
 
-  "analytics_highlights_template": "[{% for p in data.bestsellers[:limit] %}{\"label\": {{ (p.name + \" — \" + p.units|string + \" sold\")|tojson }}, \"url\": {{ (\"https://shop.example.com/products/\" + p.handle)|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}]"
+    "highlights_template": "[{% for p in data.bestsellers[:limit] %}{\"label\": {{ (p.name + \" — \" + p.units|string + \" sold\")|tojson }}, \"url\": {{ (\"https://shop.example.com/products/\" + p.handle)|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}]"
+  }
 }
 ```
 
-The only difference from Example 1 is `source`, `api_url`, and `headers`. The
+The only difference from Example 1 is `source`, `api_url`, and `api_headers`. The
 `|round|int` and `|replace(...)` bits are Jinja2 **filters** — small transforms
 you can chain to clean up values.
 
@@ -377,10 +407,12 @@ Config:
 ```jsonc
 {
   "traffic_provider": "templated",
-  "traffic_source": "api",
-  "traffic_api_url": "https://plausible.io/api/v1/stats/aggregate?site_id=example.com&period=30d&metrics=visitors,pageviews",
-  "traffic_api_headers": { "Authorization": "Bearer YOUR_PLAUSIBLE_API_KEY" },
-  "traffic_summary_template": "{{ data.results.visitors.value }} visitors and {{ data.results.pageviews.value }} pageviews in the last {{ days }} days."
+  "traffic_options": {
+    "source": "api",
+    "api_url": "https://plausible.io/api/v1/stats/aggregate?site_id=example.com&period=30d&metrics=visitors,pageviews",
+    "api_headers": { "Authorization": "Bearer YOUR_PLAUSIBLE_API_KEY" },
+    "summary_template": "{{ data.results.visitors.value }} visitors and {{ data.results.pageviews.value }} pageviews in the last {{ days }} days."
+  }
 }
 ```
 
@@ -554,11 +586,11 @@ environment variable.
 **Every path in your config resolves against your tenant's folder**, so:
 
 ```jsonc
-{ "analytics_report_path": "data/analytics.json" }
+{ "analytics_options": { "report_path": "data/analytics.json" } }
 ```
 
 means that file inside `userdata/acme/`, no matter which directory you run from.
-The same goes for `traffic_report_path`, `gsc_key_file`, and an output sink's
+The same goes for a traffic provider's `report_path`, `gsc_options.key_file`, and an output sink's
 `options.path`. Absolute paths and `~` are used as-is.
 
 `--input` works the same way: `--input input.comment.json` means that file in
@@ -715,26 +747,33 @@ combine in a real product.
 
 ```jsonc
 {
-  // --- Real vendors Echooers actually uses ---
+  // --- Real vendors Echooers happens to use. None of these three is required
+  // by the agent — see "Nothing here is mandatory" above. ---
   "llm_provider": "gemini",
-  "llm_model": "gemini-pro-latest",
-  "gemini_api_key": "YOUR_GEMINI_API_KEY",
+  "llm_options": {
+    "model": "gemini-pro-latest",
+    "api_key": "YOUR_GEMINI_API_KEY"
+  },
 
   "gsc_provider": "google",
-  "gsc_key_file": "service_account.json",
+  "gsc_options": { "key_file": "service_account.json" },
 
   "traffic_provider": "cloudflare",
-  "cloudflare_api_token": "YOUR_CLOUDFLARE_API_TOKEN",
-  "cloudflare_zone_id": "YOUR_CLOUDFLARE_ZONE_ID",
+  "traffic_options": {
+    "api_token": "YOUR_CLOUDFLARE_API_TOKEN",
+    "zone_id": "YOUR_CLOUDFLARE_ZONE_ID"
+  },
 
   // --- Analytics: Echooers' own idea/upvote JSON, mapped with two templates.
   // data.data.overview.total_ideas etc. are Echooers' own field names. ---
   "analytics_provider": "templated",
-  "analytics_source": "file",
-  "analytics_report_path": "tools/report.json",
   "analytics_highlights_limit": 3,
-  "analytics_summary_template": "{{ data.data.overview.total_ideas }} ideas shared so far, {{ data.data.overview.total_upvotes }} upvotes and {{ data.data.overview.total_views }} views across the community.",
-  "analytics_highlights_template": "[{% for i in data.data.top_by_upvotes[:limit] %}{\"label\": {{ (i.content[:200] + \" (\" + i.upvotes|string + \" upvotes, \" + i.views|string + \" views)\")|tojson }}, \"url\": {{ (\"https://echooers.com/idea/\" + i.id)|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}]",
+  "analytics_options": {
+    "source": "file",
+    "report_path": "tools/report.json",
+    "summary_template": "{{ data.data.overview.total_ideas }} ideas shared so far, {{ data.data.overview.total_upvotes }} upvotes and {{ data.data.overview.total_views }} views across the community.",
+    "highlights_template": "[{% for i in data.data.top_by_upvotes[:limit] %}{\"label\": {{ (i.content[:200] + \" (\" + i.upvotes|string + \" upvotes, \" + i.views|string + \" views)\")|tojson }}, \"url\": {{ (\"https://echooers.com/idea/\" + i.id)|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}]"
+  },
 
   // --- Discovery: a search-backed AI source instead of a bespoke integration ---
   "discovery_sources": [

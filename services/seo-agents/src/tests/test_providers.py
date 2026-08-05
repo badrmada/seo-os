@@ -84,35 +84,42 @@ def test_options_are_used_when_present():
     assert client._default_model == "gemini-from-options"
 
 
-def test_the_top_level_fields_still_work_untouched():
-    """The whole point of aliases: no existing tenant config has to change."""
+def test_a_setting_that_moved_is_rejected_with_its_new_location(tmp_path):
+    """The migration this step forces on every existing config. "Unknown field
+    'gemini_api_key'" is true and useless; a tenant hitting it has no way to guess
+    where the value went, so the error names the destination."""
+    from agent.config.loader import AgentConfigLoader
+
+    with pytest.raises(ValueError, match=r"llm_options\.api_key"):
+        AgentConfigLoader().load_dict({"llm_provider": "gemini", "gemini_api_key": "k"})
+
+
+def test_a_genuinely_unknown_field_still_says_so():
+    """A typo is not a migration, and must not be reported as one."""
+    from agent.config.loader import AgentConfigLoader
+
+    with pytest.raises(ValueError, match="Unknown AgentConfig field"):
+        AgentConfigLoader().load_dict({"llm_providr": "gemini"})
+
+
+def test_a_per_run_model_override_beats_the_configured_one():
+    """The override is a property of *this run*, so it outranks the stored one."""
     config = AgentConfig(
-        llm_provider="gemini", gemini_api_key="from-config", llm_model="gemini-from-config",
-    )
-    assert ToolsManager(config).build_llm()._default_model == "gemini-from-config"
-
-
-def test_an_option_beats_its_alias():
-    config = AgentConfig(
-        llm_provider="gemini", gemini_api_key="k",
-        llm_model="from-config", llm_options={"model": "from-options"},
-    )
-    assert ToolsManager(config).build_llm()._default_model == "from-options"
-
-
-def test_a_per_run_model_override_beats_both():
-    """The override is a property of *this run*, so it outranks anything stored."""
-    config = AgentConfig(
-        llm_provider="gemini", gemini_api_key="k",
-        llm_model="from-config", llm_options={"model": "from-options"},
+        llm_provider="gemini",
+        llm_options={"api_key": "k", "model": "from-options"},
     )
     client = ToolsManager(config).build_llm(model_override="from-the-request")
     assert client._default_model == "from-the-request"
 
 
-def test_options_carry_settings_that_have_no_top_level_field(tmp_path):
-    """New settings live only in options — that's what stops every new provider
-    knob from becoming another top-level AgentConfig field."""
+def test_a_provider_falls_back_to_its_own_default_when_an_option_is_absent():
+    config = AgentConfig(llm_provider="gemini", llm_options={"api_key": "k"})
+    assert ToolsManager(config).build_llm()._default_model == "gemini-2.0-flash"
+
+
+def test_options_carry_settings_the_config_knows_nothing_about(tmp_path):
+    """A provider's settings are its own — the generic config has no field for
+    them, which is what stops every new provider knob from becoming one."""
     config = AgentConfig(gsc_provider="google", gsc_options={"timeout_seconds": 5})
     # Building the real client needs credentials; the option reaching the
     # constructor is what's under test, so a missing key file is the expected end.

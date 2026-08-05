@@ -32,11 +32,6 @@ from ..config.paths import resolve_path
 from ..graph.tools import Tools
 from .plugin_loader import load_custom
 
-# Marks an option that has no legacy top-level field behind it — new settings
-# live only in `options`, which is the point of having them.
-NO_ALIAS = ""
-
-
 @dataclass(frozen=True)
 class ProviderContext:
     """What a factory gets: the tenant's config, the selected provider's own
@@ -56,28 +51,21 @@ class ProviderContext:
     extras: dict = field(default_factory=dict)
     plugin_options: dict = None
 
-    def option(self, key: str, alias: str = NO_ALIAS, default=None):
-        """One setting, resolved: the provider's own `options` first, then the
-        legacy top-level config field, then the default.
+    def option(self, key: str, default=None):
+        """One of the selected provider's own settings, or the default.
 
-        The alias is what makes this refactor non-breaking. Moving
-        `gemini_api_key` into `llm_options.api_key` is the right shape, but
-        *removing* the old field would be a config migration for every existing
-        tenant — an unreasonable price for an internal tidy-up. So both work, the
-        option wins, and a tenant migrates when it suits them.
+        There is no fallback to a top-level config field: a provider's settings
+        live in that provider's `options` and nowhere else, so there is exactly
+        one place to look when a value isn't what you expected. Config written
+        the old way is rejected at load time with the new location named — see
+        agent/config/loader.py's MOVED_FIELDS.
         """
-        if key in self.options:
-            return self.options[key]
-        if alias:
-            value = getattr(self.config, alias, None)
-            if value not in (None, ""):
-                return value
-        return default
+        return self.options.get(key, default)
 
-    def path_option(self, key: str, alias: str = NO_ALIAS, default: str = ""):
+    def path_option(self, key: str, default: str = ""):
         """An option naming a file, resolved against the tenant's own folder
         rather than the process's working directory (agent/config/paths.py)."""
-        return resolve_path(self.config, self.option(key, alias, default))
+        return resolve_path(self.config, self.option(key, default))
 
     def custom(self, field_name: str):
         """The `"custom"` provider, everywhere it appears. The class path comes
@@ -91,26 +79,26 @@ class ProviderContext:
 
 def _templated_analytics(ctx: ProviderContext) -> TemplatedAnalyticsClient:
     return TemplatedAnalyticsClient(
-        ctx.option("source", "analytics_source", "file"),
-        ctx.option("summary_template", "analytics_summary_template", ""),
-        ctx.option("highlights_template", "analytics_highlights_template", ""),
-        report_path=ctx.path_option("report_path", "analytics_report_path"),
-        api_url=ctx.option("api_url", "analytics_api_url", ""),
-        api_method=ctx.option("api_method", "analytics_api_method", "GET"),
-        api_headers=ctx.option("api_headers", "analytics_api_headers", {}),
-        api_timeout_seconds=ctx.option("api_timeout_seconds", "analytics_api_timeout_seconds", 10.0),
+        ctx.option("source", "file"),
+        ctx.option("summary_template", ""),
+        ctx.option("highlights_template", ""),
+        report_path=ctx.path_option("report_path"),
+        api_url=ctx.option("api_url", ""),
+        api_method=ctx.option("api_method", "GET"),
+        api_headers=ctx.option("api_headers", {}),
+        api_timeout_seconds=ctx.option("api_timeout_seconds", 10.0),
     )
 
 
 def _templated_traffic(ctx: ProviderContext) -> TemplatedTrafficClient:
     return TemplatedTrafficClient(
-        ctx.option("source", "traffic_source", "file"),
-        ctx.option("summary_template", "traffic_summary_template", ""),
-        report_path=ctx.path_option("report_path", "traffic_report_path"),
-        api_url=ctx.option("api_url", "traffic_api_url", ""),
-        api_method=ctx.option("api_method", "traffic_api_method", "GET"),
-        api_headers=ctx.option("api_headers", "traffic_api_headers", {}),
-        api_timeout_seconds=ctx.option("api_timeout_seconds", "traffic_api_timeout_seconds", 10.0),
+        ctx.option("source", "file"),
+        ctx.option("summary_template", ""),
+        report_path=ctx.path_option("report_path"),
+        api_url=ctx.option("api_url", ""),
+        api_method=ctx.option("api_method", "GET"),
+        api_headers=ctx.option("api_headers", {}),
+        api_timeout_seconds=ctx.option("api_timeout_seconds", 10.0),
     )
 
 
@@ -118,18 +106,18 @@ def _gemini(ctx: ProviderContext) -> GeminiClient:
     # extras["model"] is the per-run override (AgentInput.model) — a property of
     # this run, so it outranks both the option and the config field.
     return GeminiClient(
-        api_key=ctx.option("api_key", "gemini_api_key", ""),
-        default_model=ctx.extras.get("model") or ctx.option("model", "llm_model", ""),
-        timeout_seconds=float(ctx.option("timeout_seconds", NO_ALIAS, 120.0)),
+        api_key=ctx.option("api_key", ""),
+        default_model=ctx.extras.get("model") or ctx.option("model", "gemini-2.0-flash"),
+        timeout_seconds=float(ctx.option("timeout_seconds", 120.0)),
     )
 
 
 def _llm_opportunity_source(ctx: ProviderContext) -> LLMOpportunitySource:
     return LLMOpportunitySource(
         ctx.extras["name"], ctx.extras["llm"], ctx.config,
-        prompt_template=ctx.option("prompt_template", NO_ALIAS, ""),
-        max_opportunities=ctx.option("max_opportunities", NO_ALIAS, 5),
-        grounded=ctx.option("grounded", NO_ALIAS, True),
+        prompt_template=ctx.option("prompt_template", ""),
+        max_opportunities=ctx.option("max_opportunities", 5),
+        grounded=ctx.option("grounded", True),
     )
 
 
@@ -147,17 +135,17 @@ _REGISTRY = {
     "gsc": {
         "mock": lambda ctx: MockGoogleSearchConsoleClient(),
         "google": lambda ctx: GoogleSearchConsoleClient(
-            key_file=ctx.path_option("key_file", "gsc_key_file"),
-            timeout_seconds=float(ctx.option("timeout_seconds", NO_ALIAS, 30.0)),
+            key_file=ctx.path_option("key_file", "service_account.json"),
+            timeout_seconds=float(ctx.option("timeout_seconds", 30.0)),
         ),
     },
     "traffic": {
         "none": lambda ctx: NullTrafficClient(),
         "mock": lambda ctx: MockTrafficClient(),
         "cloudflare": lambda ctx: CloudflareAnalyticsClient(
-            api_token=ctx.option("api_token", "cloudflare_api_token", ""),
-            zone_id=ctx.option("zone_id", "cloudflare_zone_id", ""),
-            timeout=float(ctx.option("timeout_seconds", NO_ALIAS, 15.0)),
+            api_token=ctx.option("api_token", ""),
+            zone_id=ctx.option("zone_id", ""),
+            timeout=float(ctx.option("timeout_seconds", 15.0)),
         ),
         "templated": _templated_traffic,
         "custom": lambda ctx: ctx.custom("traffic_custom_class"),
@@ -169,7 +157,7 @@ _REGISTRY = {
     },
     "discovery": {
         "mock": lambda ctx: MockOpportunitySource(
-            ctx.extras["name"], fail=ctx.option("fail", NO_ALIAS, False),
+            ctx.extras["name"], fail=ctx.option("fail", False),
         ),
         "llm": _llm_opportunity_source,
         # The class path is on the entry, not on a config field — see

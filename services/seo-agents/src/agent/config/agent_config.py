@@ -14,8 +14,8 @@ class AgentConfig:
 
     # --- Where this config came from (agent/config/paths.py) ---
     # Set by AgentConfigLoader to the directory holding the tenant JSON, so every
-    # relative path below (analytics_report_path, traffic_report_path,
-    # gsc_key_file, an output sink's options.path) resolves against *this tenant's
+    # relative path a provider is given (a templated provider's report_path,
+    # gsc_options.key_file, an output sink's options.path) resolves against *this tenant's
     # own folder* rather than whatever directory the process happens to be running
     # in. That distinction doesn't matter for one person running one CLI command;
     # it matters completely once several tenants run in one server process. Empty
@@ -25,81 +25,76 @@ class AgentConfig:
     config_base_dir: str = ""
 
     # --- Provider-owned settings ---
-    # Every provider kind below also takes an `*_options` dict, holding the
-    # settings (and secrets) of *the provider that's actually selected*. That is
-    # where new settings go, and where a "custom" class's own settings go — it
-    # keeps a credential next to the thing that uses it instead of on the generic
-    # config, and it means adding a provider never adds a top-level field.
+    # Each provider kind below is two fields: `<kind>_provider` (which
+    # implementation) and `<kind>_options` (that implementation's own settings and
+    # secrets). Nothing provider-specific lives at the top level of this config.
     #
-    #   {"llm_provider": "gemini", "llm_options": {"api_key": "...", "model": "..."}}
+    #   {"llm_provider": "gemini",
+    #    "llm_options": {"api_key": "...", "model": "gemini-2.5-flash"}}
     #
-    # The older top-level fields (gemini_api_key, llm_model, gsc_key_file,
-    # cloudflare_api_token, ...) keep working as **aliases**: an option wins when
-    # both are set, and nothing existing has to be migrated. See
-    # agent/managers/tools_manager.py's ProviderContext.option, and
-    # docs/configuration.md for the alias table.
+    # Why: the settings a provider needs are *its own*, and which keys are even
+    # meaningful depends on which one is selected — `api_token`/`zone_id` for
+    # Cloudflare, `source`/`report_path`/`summary_template` for a templated one.
+    # Flattening them made every tenant's config carry every provider's fields,
+    # put credentials on a generic object that mostly isn't about them, and left a
+    # tenant's own "custom" class with nowhere to put its settings at all.
+    #
+    # `<kind>_custom_class` stays alongside `<kind>_provider` rather than moving
+    # into options: it selects *which implementation*, exactly like a discovery
+    # source's "class" sits beside its "provider" and its "options".
+    #
+    # Option names per provider are documented in docs/configuration.md; the
+    # loader (agent/config/loader.py) names the new location when it sees a field
+    # that used to live here.
 
     # --- LLM ---
     llm_provider: str = "mock"  # "gemini", "mock", or "custom"
-    llm_options: dict = field(default_factory=dict)  # api_key, model, timeout_seconds
-    llm_model: str = "gemini-2.0-flash"  # alias for llm_options.model
-    gemini_api_key: str = ""  # alias for llm_options.api_key
+    # "gemini": api_key, model (default "gemini-2.0-flash"), timeout_seconds (120)
+    # "custom": whatever the tenant's class reads
+    llm_options: dict = field(default_factory=dict)
     llm_custom_class: str = ""  # "module:ClassName", used by llm_provider="custom"
 
     # --- Google Search Console (tools/clients/google_search_console.py GoogleSearchConsoleClient) ---
     gsc_provider: str = "mock"  # "google" (real API calls) or "mock" (offline, deterministic)
-    gsc_options: dict = field(default_factory=dict)  # key_file, timeout_seconds
-    gsc_key_file: str = "service_account.json"  # alias for gsc_options.key_file
+    # "google": key_file (default "service_account.json"), timeout_seconds (30)
+    gsc_options: dict = field(default_factory=dict)
 
     # --- Site traffic (tools/base.py's SiteTrafficClient Protocol) ---
     # "none" (no traffic tool) | "mock" (product-neutral canned text) | "cloudflare"
     # (tools/clients/cloudflare.py, a real vendor integration) | "templated" (tenant's own
-    # JSON, mapped declaratively — see traffic_summary_template below) | "custom"
+    # JSON, mapped declaratively via traffic_options.summary_template) | "custom"
     # (a tenant-registered class, for cases too bespoke for a template).
     traffic_provider: str = "mock"
-    traffic_options: dict = field(default_factory=dict)  # the selected provider's own settings
-    cloudflare_api_token: str = ""  # alias for traffic_options.api_token
-    cloudflare_zone_id: str = ""  # alias for traffic_options.zone_id
+    # "cloudflare": api_token, zone_id, timeout_seconds (15)
+    # "templated":  source ("file" | "api"), report_path, api_url, api_method,
+    #               api_headers, api_timeout_seconds, and summary_template — Jinja2
+    #               rendered against {"data": <the tenant's raw JSON>, "days": ...},
+    #               producing the summary text directly.
+    # "custom":     whatever the tenant's class reads
+    traffic_options: dict = field(default_factory=dict)
     traffic_custom_class: str = ""  # "module.path:ClassName", used by traffic_provider="custom"
-
-    # --- traffic_provider="templated" only (tools/clients/traffic_templated.py) ---
-    traffic_source: str = "file"  # "file" (traffic_report_path) or "api" (below)
-    traffic_report_path: str = ""
-    traffic_api_url: str = ""
-    traffic_api_method: str = "GET"
-    traffic_api_headers: dict[str, str] = field(default_factory=dict)
-    traffic_api_timeout_seconds: float = 10.0
-    # Jinja2, rendered against {"data": <the tenant's raw JSON>, "days": ...} — same
-    # mechanism as analytics_summary_template below, renders directly to text.
-    traffic_summary_template: str = ""
 
     # --- App analytics (tools/base.py's AppAnalyticsClient Protocol) ---
     # "mock" (product-neutral canned data) | "templated" (tenant's own JSON, mapped
-    # declaratively via the two templates below — see tools/clients/analytics_templated.py)
+    # declaratively via two templates — see tools/clients/analytics_templated.py)
     # | "custom" (a tenant-registered Python class, for cases too bespoke for a
     # template — see analytics_custom_class below). No tenant gets a bespoke Python
     # client baked into this codebase — "templated" covers that instead.
     analytics_provider: str = "mock"
-    analytics_options: dict = field(default_factory=dict)  # the selected provider's own settings
-    analytics_report_path: str = "tools/report.json"  # "templated" provider + source="file"
+    # "templated": source ("file" | "api"), report_path, api_url, api_method,
+    #              api_headers, api_timeout_seconds, and two Jinja2 templates
+    #              rendered against {"data": <the tenant's raw JSON>, "limit": ...}:
+    #              summary_template renders directly to the summary text;
+    #              highlights_template must render to a JSON array string (typically
+    #              via `tojson` in a `{% for %}` loop) of {"label", "url"} objects.
+    #              See agent/utils/analytics_schema.py's infer_fields() for listing a
+    #              raw JSON's available paths while writing them.
+    # "custom":    whatever the tenant's class reads
+    analytics_options: dict = field(default_factory=dict)
     analytics_custom_class: str = ""  # "module.path:ClassName", used by the "custom" provider
-    analytics_highlights_limit: int = 3  # how many highlights to hand the LLM per draft
-
-    # --- "templated" analytics provider only (tools/clients/analytics_templated.py) ---
-    analytics_source: str = "file"  # "file" (analytics_report_path) or "api" (below)
-    analytics_api_url: str = ""
-    analytics_api_method: str = "GET"
-    analytics_api_headers: dict[str, str] = field(default_factory=dict)
-    analytics_api_timeout_seconds: float = 10.0
-    # Jinja2, rendered against {"data": <the tenant's raw JSON>, "limit": ...} — the
-    # tenant's own field names, no fixed vocabulary imposed. analytics_summary_template
-    # renders directly to the summary text; analytics_highlights_template must render
-    # to a JSON array string (typically via Jinja2's `tojson` filter in a `{% for %}`
-    # loop) of {"label": ..., "url": ...} objects — see agent/utils/analytics_schema.py's
-    # infer_fields() for listing a raw JSON's available paths (e.g. for UI suggestions
-    # while writing these two templates).
-    analytics_summary_template: str = ""
-    analytics_highlights_template: str = ""
+    # Not provider-specific: how many highlights the *agent* asks for, whichever
+    # provider answers (agent/graph/stages/analyze.py passes it to report()).
+    analytics_highlights_limit: int = 3
 
     # --- Opportunity discovery (tools/base.py's OpportunitySource Protocol) ---
     # Each entry: {"name": str, "provider": "mock" | "llm" | "custom", ...}. Read by

@@ -92,7 +92,7 @@ Because a community reply can quietly become an ad, two settings work together:
 ```jsonc
 {
   "llm_provider": "gemini",
-  "gemini_api_key": "YOUR_GEMINI_API_KEY",
+  "llm_options": { "api_key": "YOUR_GEMINI_API_KEY" },
   "discovery_sources": [
     { "name": "community_trends", "provider": "llm", "max_opportunities": 5 }
   ]

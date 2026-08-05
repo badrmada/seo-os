@@ -15,7 +15,7 @@ def render_summary(summary_template: str, raw: dict, days: int) -> dict:
 class TemplatedTrafficClient:
     """SiteTrafficClient for a tenant whose traffic data is just JSON with its own
     field names (not necessarily Cloudflare's), mapped declaratively via one Jinja2
-    template (AgentConfig.traffic_summary_template) instead of a deployed Python
+    template (traffic_options.summary_template) instead of a deployed Python
     class — same mechanism as TemplatedAnalyticsClient."""
 
     def __init__(

@@ -94,9 +94,11 @@ Same swaps as the other examples (`llm_provider: "gemini"`, `gsc_provider:
 
 ```jsonc
 {
-  "analytics_source": "api",
-  "analytics_api_url": "https://shop.roast.example.com/internal/analytics",
-  "analytics_api_headers": { "Authorization": "Bearer YOUR_INTERNAL_API_KEY" }
+  "analytics_options": {
+    "source": "api",
+    "api_url": "https://shop.roast.example.com/internal/analytics",
+    "api_headers": { "Authorization": "Bearer YOUR_INTERNAL_API_KEY" }
+  }
 }
 ```
 

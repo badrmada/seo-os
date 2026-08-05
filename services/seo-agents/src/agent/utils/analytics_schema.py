@@ -3,7 +3,7 @@ from __future__ import annotations
 # Standalone on purpose: takes any JSON value (a tenant's raw analytics file or API
 # response), no config/tenant coupling — a UI calls this on whatever JSON it has in
 # hand to power autocomplete/suggestions while someone writes
-# AgentConfig.analytics_summary_template/analytics_highlights_template
+# analytics_options.summary_template/highlights_template
 # (see tools/clients/analytics_templated.py).
 
 

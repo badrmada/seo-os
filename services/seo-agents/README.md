@@ -163,29 +163,37 @@ When you're ready, replace that empty `userdata/acme/tenant.json` with real sett
 Here's a complete example (Echooers' setup, with secrets replaced by
 placeholders). Copy it and fill in your own values:
 
+Every job is two lines: **which provider**, and **that provider's own options**.
+
 ```jsonc
 {
   // --- The AI model that writes drafts ---
   "llm_provider": "gemini",
-  "llm_model": "gemini-pro-latest",
-  "gemini_api_key": "YOUR_GEMINI_API_KEY",
+  "llm_options": {
+    "model": "gemini-pro-latest",
+    "api_key": "YOUR_GEMINI_API_KEY"
+  },
 
   // --- Google Search Console: real keyword/ranking data for your site ---
   "gsc_provider": "google",
-  "gsc_key_file": "service_account.json",
+  "gsc_options": { "key_file": "service_account.json" },
 
   // --- Website traffic numbers (this example reads them from Cloudflare) ---
   "traffic_provider": "cloudflare",
-  "cloudflare_api_token": "YOUR_CLOUDFLARE_API_TOKEN",
-  "cloudflare_zone_id": "YOUR_CLOUDFLARE_ZONE_ID",
+  "traffic_options": {
+    "api_token": "YOUR_CLOUDFLARE_API_TOKEN",
+    "zone_id": "YOUR_CLOUDFLARE_ZONE_ID"
+  },
 
   // --- Your product's own analytics, mapped with a template (explained below) ---
   "analytics_provider": "templated",
-  "analytics_source": "file",
-  "analytics_report_path": "tools/report.json",
   "analytics_highlights_limit": 3,
-  "analytics_summary_template": "{{ data.data.overview.total_ideas }} ideas shared so far, {{ data.data.overview.total_upvotes }} upvotes and {{ data.data.overview.total_views }} views across the community.",
-  "analytics_highlights_template": "[{% for i in data.data.top_by_upvotes[:limit] %}{\"label\": {{ (i.content[:200] + \" (\" + i.upvotes|string + \" upvotes, \" + i.views|string + \" views)\")|tojson }}, \"url\": {{ (\"https://echooers.com/idea/\" + i.id)|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}]",
+  "analytics_options": {
+    "source": "file",
+    "report_path": "tools/report.json",
+    "summary_template": "{{ data.data.overview.total_ideas }} ideas shared so far, {{ data.data.overview.total_upvotes }} upvotes and {{ data.data.overview.total_views }} views across the community.",
+    "highlights_template": "[{% for i in data.data.top_by_upvotes[:limit] %}{\"label\": {{ (i.content[:200] + \" (\" + i.upvotes|string + \" upvotes, \" + i.views|string + \" views)\")|tojson }}, \"url\": {{ (\"https://echooers.com/idea/\" + i.id)|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}]"
+  },
 
   // --- Discovery: let an AI model (backed by live Google Search) find topics ---
   "discovery_sources": [
@@ -213,14 +221,25 @@ placeholders). Copy it and fill in your own values:
 }
 ```
 
-You don't need every field. A `tenant.json` with just a few lines works fine —
-anything you leave out keeps a sensible, product-neutral default. Every field,
-what it does, and every provider option is documented in
+**Gemini, Google Search Console and Cloudflare are not requirements.** They're
+built-in integrations so that a first run against real data takes minutes
+instead of a day — nothing more. Every one of them can be dropped or replaced:
+
+| If you… | Write |
+|---|---|
+| don't use Cloudflare | `"traffic_provider": "templated"` (any traffic tool's JSON), or `"none"` |
+| don't have Search Console set up | `"gsc_provider": "mock"` — the agent falls back to your seed keyword and analytics |
+| use a different model, a local one, or a gateway | `"llm_provider": "custom"` + your class |
+| have analytics in your own database | `"analytics_provider": "custom"` + your class |
+
+A `tenant.json` with three lines runs. Everything you leave out keeps a
+sensible, product-neutral default, and `python src/main.py list-tools --all`
+prints every provider you can choose from. Every field is documented in
 **[docs/configuration.md](docs/configuration.md)**, which walks through this
 exact example line by line.
 
-> **A note on the two `templated` lines above.** `analytics_summary_template`
-> and `analytics_highlights_template` are how you feed the agent your product's
+> **A note on the two templates above.** `summary_template` and
+> `highlights_template` are how you feed the agent your product's
 > own analytics **without writing any code**. Your analytics is just JSON with
 > your own field names (here: `total_ideas`, `top_by_upvotes`, and so on). A
 > template is a short snippet that reshapes that JSON into the two things the

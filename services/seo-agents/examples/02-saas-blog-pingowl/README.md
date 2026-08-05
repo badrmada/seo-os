@@ -91,13 +91,13 @@ In `tenant.json`, switch the mocks for real tools:
 ```jsonc
 {
   "llm_provider": "gemini",
-  "gemini_api_key": "YOUR_GEMINI_API_KEY",
+  "llm_options": { "api_key": "YOUR_GEMINI_API_KEY" },
   "gsc_provider": "google",              // now targets PingOwl's real striking-distance keywords
-  "gsc_key_file": "service_account.json"
+  "gsc_options": { "key_file": "service_account.json" }
 }
 ```
 
 See [docs/configuration.md](../../docs/configuration.md) for the Gemini and
 Search Console setup steps. To pull the analytics from a live API instead of a
-file, change `analytics_source` to `"api"` and set `analytics_api_url` — the
-templates stay exactly the same.
+file, change `analytics_options.source` to `"api"` and set
+`analytics_options.api_url` — the templates stay exactly the same.

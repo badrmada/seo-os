@@ -26,14 +26,14 @@ def render_report(summary_template: str, highlights_template: str, raw: dict, li
         highlights = json.loads(highlights_json)
     except json.JSONDecodeError as exc:
         raise ValueError(
-            f"analytics_highlights_template did not render to valid JSON: {exc}\n"
+            f"analytics_options.highlights_template did not render to valid JSON: {exc}\n"
             f"Rendered output: {highlights_json!r}"
         ) from exc
     if not isinstance(highlights, list) or not all(
         isinstance(item, dict) and "label" in item and "url" in item for item in highlights
     ):
         raise ValueError(
-            'analytics_highlights_template must render to a JSON array of '
+            'analytics_options.highlights_template must render to a JSON array of '
             f'{{"label": ..., "url": ...}} objects, got: {highlights_json!r}'
         )
     return {"summary": summary, "highlights": highlights}
@@ -43,8 +43,8 @@ class TemplatedAnalyticsClient:
     """AppAnalyticsClient for a tenant whose data is just JSON with its own field
     names, mapped declaratively instead of via a deployed Python class (see
     analytics_provider="custom" for that heavier path). The tenant writes two
-    Jinja2 templates (AgentConfig.analytics_summary_template/
-    analytics_highlights_template) against their raw JSON's own shape — same
+    Jinja2 templates (analytics_options.summary_template/highlights_template)
+    against their raw JSON's own shape — same
     mechanism and validate-at-config-save-time pattern as prompt_templates.
     """
 

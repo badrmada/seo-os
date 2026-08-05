@@ -1,7 +1,12 @@
 class TemplateValidator:
     """Validates a tenant's "templated" analytics/traffic provider config at load
     time — called by agent/config/loader.py's AgentConfigLoader. Fails fast on a
-    broken Jinja2 template or unreachable source instead of failing mid-run."""
+    broken Jinja2 template or unreachable source instead of failing mid-run.
+
+    Reads the provider's own `analytics_options` / `traffic_options`, the same
+    place ToolsManager builds the real client from, so "it validated" and "it
+    runs" can't mean different things.
+    """
 
     def validate_analytics(self, config, path: str) -> None:
         # Deferred import: tools/ sits below agent/ in this project's layering
@@ -11,23 +16,26 @@ class TemplateValidator:
 
         from ..config.paths import resolve_path
 
-        if not config.analytics_summary_template or not config.analytics_highlights_template:
+        options = config.analytics_options or {}
+        if not options.get("summary_template") or not options.get("highlights_template"):
             raise ValueError(
-                f'analytics_provider="templated" in {path} requires analytics_summary_template '
-                "and analytics_highlights_template to both be set"
+                f'analytics_provider="templated" in {path} requires analytics_options.summary_template '
+                "and analytics_options.highlights_template to both be set"
             )
         try:
             raw = load_raw(
-                config.analytics_source, report_path=resolve_path(config, config.analytics_report_path),
-                api_url=config.analytics_api_url, api_method=config.analytics_api_method,
-                api_headers=config.analytics_api_headers,
-                api_timeout_seconds=config.analytics_api_timeout_seconds,
+                options.get("source", "file"),
+                report_path=resolve_path(config, options.get("report_path", "")),
+                api_url=options.get("api_url", ""),
+                api_method=options.get("api_method", "GET"),
+                api_headers=options.get("api_headers", {}),
+                api_timeout_seconds=options.get("api_timeout_seconds", 10.0),
             )
         except Exception as exc:
             raise ValueError(f"Could not load analytics data to validate templates in {path}: {exc}") from exc
         try:
             render_report(
-                config.analytics_summary_template, config.analytics_highlights_template,
+                options["summary_template"], options["highlights_template"],
                 raw, config.analytics_highlights_limit,
             )
         except ValueError as exc:
@@ -38,20 +46,23 @@ class TemplateValidator:
 
         from ..config.paths import resolve_path
 
-        if not config.traffic_summary_template:
+        options = config.traffic_options or {}
+        if not options.get("summary_template"):
             raise ValueError(
-                f'traffic_provider="templated" in {path} requires traffic_summary_template to be set'
+                f'traffic_provider="templated" in {path} requires traffic_options.summary_template to be set'
             )
         try:
             raw = load_raw(
-                config.traffic_source, report_path=resolve_path(config, config.traffic_report_path),
-                api_url=config.traffic_api_url, api_method=config.traffic_api_method,
-                api_headers=config.traffic_api_headers,
-                api_timeout_seconds=config.traffic_api_timeout_seconds,
+                options.get("source", "file"),
+                report_path=resolve_path(config, options.get("report_path", "")),
+                api_url=options.get("api_url", ""),
+                api_method=options.get("api_method", "GET"),
+                api_headers=options.get("api_headers", {}),
+                api_timeout_seconds=options.get("api_timeout_seconds", 10.0),
             )
         except Exception as exc:
             raise ValueError(f"Could not load traffic data to validate template in {path}: {exc}") from exc
         try:
-            render_summary(config.traffic_summary_template, raw, days=28)
+            render_summary(options["summary_template"], raw, days=28)
         except ValueError as exc:
-            raise ValueError(f"Invalid traffic_summary_template in {path}: {exc}") from exc
+            raise ValueError(f"Invalid traffic_options.summary_template in {path}: {exc}") from exc

@@ -8,7 +8,7 @@ class AgentInput(TypedDict, total=False):
     run_id: str              # Optional. Lets a caller supply their own correlation id
                               # instead of the auto-generated uuid4 (see
                               # agent/managers/run_manager.py's AgentRunner.run()).
-    model: str                # Optional. Overrides config.llm_model for this run only —
+    model: str                # Optional. Overrides llm_options.model for this run only —
                                # passed straight to ToolsManager.build_all() (see
                                # agent/managers/tools_manager.py's build_llm()).
     channel: Channel        # Optional. If given, always used as-is. If omitted:
