@@ -18,11 +18,21 @@ from ..observability import NullReporter
 from ..utils.async_utils import call as acall
 from .plugin_loader import load_custom
 
-# provider name -> (config, options) -> an object with .emit(output). Adding a
-# built-in sink means adding one entry here and one class under tools/sinks/.
+# Sentinel default meaning "the process's own stderr, looked up when it's
+# actually written to". A sentinel rather than `sys.stderr` itself because the
+# default must stay late-bound (pytest and anything else that swaps the stream
+# after import would otherwise be ignored) while still leaving `None` free to
+# mean "don't write to a file descriptor at all" — the thing a server needs.
+PROCESS_STDERR = object()
+
+# provider name -> (config, options, stdout) -> an object with .emit(output).
+# Adding a built-in sink means adding one entry here and one class under
+# tools/sinks/. `stdout` is threaded through because a sink that writes to the
+# process's stdout must be able to be pointed elsewhere by a host that owns that
+# fd (see OutputManager); sinks that don't write there ignore it.
 _SINK_FACTORIES = {
-    "json": lambda config, options: JsonOutputSink(config, options),
-    "webhook": lambda config, options: WebhookOutputSink(config, options),
+    "json": lambda config, options, stdout: JsonOutputSink(config, options, stdout=stdout),
+    "webhook": lambda config, options, stdout: WebhookOutputSink(config, options),
 }
 
 
@@ -34,11 +44,19 @@ class OutputManager:
     immediately rather than after a full pipeline has burned real LLM calls. The
     emit side is the opposite — by then the result exists, so nothing is allowed to
     be fatal.
+
+    `stdout` and `warn_stream` are the two places this class would otherwise write
+    to the process's own file descriptors unconditionally. A CLI wants exactly
+    that and gets it by default; a server passes its own streams (or None for the
+    warning, which then lives only in the reporter's events) rather than having a
+    library print into a response it doesn't control.
     """
 
-    def __init__(self, config, reporter=None) -> None:
+    def __init__(self, config, reporter=None, *, stdout=None, warn_stream=PROCESS_STDERR) -> None:
         self.config = config
         self.reporter = reporter or NullReporter()
+        self._stdout = stdout
+        self._warn_stream = warn_stream
         self.sinks = self._build_sinks()
 
     def _build_sinks(self) -> list:
@@ -59,7 +77,7 @@ class OutputManager:
                     f"Unknown output sink provider {provider!r} for {name!r}; must be "
                     f'{", ".join(sorted(repr(k) for k in _SINK_FACTORIES))}, or "custom"'
                 ) from None
-            sinks.append((name, factory(self.config, options)))
+            sinks.append((name, factory(self.config, options, self._stdout)))
         return sinks
 
     def emit(self, output: dict) -> list:
@@ -89,8 +107,9 @@ class OutputManager:
                     await acall(sink.emit, output)
             except Exception as exc:  # noqa: BLE001 - a sink must never fail a finished run
                 failed.append(name)
-                if self.reporter.level < 1:
-                    print(f"warning: output sink {name!r} failed: {exc}", file=sys.stderr)
+                warn_to = sys.stderr if self._warn_stream is PROCESS_STDERR else self._warn_stream
+                if self.reporter.level < 1 and warn_to is not None:
+                    print(f"warning: output sink {name!r} failed: {exc}", file=warn_to)
         return failed
 
     def describe(self) -> list[dict]:

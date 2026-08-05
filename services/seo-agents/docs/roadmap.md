@@ -182,6 +182,24 @@ about status and direction.
   can still hold a worker slot far longer than intended. See
   [architecture.md](architecture.md#how-a-run-executes-async-and-why-you-can-ignore-that).
 
+- **A service layer.** [`agent/service.py`](../src/agent/service.py)'s
+  `AgentService` is the channel-agnostic entry point: `RunRequest` in,
+  `RunResult` out. It owns what the CLI used to do inline — resolve the config,
+  build the reporter, run, emit to the sinks, keep the state — so an HTTP
+  handler, a queue worker, or a scheduler gets the identical sequence instead of
+  a near-copy. The CLI is now one adapter among those.
+
+  A failed *run* is a successful *request*: it comes back as a `RunResult` with
+  `phase="failed"`, and only an unrunnable request (unknown tenant, unloadable
+  config, a webhook sink with no URL) raises. Events can be collected onto the
+  result and/or streamed to a callback through a third reporter implementation,
+  which is what an SSE endpoint or a job-progress record needs. And nothing
+  writes to the process's file descriptors unconditionally any more: `stdout` and
+  the sink-failure warning are both request-level choices, defaulting to what a
+  CLI wants. Still out of scope, on purpose: the queue, the worker pool, the HTTP
+  framework, the scheduler. See
+  [architecture.md](architecture.md#calling-the-agent-the-service-layer).
+
 ## Next
 
 Roughly in priority order:

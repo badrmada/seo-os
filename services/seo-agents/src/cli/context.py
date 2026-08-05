@@ -14,7 +14,6 @@ from pathlib import Path
 import typer
 
 from agent.config.workspace import ROOT_ENV_VAR, TenantWorkspace, UnknownTenantError
-from agent.observability import build_reporter
 
 # Shared option definitions, so every command spells these the same way. Typer
 # reads them as defaults on the command function's parameters.
@@ -117,15 +116,7 @@ def load_input(input_path: str, workspace: TenantWorkspace = None) -> dict:
         raise fail(f"could not parse {path}: {exc}") from exc
 
 
-def make_reporter(config, verbose: int, quiet: bool, verbose_format: str):
-    """Resolve the verbosity precedence in one place: --quiet wins over everything,
-    then an explicit -v/-vv, then the tenant config's own `verbose` setting.
-
-    -v can't express "off" (count options start at 0, which is also "not passed"),
-    which is exactly why --quiet exists — otherwise a tenant with verbose enabled
-    in config would have no way to silence a single run.
-    """
-    if quiet:
-        return build_reporter(0)
-    level = verbose or getattr(config, "verbose", 0)
-    return build_reporter(level, verbose_format or getattr(config, "verbose_format", "text"))
+# Verbosity precedence (--quiet, then -v/-vv, then the tenant config's own
+# setting) deliberately does *not* live here: it moved to agent/service.py, so
+# that an HTTP or queue channel resolves it identically instead of each channel
+# growing its own near-copy. Commands pass the raw flags on a RunRequest.

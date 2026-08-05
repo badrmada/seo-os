@@ -15,16 +15,20 @@ reporting code.
 
 from .observed import observe_tools, observed_node
 from .reporter import (
+    CollectingReporter,
     JsonReporter,
     NullReporter,
+    RunReporter,
     StreamReporter,
     TextReporter,
     build_reporter,
 )
 
 __all__ = [
+    "CollectingReporter",
     "JsonReporter",
     "NullReporter",
+    "RunReporter",
     "StreamReporter",
     "TextReporter",
     "build_reporter",

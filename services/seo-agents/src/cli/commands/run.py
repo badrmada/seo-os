@@ -1,13 +1,19 @@
 """`run` — execute the agent once. The only command that does any work; every
-other one inspects or validates."""
+other one inspects or validates.
+
+This command is a **channel adapter**, not the run logic: it turns flags and
+files into a `RunRequest`, hands it to `AgentService`, and turns the `RunResult`
+back into terminal output and an exit code. Everything between those two points —
+tools, reporter, pipeline, sinks, state — belongs to the service, so an HTTP
+handler or a queue worker gets the identical sequence without copying it. See
+agent/service.py.
+"""
 
 from __future__ import annotations
 
 import typer
 
-from agent.managers import AgentRunner
-from agent.managers.output_manager import OutputManager
-from state.memory_store import InMemoryStateStore
+from agent.service import AgentService, RunRequest, RunRequestError
 
 from ..context import (
     INPUT_OPTION,
@@ -18,7 +24,6 @@ from ..context import (
     VERBOSE_OPTION,
     fail,
     load_input,
-    make_reporter,
     open_tenant,
 )
 
@@ -36,33 +41,40 @@ def run(
     verbose_format: str = VERBOSE_FORMAT_OPTION,
 ) -> None:
     """Run the agent once against a tenant config and a run input."""
+    # The workspace is opened here rather than by the service because this command
+    # needs it anyway — `--input` resolves inside the tenant's folder — and because
+    # a CLI owes the user one precise error per failure, which is what
+    # open_tenant/load_input already produce.
     workspace, config = open_tenant(tenant, userdata)
     run_input = load_input(input_file, workspace)
-    reporter = make_reporter(config, verbose, quiet, verbose_format)
 
-    if output:
+    request = RunRequest(
+        config=config,
+        input=run_input,
+        verbose=verbose,
+        verbose_format=verbose_format,
+        quiet=quiet,
         # A one-off destination for this run, replacing whatever the tenant
         # configured — the CLI equivalent of a single json sink with a path.
-        config.output_sinks = [
-            {"name": "output", "provider": "json", "options": {"path": output}}
-        ]
+        output_sinks=(
+            [{"name": "output", "provider": "json", "options": {"path": output}}]
+            if output else None
+        ),
+    )
 
-    # Sinks are built before the run, not after: a broken sink config should fail
-    # now rather than once a full pipeline has spent real LLM calls.
     try:
-        sinks = OutputManager(config, reporter=reporter)
-    except Exception as exc:  # noqa: BLE001 - a misconfigured sink is a user-facing error
-        raise fail(f"output sink configuration: {exc}") from exc
+        result = AgentService().execute(request)
+    except RunRequestError as exc:
+        # The request itself was unrunnable (a broken sink config, say) — nothing
+        # ran, so there is no result to print, just a clear error.
+        raise fail(str(exc)) from exc
 
-    store = InMemoryStateStore()  # in-memory only; a single, in-process run
-    result = AgentRunner(config, reporter=reporter).run(run_input, state_store=store)
-    sinks.emit(result)
-
-    # AgentRunner never raises — a failed run comes back as phase="failed" with the
-    # full result shape intact (that's the documented run() contract, and the
-    # sinks above still receive it). But a CLI that exits 0 on failure is a CLI
-    # nothing can be scripted around, so the exit code reflects the outcome.
-    if result.get("phase") == "failed":
+    # The service never raises for a failed run — it comes back as
+    # phase="failed" with the full result shape intact (that's the documented
+    # contract, and the sinks still received it). But a CLI that exits 0 on
+    # failure is a CLI nothing can be scripted around, so the exit code reflects
+    # the outcome.
+    if not result.ok:
         raise typer.Exit(1)
 
 
