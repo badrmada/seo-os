@@ -99,6 +99,8 @@ Because a community reply can quietly become an ad, two settings work together:
 }
 ```
 
-The `llm` discovery source is **grounded in live Google Search by default**, so
-it surfaces real conversations with real links. See
+The `llm` discovery source is **grounded in a real web search by default**
+(DuckDuckGo — no API key, nothing to configure), so it surfaces real
+conversations with real links, and a link the model invents is discarded rather
+than handed to you. See
 [docs/configuration.md](../../docs/configuration.md#opportunity-discovery).

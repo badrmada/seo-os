@@ -1,7 +1,14 @@
 from dataclasses import dataclass, field
 
-from tools.base import AppAnalyticsClient, GSCClient, OpportunitySource, SiteTrafficClient
+from tools.base import (
+    AppAnalyticsClient,
+    GSCClient,
+    OpportunitySource,
+    SearchClient,
+    SiteTrafficClient,
+)
 from tools.llm.base import LLMClient
+from tools.mocks.search_null import NullSearchClient
 
 
 @dataclass
@@ -20,3 +27,10 @@ class Tools:
     # when this is non-empty (see agent/graph/pipeline.py). Defaults to empty so
     # existing Tools(...) construction sites are unaffected.
     discovery_sources: dict[str, OpportunitySource] = field(default_factory=dict)
+    # Real web search, the system's own grounding (tools/base.py's SearchClient).
+    # Defaults to the null client rather than the real one so a hand-constructed
+    # Tools(...) — every test double, every caller injecting its own clients —
+    # stays offline unless it says otherwise; ToolsManager passes the configured
+    # one (DuckDuckGo by default). The same instance reaches an "llm" discovery
+    # source at construction (see ToolsManager.build_discovery_sources).
+    search: SearchClient = field(default_factory=NullSearchClient)

@@ -49,6 +49,17 @@ CATALOG = (
         },
     ),
     ProviderKind(
+        kind="search",
+        interface="tools/base.py::SearchClient",
+        config_field="search_provider",
+        providers={
+            "duckduckgo": "real web search, no API key — the default grounding",
+            "none": "no search tool; falls back to the LLM's own grounding",
+            "mock": "offline, deterministic — no network calls",
+            "custom": CUSTOM,
+        },
+    ),
+    ProviderKind(
         kind="gsc",
         interface="tools/base.py::GSCClient",
         config_field="gsc_provider",
@@ -86,7 +97,7 @@ CATALOG = (
         is_list=True,
         providers={
             "mock": "offline, deterministic fixtures",
-            "llm": "the LLM itself surfaces opportunities, grounded by default",
+            "llm": "the LLM itself surfaces opportunities, web-search-grounded by default",
             "custom": CUSTOM,
         },
     ),

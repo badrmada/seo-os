@@ -48,6 +48,7 @@ def check_data(
 
     manager = ToolsManager(config)
     checks.append(_check("llm", lambda: manager.build_llm()))
+    checks.append(_check("search", manager.build_search))
     checks.append(_check("gsc", manager.build_gsc))
     checks.append(_check("traffic", manager.build_traffic))
     checks.append(_check("analytics", manager.build_analytics))

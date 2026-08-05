@@ -321,6 +321,7 @@ class Tools:
     traffic: SiteTrafficClient                  # your website's traffic
     llm: LLMClient                              # the AI model that writes
     discovery_sources: dict[str, OpportunitySource]  # the opportunity finders
+    search: SearchClient                        # real web search — grounding
 ```
 
 There's exactly **one** place that decides which concrete tool to use for each
@@ -343,6 +344,7 @@ provider's own `options` rather than becoming another top-level config field.
 | Interface | What it provides | Available providers |
 |---|---|---|
 | `LLMClient` | Turn a prompt into text | `mock`, `gemini`, `custom` |
+| `SearchClient` | Real web results → `{title, url, snippet}` | `duckduckgo`, `none`, `mock`, `custom` |
 | `GSCClient` | Search Console rows (query, position, clicks) | `mock`, `google` |
 | `AppAnalyticsClient` | Your analytics → `{summary, highlights}` | `mock`, `templated`, `custom` |
 | `SiteTrafficClient` | Your traffic → `{summary}` | `none`, `mock`, `cloudflare`, `templated`, `custom` |
@@ -378,17 +380,60 @@ it applies everywhere:
 
 - **`llm`** *(discovery only)* — the AI model itself is the opportunity finder.
   It's prompted to surface topics, threads, and links worth pursuing and to
-  return them as structured data. **By default it's grounded in live Google
-  Search** (`generate(..., grounded=True)`): for `GeminiClient` this attaches
-  Google Search, so the model actually searches the web instead of guessing from
-  its training data — and the real citation URLs it used come back on
-  `LLMResponse.sources`. This is what Echooers uses instead of building a
-  dedicated Reddit or trends integration.
+  return them as structured data. **By default it's grounded in a real web
+  search** — see the next section. This is what Echooers uses instead of building
+  a dedicated Reddit or trends integration.
 
-Two providers are the exception to "everything is `mock`/`templated`/`custom`":
-`cloudflare` (traffic) and `google` (Search Console). These are real, reusable
-integrations that do genuine computation — bot-score bucketing, API pagination —
-which is exactly why they're proper Python classes and not templates.
+Three providers are the exception to "everything is `mock`/`templated`/`custom`":
+`cloudflare` (traffic), `google` (Search Console) and `duckduckgo` (search).
+These are real, reusable integrations that do genuine computation — bot-score
+bucketing, API pagination, result normalization — which is exactly why they're
+proper Python classes and not templates.
+
+## Grounding: a system capability, not a model feature
+
+A `"llm"` discovery source must not invent the pages it recommends. The obvious
+way to prevent that is the model's own grounding — Gemini can attach Google
+Search to a call. The problem is that this makes "can the agent see the real
+web?" a property of *which model you picked*: a local model, a gateway, or most
+other vendors have nothing equivalent, so changing model silently changes what
+the agent can know.
+
+So grounding is its own tool. `SearchClient`
+([`tools/base.py`](../src/tools/base.py)) is one method,
+`search(query, limit) -> [{"title", "url", "snippet"}]`, and
+`search_provider` defaults to **`duckduckgo`** — no API key, no account, works on
+the first run whatever the LLM is.
+
+`LLMOpportunitySource`
+([`tools/clients/opportunity_llm.py`](../src/tools/clients/opportunity_llm.py))
+resolves it in a documented order, each step falling through to the next when it
+yields nothing:
+
+1. **The search client.** One cheap ungrounded call asks the model for a few
+   short search queries; they run **concurrently**, the merged and de-duplicated
+   results go into the discovery prompt, and their URLs become the trusted list.
+   Native grounding is switched *off* for that call even on Gemini — the facts
+   are already in the prompt, and searching twice makes "which URLs are
+   trustworthy?" ambiguous.
+2. **The model's own grounding** (`generate(..., grounded=True)`), with
+   `LLMResponse.sources` as the trusted list.
+3. **Neither** — the model answers from training data and links pass through
+   unverified.
+
+In steps 1 and 2 a `link` the model claims is kept **only if it's in the trusted
+list**; anything else is dropped rather than propagated as though it were real.
+Step 3 keeps the link but the reporter says out loud that it's unverified — the
+distinction `LLMResponse.grounded` exists to preserve (see the "grounding is a
+contract" note in [roadmap.md](roadmap.md)).
+
+A failing search is not a failing run: it costs the source its search grounding
+and lands on step 2, like every other degrade-don't-abort path here. But it isn't
+silent either — each opportunity carries `raw.grounding` (`"search"` / `"llm"` /
+`"none"`) plus `raw.grounding_error` when a search failed, because "these links
+were checked" and "the engine was rate-limiting us" otherwise look identical from
+a successful run. DuckDuckGo really does rate-limit by IP, which is also why
+`search_options.fallback_backend` asks a different engine before giving up.
 
 ## Discovery: the agent finding its own work
 
@@ -429,9 +474,10 @@ is coerced by
 `custom` classes alike). A malformed item (a non-numeric score, a junk intent,
 no topic) is dropped on its own rather than crashing the step and throwing away
 every other opportunity from that source. For the grounded `llm` source, there's
-an extra check: a `link` is discarded unless it's actually one of the citation
-URLs the search returned — a made-up link is treated as a hallucination, not a
-fact.
+an extra check: a `link` is discarded unless it's actually one of the URLs the
+search returned (or, on step 2, one of the model's own citations) — a made-up
+link is treated as a hallucination, not a fact. See
+[Grounding](#grounding-a-system-capability-not-a-model-feature).
 
 ## Error handling: degrade, don't crash
 

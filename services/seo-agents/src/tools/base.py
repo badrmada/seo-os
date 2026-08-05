@@ -81,6 +81,50 @@ class OutputSink(Protocol):
         ...
 
 
+class SearchClient(Protocol):
+    """Real web search — the system's own grounding, independent of whichever LLM
+    is configured.
+
+    Why this exists as its own Protocol rather than being left to the model: an
+    LLM's native grounding is a property of that one vendor (Gemini has it, a
+    local model or a gateway generally doesn't), so building discovery on it makes
+    "can this agent find real pages?" depend on which model a tenant picked. A
+    SearchClient makes grounding the *system's* capability: search first, put the
+    real results in the prompt, and treat their URLs as the only trustworthy ones.
+
+    Resolution order, in tools/clients/opportunity_llm.py's LLMOpportunitySource:
+
+      1. A configured SearchClient (the default, "duckduckgo") — search, feed the
+         results into the prompt, trust only those URLs.
+      2. Else the LLM's own grounding, when the provider has it (today: Gemini).
+      3. Else ungrounded generation, links passed through unverified.
+
+    Deliberately *not* on this Protocol: anything that reads an LLM response. The
+    trusted URL list is just the URLs of the results returned here — extracting
+    sources from a model's answer is an LLM-response concern and belongs on
+    LLMResponse (tools/llm/base.py), not here.
+
+    Implementations:
+      - tools/search/duckduckgo.py's DuckDuckGoSearchClient — search_provider=
+        "duckduckgo": real web results, no API key and no account. The default.
+      - tools/mocks/search_mock.py's MockSearchClient — offline, deterministic
+        results derived from the query, for tests and offline runs.
+      - tools/mocks/search_null.py's NullSearchClient — search_provider="none":
+        no search tool at all; always returns no results, which is what makes the
+        run fall through to step 2 above.
+      - AgentConfig's search_provider="custom" — a tenant's own class (Bing, a
+        self-hosted SearxNG, an internal index), through
+        agent/managers/plugin_loader.py's load_custom.
+    """
+
+    def search(self, query: str, limit: int = 10) -> list[dict]:
+        """Returns [{"title": str, "url": str, "snippet": str}, ...], most
+        relevant first, at most `limit` of them. An empty list is a valid answer
+        (no results, or this tool is a no-op) and callers degrade to the next step
+        of the order above rather than failing."""
+        ...
+
+
 class GSCClient(Protocol):
     """Search Console-style data: which queries/pages are close to ranking (inward signal)."""
 

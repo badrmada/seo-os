@@ -25,8 +25,11 @@ from tools.llm.mocks.mock_client import MockLLMClient
 from tools.mocks.analytics_mock import MockAppAnalyticsClient
 from tools.mocks.gsc_mock import MockGoogleSearchConsoleClient
 from tools.mocks.opportunity_mock import MockOpportunitySource
+from tools.mocks.search_mock import MockSearchClient
+from tools.mocks.search_null import NullSearchClient
 from tools.mocks.traffic_mock import MockTrafficClient
 from tools.mocks.traffic_null import NullTrafficClient
+from tools.search.duckduckgo import DuckDuckGoSearchClient
 
 from ..config.paths import resolve_path
 from ..graph.tools import Tools
@@ -112,12 +115,29 @@ def _gemini(ctx: ProviderContext) -> GeminiClient:
     )
 
 
+def _duckduckgo(ctx: ProviderContext) -> DuckDuckGoSearchClient:
+    return DuckDuckGoSearchClient(
+        backend=ctx.option("backend", "duckduckgo"),
+        fallback_backend=ctx.option("fallback_backend", "auto"),
+        region=ctx.option("region", "wt-wt"),
+        safesearch=ctx.option("safesearch", "moderate"),
+        timelimit=ctx.option("timelimit", ""),
+        timeout_seconds=float(ctx.option("timeout_seconds", 10.0)),
+    )
+
+
 def _llm_opportunity_source(ctx: ProviderContext) -> LLMOpportunitySource:
     return LLMOpportunitySource(
         ctx.extras["name"], ctx.extras["llm"], ctx.config,
+        search=ctx.extras.get("search"),
         prompt_template=ctx.option("prompt_template", ""),
+        query_prompt_template=ctx.option("query_prompt_template", ""),
         max_opportunities=ctx.option("max_opportunities", 5),
         grounded=ctx.option("grounded", True),
+        search_queries=ctx.option("search_queries", ()),
+        max_search_queries=ctx.option("max_search_queries", 3),
+        results_per_query=ctx.option("results_per_query", 5),
+        max_search_results=ctx.option("max_search_results", 12),
     )
 
 
@@ -131,6 +151,12 @@ _REGISTRY = {
         "mock": lambda ctx: MockLLMClient(),
         "gemini": _gemini,
         "custom": lambda ctx: ctx.custom("llm_custom_class"),
+    },
+    "search": {
+        "duckduckgo": _duckduckgo,
+        "none": lambda ctx: NullSearchClient(),
+        "mock": lambda ctx: MockSearchClient(),
+        "custom": lambda ctx: ctx.custom("search_custom_class"),
     },
     "gsc": {
         "mock": lambda ctx: MockGoogleSearchConsoleClient(),
@@ -202,6 +228,13 @@ class ToolsManager:
             model=model_override,
         )
 
+    def build_search(self):
+        """The system's own grounding, independent of the LLM provider — see
+        tools/base.py's SearchClient for the resolution order it takes part in."""
+        return self._build(
+            "search", self.config.search_provider, self._options("search_options"),
+        )
+
     def build_gsc(self):
         return self._build("gsc", self.config.gsc_provider, self._options("gsc_options"))
 
@@ -221,16 +254,19 @@ class ToolsManager:
             "analytics", self.config.analytics_provider, self._options("analytics_options"),
         )
 
-    def build_discovery_sources(self, llm) -> dict:
+    def build_discovery_sources(self, llm, search=None) -> dict:
         """AgentConfig.discovery_sources is a list (unlike the other provider
-        fields) since a tenant can configure any number of named sources. `llm` is
-        shared with build_llm()'s result rather than built again, so an "llm"
-        source doesn't double up on client construction/config.
+        fields) since a tenant can configure any number of named sources. `llm`
+        and `search` are shared with build_llm()/build_search()'s results rather
+        than built again, so an "llm" source doesn't double up on client
+        construction/config. `search` left None builds the configured one, so a
+        caller that only has an LLM to hand still gets a grounded source.
 
         A source's settings may sit directly on its entry (as they always have) or
         under an `options` key (the convention every other "custom" provider
         uses); `options` wins where both appear.
         """
+        search = self.build_search() if search is None else search
         sources = {}
         for entry in self.config.discovery_sources:
             name = entry["name"]
@@ -240,20 +276,23 @@ class ToolsManager:
                 {**entry, **plugin_options},
                 plugin_options=plugin_options,
                 where=f" for discovery source {name!r}",
-                name=name, llm=llm, class_path=entry.get("class", ""),
+                name=name, llm=llm, search=search, class_path=entry.get("class", ""),
                 label=f"discovery_sources[{name!r}].class",
             )
         return sources
 
     def build_all(self, model_override: str = None) -> Tools:
-        """The out-of-the-box Tools: all-mock except the LLM, GSC, traffic, and
-        analytics clients, which follow config.llm_provider / config.gsc_provider
-        / config.traffic_provider / config.analytics_provider."""
+        """The out-of-the-box Tools: all-mock except the LLM, search, GSC, traffic,
+        and analytics clients, which follow config.llm_provider /
+        config.search_provider / config.gsc_provider / config.traffic_provider /
+        config.analytics_provider."""
         llm = self.build_llm(model_override)
+        search = self.build_search()
         return Tools(
             gsc=self.build_gsc(),
             analytics=self.build_analytics(),
             traffic=self.build_traffic(),
             llm=llm,
-            discovery_sources=self.build_discovery_sources(llm),
+            search=search,
+            discovery_sources=self.build_discovery_sources(llm, search),
         )
