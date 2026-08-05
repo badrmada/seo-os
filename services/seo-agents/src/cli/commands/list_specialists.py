@@ -10,12 +10,15 @@ from rich.table import Table
 
 from agent.managers.output_manager import OutputManager
 
-from ..context import TENANT_OPTION, load_config
+from ..context import TENANT_OPTION, USERDATA_OPTION, load_config
 
 
-def list_specialists(tenant: str = TENANT_OPTION) -> None:
+def list_specialists(
+    tenant: str = TENANT_OPTION,
+    userdata: str = USERDATA_OPTION,
+) -> None:
     """List the discovery sources, data providers, and output sinks in use."""
-    config = load_config(tenant)
+    config = load_config(tenant, userdata)
     console = Console()
 
     sources = Table(title="[bold]discovery sources[/bold]", title_justify="left")

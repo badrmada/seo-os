@@ -16,11 +16,20 @@ Order here is the order commands appear in `--help`, so it runs most-used first
 rather than alphabetically.
 """
 
-from . import check_data, list_specialists, list_tools, preview_prompt, run, show_graph
+from . import (
+    check_data,
+    list_specialists,
+    list_tenants,
+    list_tools,
+    preview_prompt,
+    run,
+    show_graph,
+)
 
 COMMAND_MODULES = (
     run,
     check_data,
+    list_tenants,
     show_graph,
     list_tools,
     list_specialists,

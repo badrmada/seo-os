@@ -37,7 +37,7 @@ and `input.json`, and the app reads those two names from the folder you're in:
 
 ```bash
 cd examples/02-saas-blog-pingowl
-python ../../src/main.py run
+python src/main.py run --userdata examples --tenant <name>
 ```
 
 Two handy variations:
@@ -47,13 +47,13 @@ Two handy variations:
   templates):
 
   ```bash
-  python ../../src/main.py preview-prompt
+  python src/main.py preview-prompt --userdata examples --tenant <name>
   ```
 
 - **Use a different input file** — some examples include more than one:
 
   ```bash
-  python ../../src/main.py run --input input.comment.json
+  python src/main.py run --userdata examples --tenant <name> --input input.comment.json
   ```
 
 ## What's real offline, and what isn't

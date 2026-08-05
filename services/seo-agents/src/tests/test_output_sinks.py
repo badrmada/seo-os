@@ -161,7 +161,7 @@ def test_a_type_error_from_inside_a_two_arg_constructor_is_not_swallowed():
 
 
 def test_custom_class_path_must_name_a_class():
-    with pytest.raises(ValueError, match="module.path:ClassName"):
+    with pytest.raises(ValueError, match="module:ClassName"):
         load_custom("just_a_module", "some_field", AgentConfig(), {})
 
 

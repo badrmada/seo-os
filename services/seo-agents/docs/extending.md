@@ -8,7 +8,7 @@ finder comes down to three steps:
 1. `pip install -r requirements.txt` (plus whatever your own code needs).
 2. Write one Python class with the method the interface expects.
 3. Point your config at it: `"<field>_provider": "custom"` and
-   `"<field>_custom_class": "module.path:ClassName"`.
+   `"<field>_custom_class": "module:ClassName"` (a file in your `plugins/` folder).
 
 Nothing under `src/agent/` or `src/tools/` changes. That's the whole deal — the
 rest of this page is a worked walkthrough, plus the honest limits.
@@ -22,7 +22,7 @@ Every `"custom"` provider is loaded by the same one function,
 ```python
 def load_custom(class_path, field_name, config, options=None):
     module_path, _, class_name = class_path.partition(":")
-    module = importlib.import_module(module_path)
+    module = _import_plugin_module(module_path, field_name, config)  # from plugins/
     cls = getattr(module, class_name)
     if options is not None and _accepts_options(cls):
         return cls(config, options)
@@ -43,8 +43,9 @@ So the contract for your class is just this:
   instead, and every example under [`examples/`](../examples/) still does it that
   way.)
 - **Method:** whatever the target interface requires (table below).
-- **Importable:** the module path is resolved with a normal Python import — see
-  [Making your module importable](#making-your-module-importable) below.
+- **Where it lives:** a `.py` file in your tenant's `plugins/` folder, and the
+  module name is that filename — see
+  [the plugins folder](#where-your-code-goes-the-plugins-folder) below.
 - **Files your class opens itself:** anchor them to `config.config_base_dir`,
   the folder holding the tenant config, rather than to the working directory:
 
@@ -83,24 +84,54 @@ two already ship with one real vendor client each. To add another, see
 [Adding a new provider *kind*](#adding-a-new-provider-kind-not-just-a-new-instance)
 below.)
 
-## Making your module importable
+## Where your code goes: the `plugins/` folder
 
-`_load_custom` uses a plain dotted import, so your class needs to be findable
-under that name. Two ways, from quickest to most robust:
+Your class goes in **one place**: the `plugins/` folder inside your tenant.
 
-1. **Drop a file under `src/`.** `python src/main.py` puts `src/` on the import
-   path, so a file at `src/my_tenant/analytics.py` imports as
-   `my_tenant.analytics`. This still counts as "no fork" in the way that matters
-   — you're adding a new file, not editing anything under `agent/` or `tools/` —
-   and it's the fastest way to try something.
-2. **Install your own package.** For a real deployment (especially several
-   products, or code you want tested and versioned separately), put your class
-   in its own installable package and `pip install` it into the same virtualenv.
-   Reference it by its real dotted path. This is the version that scales past
-   "one product, one checkout."
+```
+userdata/
+└── acme/                 <- your tenant, referred to as --tenant acme
+    ├── tenant.json
+    ├── plugins/
+    │   └── analytics.py  <- your class lives here
+    └── data/
+```
 
-Either way, the `class_path` in your config is just `"module.path:ClassName"` —
-the loader doesn't know or care which route you took.
+```jsonc
+{ "analytics_provider": "custom",
+  "analytics_custom_class": "analytics:PostgresAnalyticsClient" }
+```
+
+The module name is the filename, without `.py`. No `PYTHONPATH`, no dropping
+files into `src/`, no installing anything — it works from any directory, because
+the folder is found relative to your `tenant.json` rather than to wherever you
+ran the command.
+
+A few things worth knowing:
+
+- **Plugin files in one tenant can import each other** with a relative import:
+  `from .helpers import something`.
+- **Two tenants may both have `plugins/analytics.py`** and they stay completely
+  separate. Each tenant's folder is loaded as its own package rather than being
+  added to `sys.path`, so nothing collides even with many tenants in one process.
+- **Need a third-party library?** Install it in the image your deployment runs
+  (see below) and import it normally from your plugin file. A whole package of
+  your own works the same way — `pip install` it, then have a file in `plugins/`
+  import from it:
+
+  ```python
+  # userdata/acme/plugins/analytics.py
+  from mycompany_seo_tools import PostgresAnalyticsClient  # noqa: F401
+  ```
+
+### Extra dependencies mean a new image
+
+There is no per-tenant environment management, on purpose. One deployment is one
+image with one set of installed packages. If your class needs libraries the image
+doesn't ship, add them to `requirements.txt` and build an image that has them —
+anything needing genuinely different packages is a different deployment. This is
+what keeps plugin loading a single, predictable mechanism instead of a dependency
+resolver.
 
 ## Walkthrough: a custom analytics source
 
@@ -109,7 +140,7 @@ That's too much of a real query to express as a template reshape (which is what
 `"templated"` is for), so `"custom"` is the right fit.
 
 ```python
-# src/my_tenant/analytics.py
+# userdata/acme/plugins/analytics.py
 import psycopg2
 
 class PostgresAnalyticsClient:
@@ -135,7 +166,7 @@ Config:
 ```jsonc
 {
   "analytics_provider": "custom",
-  "analytics_custom_class": "my_tenant.analytics:PostgresAnalyticsClient"
+  "analytics_custom_class": "analytics:PostgresAnalyticsClient"
 }
 ```
 
@@ -150,7 +181,7 @@ use Google Analytics 4, which needs its official SDK rather than a plain JSON
 fetch (so `"templated"` doesn't fit):
 
 ```python
-# src/my_tenant/ga4.py
+# userdata/acme/plugins/ga4.py
 from google.analytics.data_v1beta import BetaAnalyticsDataClient
 from google.analytics.data_v1beta.types import DateRange, Metric, RunReportRequest
 
@@ -173,7 +204,7 @@ class GA4TrafficClient:
 ```jsonc
 {
   "traffic_provider": "custom",
-  "traffic_custom_class": "my_tenant.ga4:GA4TrafficClient"
+  "traffic_custom_class": "ga4:GA4TrafficClient"
 }
 ```
 
@@ -184,13 +215,17 @@ config — no need to run the whole pipeline:
 
 ```python
 # from src/, with your venv active:  python -c "..."
-from agent.config import AgentConfigLoader
-from my_tenant.analytics import PostgresAnalyticsClient
+from agent.config.workspace import TenantWorkspace
+from agent.managers.plugin_loader import load_custom
 
-config = AgentConfigLoader().load("tenant.json")   # or build a minimal AgentConfig
-client = PostgresAnalyticsClient(config)
+config = TenantWorkspace.open("acme", root="../userdata").load_config()
+client = load_custom("analytics:PostgresAnalyticsClient", "analytics_custom_class", config)
 print(client.report(limit=3))   # eyeball the {summary, highlights} shape
 ```
+
+Going through `load_custom` rather than importing your file directly is the point
+— it resolves the module out of your tenant's `plugins/` folder exactly as a real
+run does, so "it imports here" and "it imports in a run" can't diverge.
 
 If that prints the right shape, the pipeline will accept it — the pipeline only
 ever calls that one method.
@@ -202,7 +237,7 @@ after the run finishes, and receives the complete result. Say you want each
 finished draft to land in your CMS as an unpublished post:
 
 ```python
-# src/my_tenant/cms_sink.py
+# userdata/acme/plugins/cms_sink.py
 import requests
 
 class CmsDraftSink:
@@ -230,7 +265,7 @@ class CmsDraftSink:
   "output_sinks": [
     { "name": "stdout", "provider": "json" },
     { "name": "cms", "provider": "custom",
-      "class": "my_tenant.cms_sink:CmsDraftSink",
+      "class": "cms_sink:CmsDraftSink",
       "options": { "cms_url": "https://cms.example.com/api/posts",
                    "cms_token": "..." } }
   ]
@@ -249,7 +284,7 @@ its own multi-step loop (search, fetch, summarize) before returning results.
 Nothing downstream cares; the interface hides all of it. Here's a sketch:
 
 ```python
-# src/my_tenant/reddit_agent.py
+# userdata/acme/plugins/reddit_agent.py
 class RedditResearchAgent:
     """A small agent-as-a-tool: it searches Reddit, reads the top threads, and asks
     an AI model to turn them into opportunities — a multi-step loop hiding behind
@@ -284,7 +319,7 @@ class RedditResearchAgent:
 ```jsonc
 {
   "discovery_sources": [
-    {"name": "reddit_agent", "provider": "custom", "class": "my_tenant.reddit_agent:RedditResearchAgent"}
+    {"name": "reddit_agent", "provider": "custom", "class": "reddit_agent:RedditResearchAgent"}
   ]
 }
 ```
@@ -311,7 +346,7 @@ There's one thing to know: the interface methods here are **synchronous**
 inside the sync method:
 
 ```python
-# src/my_tenant/mcp_discovery.py
+# userdata/acme/plugins/mcp_discovery.py
 import asyncio, os, json
 from mcp import ClientSession, StdioServerParameters
 from mcp.client.stdio import stdio_client
@@ -353,7 +388,7 @@ class MCPDiscoverySource:
 ```jsonc
 {
   "discovery_sources": [
-    { "name": "mcp", "provider": "custom", "class": "my_tenant.mcp_discovery:MCPDiscoverySource" }
+    { "name": "mcp", "provider": "custom", "class": "mcp_discovery:MCPDiscoverySource" }
   ]
 }
 ```

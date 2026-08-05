@@ -9,20 +9,24 @@ from rich.table import Table
 
 from agent.managers.providers import CATALOG
 
-from ..context import TENANT_OPTION, load_config
+from ..context import OPTIONAL_TENANT_OPTION, USERDATA_OPTION, fail, load_config
 
 
 def list_tools(
-    tenant: str = TENANT_OPTION,
+    tenant: str = OPTIONAL_TENANT_OPTION,
+    userdata: str = USERDATA_OPTION,
     all_kinds: bool = typer.Option(
         False, "--all", "-a",
         help="List every provider kind, without reading a tenant config.",
     ),
 ) -> None:
     """Show the available tool providers, and which ones this tenant uses."""
-    # --all exists so this works with no tenant config at hand — useful when
-    # you're deciding what to put in one.
-    config = None if all_kinds else load_config(tenant)
+    # This is the one command that's useful with no tenant at all — you run it
+    # while deciding what to put in one — so --tenant is optional here, unlike
+    # everywhere else.
+    if not all_kinds and not tenant:
+        raise fail("give --tenant NAME, or --all to list every provider kind")
+    config = None if all_kinds else load_config(tenant, userdata)
     console = Console()
 
     for kind in CATALOG:

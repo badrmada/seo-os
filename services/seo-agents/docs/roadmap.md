@@ -88,7 +88,7 @@ about status and direction.
   matters most for the failures the pipeline deliberately swallows: a degraded
   analytics call or a failed discovery source used to surface only as a
   `tool_errors` entry in the final JSON. Everything goes to stderr, so
-  `python src/main.py run -v | jq` is unaffected; secrets are redacted by field
+  `python src/main.py run --tenant acme -v | jq` is unaffected; secrets are redacted by field
   name and payloads truncated; and a reporter error can never fail a run.
   Implemented by *wrapping*, not by editing: `observe_tools()` proxies each
   client and `observed_node()` wraps each pipeline stage, so no stage — and no
@@ -124,6 +124,29 @@ about status and direction.
   `PipelineSpec` alone, so a purely structural question needs no API key.
   `list-tools` reads a declarative provider catalog that a test pins against the
   builders, so it can't drift. See [cli.md](cli.md).
+
+- **A tenant is a folder.** `userdata/<name>/` holds a tenant's `tenant.json`,
+  `plugins/`, `templates/`, `data/`, and `output/`, and a run names it:
+  `run --tenant acme`. The workspace root is `--userdata`, else
+  `$SEO_AGENT_USERDATA`, else `./userdata`, so a container mounts a volume and
+  serves every tenant in it. Every path in a config — and `--input` — resolves
+  inside that folder rather than against the process's working directory, which
+  is what lets many tenants share one process without reading each other's
+  files, and what lets any command run from any directory.
+
+  This replaced **three** different mechanisms for finding a tenant's custom
+  code: a file dropped under `src/`, an installed package, and an undocumented
+  `PYTHONPATH=code` that the examples actually depended on. Now there is one
+  place, `plugins/`, and no `PYTHONPATH` anywhere.
+
+  Plugins are loaded by file location under a per-tenant synthetic package
+  rather than by appending to `sys.path` — module names are process-global, so
+  the `sys.path` version would let two tenants that each have
+  `plugins/analytics.py` collide, first import winning, silently serving one
+  tenant's code to another. Tenant names are validated rather than sanitized,
+  since in a server they arrive from a request. Extra dependencies mean a new
+  image, on purpose: there is no per-tenant environment management. See
+  [cli.md](cli.md) and [extending.md](extending.md#where-your-code-goes-the-plugins-folder).
 
 ## Next
 

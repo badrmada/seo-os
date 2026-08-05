@@ -13,21 +13,26 @@ from pathlib import Path
 
 import typer
 
-from agent.config import AgentConfigLoader
+from agent.config.workspace import ROOT_ENV_VAR, TenantWorkspace, UnknownTenantError
 from agent.observability import build_reporter
-
-DEFAULT_TENANT_FILENAME = "tenant.json"
-DEFAULT_INPUT_FILENAME = "input.json"
 
 # Shared option definitions, so every command spells these the same way. Typer
 # reads them as defaults on the command function's parameters.
 TENANT_OPTION = typer.Option(
-    DEFAULT_TENANT_FILENAME, "--tenant", "-t",
-    help="Tenant config JSON. Relative paths resolve against the current directory.",
+    ..., "--tenant", "-t",
+    help="Tenant name — a folder in the workspace, not a path. See `list-tenants`.",
+)
+OPTIONAL_TENANT_OPTION = typer.Option(
+    None, "--tenant", "-t",
+    help="Tenant name — a folder in the workspace, not a path. See `list-tenants`.",
+)
+USERDATA_OPTION = typer.Option(
+    None, "--userdata", "-u",
+    help=f"Workspace root holding the tenant folders. Defaults to ${ROOT_ENV_VAR}, then ./userdata.",
 )
 INPUT_OPTION = typer.Option(
-    DEFAULT_INPUT_FILENAME, "--input", "-i",
-    help="Run input JSON. Relative paths resolve against the current directory.",
+    None, "--input", "-i",
+    help="Run input JSON. Defaults to input.json inside the tenant's own folder.",
 )
 VERBOSE_OPTION = typer.Option(
     0, "--verbose", "-v", count=True,
@@ -58,19 +63,54 @@ def resolve_existing(path_str: str, label: str) -> Path:
     return path
 
 
-def load_config(tenant: str):
-    """Load a tenant config, surfacing a bad one as a clean CLI error. The loader
-    validates prompt/analytics/traffic templates as it goes, so a template that
-    can't render fails here rather than mid-run."""
-    path = resolve_existing(tenant, "Tenant config")
+def open_workspace(tenant: str, userdata: str = None) -> TenantWorkspace:
+    """Resolve a tenant name to its folder. Every command goes through here, so
+    "which tenant" means the same thing everywhere."""
     try:
-        return AgentConfigLoader().load(str(path))
+        return TenantWorkspace.open(tenant, root=userdata)
+    except (UnknownTenantError, ValueError) as exc:
+        raise fail(str(exc)) from exc
+
+
+def open_tenant(tenant: str, userdata: str = None):
+    """Resolve a tenant and load its config in one step, returning both — commands
+    that also need the tenant's folder (to default `--input`, say) get it without
+    resolving twice.
+
+    The loader validates prompt/analytics/traffic templates as it goes, so a
+    template that can't render fails here rather than mid-run."""
+    workspace = open_workspace(tenant, userdata)
+    try:
+        return workspace, workspace.load_config()
     except Exception as exc:  # noqa: BLE001 - any load failure is a user-facing config error
-        raise fail(f"could not load {path}: {exc}") from exc
+        raise fail(f"could not load {workspace.config_path}: {exc}") from exc
 
 
-def load_input(input_path: str) -> dict:
-    path = resolve_existing(input_path, "Input")
+def load_config(tenant: str, userdata: str = None):
+    """open_tenant() for the commands that only need the config."""
+    return open_tenant(tenant, userdata)[1]
+
+
+def load_input(input_path: str, workspace: TenantWorkspace = None) -> dict:
+    """Read a run's input JSON.
+
+    A run's inputs live with the tenant they belong to, so `--input` resolves
+    inside the tenant's folder: `--input input.comment.json` means that file next
+    to the tenant's config, whatever directory you're standing in. Omitted, it
+    defaults to `input.json` there. An absolute path is used as-is, which is the
+    escape hatch for an input generated somewhere else entirely.
+    """
+    if not input_path:
+        if workspace is None:
+            raise fail("no input file given")
+        path = workspace.default_input_path
+        if not path.is_file():
+            raise fail(f"no --input given and no {path.name} in {workspace.dir}")
+    else:
+        candidate = Path(input_path).expanduser()
+        if not candidate.is_absolute() and workspace is not None:
+            candidate = workspace.dir / candidate
+        path = resolve_existing(str(candidate), "Input")
     try:
         return json.loads(path.read_text(encoding="utf-8"))
     except Exception as exc:  # noqa: BLE001 - malformed JSON is a user-facing error

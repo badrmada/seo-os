@@ -51,7 +51,7 @@ is what lets the writer reference real products with real URLs:
 ## See it flow into the prompt
 
 ```bash
-python ../../src/main.py preview-prompt
+python src/main.py preview-prompt --userdata examples --tenant 03-ecommerce-roast-co
 ```
 
 Real output (trimmed) — the summary and the product links are yours, and the
@@ -72,7 +72,7 @@ Products you may reference naturally (add their link to internal_links):
 ## Run the full draft — and watch the self-review
 
 ```bash
-python ../../src/main.py run
+python src/main.py run --userdata examples --tenant 03-ecommerce-roast-co
 ```
 
 The result includes a self-review note (real offline output):

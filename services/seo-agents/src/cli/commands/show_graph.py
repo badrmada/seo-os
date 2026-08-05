@@ -19,18 +19,19 @@ from tools.mocks.gsc_mock import MockGoogleSearchConsoleClient
 from tools.mocks.opportunity_mock import MockOpportunitySource
 from tools.mocks.traffic_mock import MockTrafficClient
 
-from ..context import TENANT_OPTION, fail, load_config
+from ..context import TENANT_OPTION, USERDATA_OPTION, fail, load_config
 
 
 def show_graph(
     tenant: str = TENANT_OPTION,
+    userdata: str = USERDATA_OPTION,
     fmt: str = typer.Option(
         "text", "--format", "-f",
         help="text (default, annotated) or mermaid (paste into docs).",
     ),
 ) -> None:
     """Print the effective pipeline graph for this config."""
-    config = load_config(tenant)
+    config = load_config(tenant, userdata)
 
     if fmt == "text":
         for line in _render_text(config):

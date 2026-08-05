@@ -25,7 +25,7 @@ agent **discover** what's worth engaging with and **decide the channel itself**.
 ### A) Let the agent decide
 
 ```bash
-python ../../src/main.py run --input input.discover.json
+python src/main.py run --userdata examples --tenant 04-community-homelabhub --input input.discover.json
 ```
 
 There's no `channel` in the input, so the agent runs discovery, then picks. Real
@@ -61,7 +61,7 @@ instead:
 ### B) Reply to a specific post
 
 ```bash
-python ../../src/main.py run --input input.comment.json
+python src/main.py run --userdata examples --tenant 04-community-homelabhub --input input.comment.json
 ```
 
 Here you give the exact `context_text` to reply to. The self-review confirms the
@@ -74,7 +74,7 @@ reply disclosed its affiliation and didn't over-mention the product:
 > **Note on the comment text offline.** The mock AI returns a fixed placeholder
 > reply (it doesn't read your brand voice), so offline the wording won't sound
 > like HomelabHub. Preview the prompt to see *your* instructions and disclosure
-> rule — `python ../../src/main.py preview-prompt --input input.comment.json` — and
+> rule — `python src/main.py preview-prompt --userdata examples --tenant 04-community-homelabhub --input input.comment.json` — and
 > switch to `llm_provider: "gemini"` for real, on-brand replies.
 
 ## The disclosure setup

@@ -13,7 +13,7 @@ a custom discovery source — alongside a templated traffic feed.
 - **Two discovery sources scored together** — they run in parallel and their
   results are pooled into one channel decision.
 - **Templated traffic** — one more data feed, via a template.
-- **Loading your own module** — how the app finds your code (`PYTHONPATH`).
+- **Loading your own module** — how the app finds your code (the `plugins/` folder).
 
 ## The files
 
@@ -78,20 +78,21 @@ class TrendingSearches:
 }
 ```
 
-## Run it (note the `PYTHONPATH`)
+## Run it
 
 Your code lives in `code/`, so tell Python where to find it:
 
 ```bash
-PYTHONPATH=code python ../../src/main.py run --input input.auto.json
+python src/main.py run --userdata examples --tenant 05-advanced-devboard --input input.auto.json
 ```
 
-`PYTHONPATH=code` is what makes `analytics_growth` and `trending_finder`
-importable. (In a real deployment you'd install your code as a package instead —
-see [docs/extending.md](../../docs/extending.md#making-your-module-importable).)
+`analytics_growth` and `trending_finder` are found because they sit in this
+tenant's `plugins/` folder — nothing to install, no `PYTHONPATH`, and it works
+from any directory. See
+[docs/extending.md](../../docs/extending.md#where-your-code-goes-the-plugins-folder).
 
-If you forget it, the run fails cleanly and tells you exactly why —
-`"phase": "failed", "error": "No module named 'analytics_growth'"` — rather than
+Name one wrong in `tenant.json` and the run fails cleanly, telling you which
+plugins *do* exist — rather than
 crashing.
 
 ## What happens — two sources, one decision
@@ -117,7 +118,7 @@ their channel hints were summed, and `site_article` won — a **real decision**
 (`"fallback": false`), unlike example 04's offline fallback.
 
 And the custom analytics + templated traffic both show up in the prompt (preview
-it with `PYTHONPATH=code python ../../src/main.py preview-prompt --input input.article.json`):
+it with `python src/main.py preview-prompt --userdata examples --tenant 05-advanced-devboard --input input.article.json`):
 
 ```
 Recent activity: 250 job posts in the last 7 days, +25% vs the previous 7 days, across 128 companies hiring.

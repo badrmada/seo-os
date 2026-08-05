@@ -31,7 +31,7 @@ the brand voice.
 ## Run it
 
 ```bash
-python ../../src/main.py run
+python src/main.py run --userdata examples --tenant 01-starter-acme
 ```
 
 You get a full result object — `phase`, `input`, `output`, `discovery`, `usage`.

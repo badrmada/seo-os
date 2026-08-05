@@ -12,9 +12,36 @@ python src/main.py --help
 | `list-tools` | Every pluggable interface and the providers it accepts, with yours marked. |
 | `list-specialists` | What *this* tenant has wired: discovery sources, data providers, output sinks. |
 | `preview-prompt` | The exact prompt a draft would send, without sending it. |
+| `list-tenants` | What's in the workspace — the answer to "what can I pass to --tenant?" |
 
-Every command takes `--tenant/-t` and (where relevant) `--input/-i`, defaulting to
-`./tenant.json` and `./input.json` in the current directory.
+## A tenant is a name, not a path
+
+Every command takes `--tenant/-t NAME`, where the name is a folder in the
+workspace:
+
+```
+userdata/            <- the workspace root
+├── acme/            <- --tenant acme
+│   ├── tenant.json
+│   ├── plugins/
+│   ├── templates/
+│   ├── data/
+│   └── output/
+└── globex/
+```
+
+```bash
+python src/main.py list-tenants
+python src/main.py run --tenant acme
+```
+
+The workspace root comes from `--userdata/-u`, else `$SEO_AGENT_USERDATA`, else
+`./userdata`. A container mounts a volume and sets the environment variable.
+
+`--input/-i` is resolved inside the tenant's folder too — `--input
+input.comment.json` means that file next to the tenant's config — and defaults to
+`input.json` there. An absolute path is used as-is, for an input generated
+somewhere else.
 
 ## Every command is explicit
 
@@ -23,10 +50,9 @@ nothing — a CLI that silently starts work when you were only looking for its h
 isn't one you can explore safely.
 
 ```bash
-python src/main.py                                              # prints help
-python src/main.py run                                          # runs the agent
-python src/main.py run --tenant other.json --input other.json
-docker run seo-agent run --tenant /data/tenant.json             # note the `run`
+python src/main.py                                    # prints help
+python src/main.py run --tenant acme                  # runs the agent
+docker run -v ./userdata:/userdata seo-agent run --tenant acme
 ```
 
 ## The commands worth knowing

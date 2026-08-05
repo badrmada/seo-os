@@ -20,24 +20,31 @@ from agent.managers import ToolsManager
 from agent.managers.output_manager import OutputManager
 from agent.validators.input_validator import InputValidator
 
-from ..context import INPUT_OPTION, TENANT_OPTION, load_config, load_input
+from ..context import (
+    INPUT_OPTION,
+    TENANT_OPTION,
+    USERDATA_OPTION,
+    load_input,
+    open_tenant,
+)
 
 
 def check_data(
     tenant: str = TENANT_OPTION,
+    userdata: str = USERDATA_OPTION,
     input_file: str = INPUT_OPTION,
     skip_input: bool = typer.Option(
         False, "--skip-input", help="Check the tenant config and tools only.",
     ),
 ) -> None:
     """Validate the config, the input, and that every configured tool builds."""
-    config = load_config(tenant)
+    workspace, config = open_tenant(tenant, userdata)
     checks: list[tuple[str, bool, str]] = [
         ("tenant config", True, "loaded; prompt and data templates render"),
     ]
 
     if not skip_input:
-        checks.append(_check_input(config, input_file))
+        checks.append(_check_input(config, input_file, workspace))
 
     manager = ToolsManager(config)
     checks.append(_check("llm", lambda: manager.build_llm()))
@@ -77,8 +84,8 @@ def _check(name: str, build) -> tuple[str, bool, str]:
     return (name, True, result if isinstance(result, str) else type(result).__name__)
 
 
-def _check_input(config, input_file: str) -> tuple[str, bool, str]:
-    run_input = load_input(input_file)
+def _check_input(config, input_file: str, workspace) -> tuple[str, bool, str]:
+    run_input = load_input(input_file, workspace)
     try:
         InputValidator().validate(run_input, config)
     except Exception as exc:  # noqa: BLE001 - a bad input is exactly what this reports

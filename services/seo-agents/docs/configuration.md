@@ -22,7 +22,7 @@ different kinds of products**, not just the Echooers one.
   six runnable ones (SaaS, e-commerce, community, job board, MCP), simple to
   advanced.
 
-`python src/main.py run --tenant path/to/tenant.json --input path/to/input.json`
+`python src/main.py run --tenant <name>`
 loads your files. Unknown field names are rejected on load, so a typo fails
 immediately with a clear message instead of being silently ignored.
 
@@ -92,10 +92,10 @@ to trust that service account. Steps:
 4. On that service account, create a **key** of type **JSON** and download it.
    This downloaded file is your key file.
 5. Put the key file where the app can read it, and point `gsc_key_file` at it.
-   By default the app looks for `service_account.json` next to where you run it
-   (in `src/`); you can also give an absolute path like
-   `"/etc/secrets/gsc.json"`. In a container, this is the file you **mount** in
-   and point `gsc_key_file` at.
+   By default the app looks for `service_account.json` inside your tenant's
+   folder; `"data/service_account.json"` puts it in `data/` alongside your other
+   files, and an absolute path like `"/etc/secrets/gsc.json"` also works. In a
+   container, this is the file you **mount** in and point `gsc_key_file` at.
 6. Copy the service account's email address — it looks like
    `something@your-project.iam.gserviceaccount.com`.
 7. In [Google Search Console](https://search.google.com/search-console) → your
@@ -130,7 +130,7 @@ reference. You have four ways to provide it.
 | `traffic_provider` | `str` | `"mock"` | `"none"`, `"mock"`, `"cloudflare"`, `"templated"`, `"custom"`. |
 | `cloudflare_api_token` | `str` | `""` | `"cloudflare"` |
 | `cloudflare_zone_id` | `str` | `""` | `"cloudflare"` |
-| `traffic_custom_class` | `str` | `""` | `"custom"` — `"module.path:ClassName"`. |
+| `traffic_custom_class` | `str` | `""` | `"custom"` — `"module:ClassName"` — a file in your tenant's `plugins/` folder. |
 | `traffic_source` | `str` | `"file"` | `"templated"` — read from a `"file"` or a live `"api"`. |
 | `traffic_report_path` | `str` | `""` | `"templated"` + `source="file"`. |
 | `traffic_api_url` | `str` | `""` | `"templated"` + `source="api"`. |
@@ -180,7 +180,7 @@ things for the writer:
 |---|---|---|---|
 | `analytics_provider` | `str` | `"mock"` | `"mock"`, `"templated"`, `"custom"`. |
 | `analytics_report_path` | `str` | `"tools/report.json"` | `"templated"` + `source="file"`. |
-| `analytics_custom_class` | `str` | `""` | `"custom"` — `"module.path:ClassName"`. |
+| `analytics_custom_class` | `str` | `""` | `"custom"` — `"module:ClassName"` — a file in your tenant's `plugins/` folder. |
 | `analytics_highlights_limit` | `int` | `3` | How many highlights the model gets. |
 | `analytics_source` | `str` | `"file"` | `"file"` or `"api"`. |
 | `analytics_api_url` | `str` | `""` | `"templated"` + `source="api"`. |
@@ -402,7 +402,7 @@ depend on the provider:
 |---|---|---|
 | `"mock"` | `"fail"` (`bool`, default `false`) | A fixed fixture for testing. `"fail": true` simulates the source erroring. |
 | `"llm"` | `"prompt_template"` (optional), `"max_opportunities"` (default `5`), `"grounded"` (default `true`) | The AI model finds opportunities. **Grounded (default) backs it with live Google Search** — real results with real citation URLs, not a guess from training data. Set `"grounded": false` for the old behavior. |
-| `"custom"` | `"class"` (`"module.path:ClassName"`) | Your own finder — see [extending.md](extending.md). |
+| `"custom"` | `"class"` (`"module:ClassName"` — a file in your tenant's `plugins/` folder) | Your own finder — see [extending.md](extending.md). |
 
 You can list **several** sources; they all run (in parallel when there are 2+)
 and their results are pooled. Example — one AI source plus your own Reddit
@@ -451,35 +451,46 @@ Used when a specific run doesn't override them.
 
 ---
 
-## How file paths in your config are resolved
+## A tenant is a folder
 
-Every path you write in `tenant.json` — `analytics_report_path`,
-`traffic_report_path`, `gsc_key_file`, an output sink's `options.path` —
-resolves **relative to the folder holding that `tenant.json`**, not to the
-directory you happen to run the command from.
+Everything a tenant owns lives in one directory, and a run refers to it by name:
 
-So this config:
+```
+userdata/                     the workspace root
+├── acme/                     the tenant name
+│   ├── tenant.json           this file
+│   ├── plugins/              your own classes  (extending.md)
+│   ├── templates/            reserved for template files
+│   ├── data/                 analytics.json, traffic.json, credentials
+│   └── output/               where results land by default
+└── globex/
+    └── …
+```
+
+```bash
+python src/main.py run --tenant acme
+python src/main.py list-tenants          # what's available
+```
+
+The workspace root is `--userdata`, else `$SEO_AGENT_USERDATA`, else `./userdata`
+— a container mounts a volume and sets the environment variable.
+
+**Every path in your config resolves against your tenant's folder**, so:
 
 ```jsonc
 { "analytics_report_path": "data/analytics.json" }
 ```
 
-means "`data/analytics.json` next to this config file", and works identically
-whether you run from the tenant's folder, from the repo root, or from anywhere
-else:
+means that file inside `userdata/acme/`, no matter which directory you run from.
+The same goes for `traffic_report_path`, `gsc_key_file`, and an output sink's
+`options.path`. Absolute paths and `~` are used as-is.
 
-```bash
-cd examples/02-saas-blog-pingowl && python ../../src/main.py run    # works
-python src/main.py run --tenant examples/02-saas-blog-pingowl/tenant.json  # also works
-```
+`--input` works the same way: `--input input.comment.json` means that file in
+your tenant's folder, and omitting it uses `input.json` there.
 
-Absolute paths and `~` are used as-is. A config built in Python code rather than
-loaded from a file has no folder to anchor to, so its relative paths fall back to
-the working directory.
-
-This matters beyond convenience: when several tenants run in one server process
-they share one working directory, so two tenants that both said
-`data/analytics.json` would otherwise read the same file.
+This is what lets many tenants share one process — they'd otherwise share one
+working directory, and two tenants both saying `data/analytics.json` would read
+the same file.
 
 **Writing a custom class that opens its own files?** Do the same — `config`
 carries `config_base_dir`:
@@ -519,7 +530,7 @@ produced it and whether it succeeded.
 |---|---|---|
 | `json` | `path` (empty = stdout), `indent` (default `2`), `append` | With `append`, writes one compact JSON object per line (JSONL) — good for accumulating many runs. |
 | `webhook` | `url` (required), `method` (default `POST`), `headers`, `timeout_seconds` (default `10`) | Auth goes in `headers` — on the sink, not in the general config. No retries: reliable delivery is a queue's job. |
-| `custom` | `class` (`"module.path:ClassName"`), plus any `options` you like | One method: `emit(self, output: dict) -> None`. See [extending.md](extending.md#walkthrough-a-custom-output-sink). |
+| `custom` | `class` (`"module:ClassName"` — a file in your tenant's `plugins/` folder), plus any `options` you like | One method: `emit(self, output: dict) -> None`. See [extending.md](extending.md#walkthrough-a-custom-output-sink). |
 
 Two behaviors worth knowing, because they're deliberate opposites:
 
@@ -543,8 +554,8 @@ stage and each tool call as it happens — which stage is running now, how long 
 call took, which tool failed and why.
 
 ```bash
-python src/main.py run -v      # stages and tool calls, with timings
-python src/main.py run -vv     # also shows prompts, responses, and decisions
+python src/main.py run --tenant acme -v      # stages and tool calls, with timings
+python src/main.py run --tenant acme -vv     # also shows prompts, responses, and decisions
 ```
 
 ```text
@@ -559,7 +570,7 @@ python src/main.py run -vv     # also shows prompts, responses, and decisions
 ```
 
 **All of it goes to stderr**, never stdout — stdout still carries only the result
-JSON, so `python src/main.py run -v | jq` works exactly as before.
+JSON, so `python src/main.py run --tenant acme -v | jq` works exactly as before.
 
 The `!` lines are the reason this exists: the agent degrades rather than aborting
 when a tool fails, so a failed analytics call or discovery source otherwise only

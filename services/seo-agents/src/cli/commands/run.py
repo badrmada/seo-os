@@ -13,16 +13,19 @@ from ..context import (
     INPUT_OPTION,
     QUIET_OPTION,
     TENANT_OPTION,
+    USERDATA_OPTION,
     VERBOSE_FORMAT_OPTION,
     VERBOSE_OPTION,
     fail,
-    load_config,
     load_input,
     make_reporter,
+    open_tenant,
 )
+
 
 def run(
     tenant: str = TENANT_OPTION,
+    userdata: str = USERDATA_OPTION,
     input_file: str = INPUT_OPTION,
     output: str = typer.Option(
         None, "--output", "-o",
@@ -33,8 +36,8 @@ def run(
     verbose_format: str = VERBOSE_FORMAT_OPTION,
 ) -> None:
     """Run the agent once against a tenant config and a run input."""
-    config = load_config(tenant)
-    run_input = load_input(input_file)
+    workspace, config = open_tenant(tenant, userdata)
+    run_input = load_input(input_file, workspace)
     reporter = make_reporter(config, verbose, quiet, verbose_format)
 
     if output:

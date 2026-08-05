@@ -11,16 +11,23 @@ import typer
 
 from agent.managers import AgentRunner
 
-from ..context import INPUT_OPTION, TENANT_OPTION, load_config, load_input
+from ..context import (
+    INPUT_OPTION,
+    TENANT_OPTION,
+    USERDATA_OPTION,
+    load_input,
+    open_tenant,
+)
 
 
 def preview_prompt(
     tenant: str = TENANT_OPTION,
+    userdata: str = USERDATA_OPTION,
     input_file: str = INPUT_OPTION,
 ) -> None:
     """Preview the rendered prompt for a config and input, without drafting."""
-    config = load_config(tenant)
-    run_input = load_input(input_file)
+    workspace, config = open_tenant(tenant, userdata)
+    run_input = load_input(input_file, workspace)
 
     result = AgentRunner(config).preview_prompt(run_input)
     typer.echo(f"--- channel: {result['channel']} ---\n")

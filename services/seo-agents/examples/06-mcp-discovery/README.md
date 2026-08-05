@@ -48,7 +48,7 @@ The agent only ever sees the `OpportunitySource` interface
 Your client code is in `code/`, so put it on the import path:
 
 ```bash
-PYTHONPATH=code python ../../src/main.py run
+python src/main.py run --userdata examples --tenant 06-mcp-discovery
 ```
 
 `input.json` has **no channel**, so the agent runs MCP-backed discovery and picks

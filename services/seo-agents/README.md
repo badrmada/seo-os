@@ -111,43 +111,47 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 2. Understand the two files a run reads
+### 2. A tenant is a folder
 
-Every run reads two JSON files: **`tenant.json`** and **`input.json`**. By
-default the app looks for them by those names **in the folder you run the
-command from** (pass `--tenant` / `--input` to use any other path). If a file
-isn't there, it stops with a clear message rather than guessing.
+Everything one configured agent owns lives in its own folder, and a run refers to
+it by name:
+
+```
+userdata/                 the workspace
+└── acme/                 the tenant name — `--tenant acme`
+    ├── tenant.json       how this agent behaves. Set once.
+    ├── input.json        what to write this run. Changes every run.
+    ├── plugins/          your own code, if any
+    ├── data/             your analytics/traffic files, credentials
+    └── output/           where results land
+```
 
 | File | Answers the question | Changes how often |
 |---|---|---|
 | **`tenant.json`** | *How should this agent behave?* — your brand voice, which tools it uses, your credentials. | Rarely. Set once per product. |
 | **`input.json`** | *What should it write on this specific run?* — the channel, keyword, tone. | Every run. |
 
-The two are separate on purpose: one `tenant.json` (your product's settings) can
-be run against many different `input.json` files (one per request).
+The two are separate on purpose: one `tenant.json` can be run against many
+different inputs. And because everything is anchored to the tenant's folder, the
+same command works from any directory — and many tenants can run side by side
+without treading on each other.
 
 ### 3. Run it once, offline
 
 You can see the whole pipeline work with **no API keys** by using the built-in
-fakes. Create these two files in `src/` (that's where we'll run from):
-
-`src/tenant.json` — an empty object means "use the built-in mock for everything":
-
-```json
-{}
-```
-
-`src/input.json`:
-
-```json
-{ "channel": "site_article", "gsc_domain": "sc-domain:example.com", "seed_keyword": "your topic here" }
-```
-
-Then run it from `src/` so it finds those files:
+fakes. Create a tenant:
 
 ```bash
-cd src
-python main.py run
+mkdir -p userdata/acme
+echo '{}' > userdata/acme/tenant.json
+echo '{ "channel": "site_article", "gsc_domain": "sc-domain:example.com", "seed_keyword": "your topic here" }' \
+  > userdata/acme/input.json
+```
+
+An empty `tenant.json` means "use the built-in mock for everything". Then:
+
+```bash
+python src/main.py run --tenant acme
 ```
 
 That's a complete run against fake data — it prints the full result so you can
@@ -155,7 +159,7 @@ see the exact shape before connecting anything real.
 
 ### 4. Connect your real tools in `tenant.json`
 
-When you're ready, replace that empty `src/tenant.json` with real settings.
+When you're ready, replace that empty `userdata/acme/tenant.json` with real settings.
 Here's a complete example (Echooers' setup, with secrets replaced by
 placeholders). Copy it and fill in your own values:
 
@@ -272,8 +276,14 @@ files and pass their paths explicitly — then it doesn't matter which folder yo
 run from:
 
 ```bash
-python src/main.py run --tenant path/to/other-tenant.json --input path/to/other-input.json
+python src/main.py list-tenants                     # what's in the workspace
+python src/main.py run --tenant globex              # a different one
+python src/main.py run --tenant acme --input input.comment.json
+python src/main.py run --tenant acme --userdata /srv/tenants
 ```
+
+The workspace root is `--userdata`, else `$SEO_AGENT_USERDATA`, else
+`./userdata`.
 
 ### 7. Watch it work (optional)
 
@@ -281,11 +291,11 @@ A run is silent until its final JSON. Add `-v` to follow it live — every stage
 every tool call, with timings, as they happen:
 
 ```bash
-python src/main.py run -v      # stages and tool calls
-python src/main.py run -vv     # also prompts, responses, and decisions
+python src/main.py run --tenant acme -v      # stages and tool calls
+python src/main.py run --tenant acme -vv     # also prompts, responses, and decisions
 ```
 
-Verbose output goes to stderr, so `python src/main.py run -v | jq` still works. See
+Verbose output goes to stderr, so `python src/main.py run --tenant acme -v | jq` still works. See
 [configuration.md](docs/configuration.md#watching-a-run-happen-verbose-mode).
 
 ### 8. The other commands (optional)
@@ -293,9 +303,9 @@ Verbose output goes to stderr, so `python src/main.py run -v | jq` still works. 
 `run` is what you get by default, but it isn't the only thing:
 
 ```bash
-python src/main.py check-data       # validate the config and every tool, no LLM call
-python src/main.py show-graph       # which stages will actually run
-python src/main.py list-tools       # every provider available, with yours marked
+python src/main.py check-data --tenant acme  # validate the config and every tool, no LLM call
+python src/main.py show-graph --tenant acme  # which stages will actually run
+python src/main.py list-tenants             # every provider available, with yours marked
 python src/main.py --help           # all of them
 ```
 
