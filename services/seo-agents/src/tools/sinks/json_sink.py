@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import sys
 from pathlib import Path
 
 from agent.config.paths import resolve_path
@@ -20,14 +21,18 @@ class JsonOutputSink:
       - "append": with a path, append one JSON object per line (JSONL) instead of
         overwriting — for accumulating many runs into one file.
 
-    stdout is written through print() rather than a captured stream so it stays on
-    the same file descriptor the CLI has always used. Note that verbose mode
+    With no path, the result goes to `stdout` — the stream handed in at
+    construction, defaulting to the process's own `sys.stdout` so the CLI's output
+    is byte-for-byte what it has always been. A server passes its own stream (a
+    log, a buffer): "print to whatever fd this process happens to have" is not a
+    decision a library gets to make for its host. Note that verbose mode
     (agent/observability/) writes to *stderr* precisely so that this sink's stdout
     output stays clean and pipeable to jq.
     """
 
-    def __init__(self, config, options: dict = None) -> None:
+    def __init__(self, config, options: dict = None, *, stdout=None) -> None:
         options = options or {}
+        self._stdout = stdout
         # Resolved against the tenant's own config directory, not the process's
         # working directory — see agent/config/paths.py.
         self._path = resolve_path(config, options.get("path", ""))
@@ -37,7 +42,9 @@ class JsonOutputSink:
     def emit(self, output: dict) -> None:
         payload = json.dumps(output, indent=None if self._append else self._indent, default=str)
         if not self._path:
-            print(payload)
+            stream = self._stdout if self._stdout is not None else sys.stdout
+            stream.write(payload + "\n")
+            stream.flush()
             return
         path = Path(self._path).expanduser()
         if path.parent != Path(""):

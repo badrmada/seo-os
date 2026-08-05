@@ -108,11 +108,18 @@ Commands are self-contained modules. Adding one touches nothing that exists.
 ```
 src/cli/
 ├── app.py             the root Typer app
-├── context.py         shared: path resolution, config/input loading, reporter
+├── context.py         shared: path resolution, config/input loading, CLI errors
 └── commands/
     ├── __init__.py    the registry — the import list is the command list
     └── <name>.py      one command: a function plus register(app)
 ```
+
+**The CLI is one channel, not the run logic.** `run` builds a `RunRequest`, hands
+it to `AgentService`
+([`src/agent/service.py`](../src/agent/service.py)), and prints what comes back —
+the same entry point an HTTP handler or queue worker would use. A command that
+executes the agent should do the same rather than driving `AgentRunner` itself;
+that's what keeps every channel's behavior identical instead of near-identical.
 
 **1. Write the module.** The function's docstring becomes its help text, and its
 type-hinted parameters become its flags — Typer derives the whole interface:

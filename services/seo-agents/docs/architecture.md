@@ -150,6 +150,56 @@ run one after another, but a step can ask for a different shape through its
   as *either* branch finished, which could corrupt the shared state. The single
   list form is what guarantees it waits for both.)
 
+## Calling the agent: the service layer
+
+Everything a run needs doing *around* the pipeline — resolve the tenant's config,
+build the tools, build a reporter, run, emit to the output sinks, keep the state
+snapshots — lives in one place,
+[`agent/service.py`](../src/agent/service.py)'s `AgentService`:
+
+```
+channels (CLI · HTTP API · queue worker · scheduler)   ← thin adapters
+        ↓  RunRequest
+AgentService.execute()                                 ← the channel-agnostic entry
+        ↓
+AgentRunner.arun()                                     ← the pipeline
+```
+
+That sequence used to live inline in the CLI's `run` command, which made the CLI
+the only real way to run the agent — anything else would have had to copy it, and
+the copy would have drifted. Now the CLI is one adapter among several: it turns
+flags into a `RunRequest` and prints the `RunResult`.
+
+- **`RunRequest`** carries the tenant (a name to resolve, or a config you already
+  have), the run input, and per-run overrides: verbosity, output sinks, the run
+  deadline. Overrides apply to that run only — a request is not a config edit.
+- **`RunResult`** carries the run dict ([output-schema.md](output-schema.md)),
+  the events the reporter recorded, and the names of any sinks that failed to
+  deliver. **Returned, never printed.**
+- **A failed run is a successful request.** It comes back as a `RunResult` whose
+  `run["phase"] == "failed"`. Only a request that couldn't be started at all —
+  unknown tenant, unloadable config, a webhook sink with no URL — raises
+  (`RunRequestError`). A channel maps those differently: one is a 200 with a
+  failed run in it, the other a 4xx.
+- **Nothing writes to the process's file descriptors unless asked to.** A CLI
+  wants stdout and stderr and gets them by default; a server passes its own
+  streams (or `None`) and reads everything off the `RunResult`.
+
+```python
+service = AgentService()
+result = await service.aexecute(RunRequest(
+    tenant="acme",
+    input={"seed_keyword": "static site seo", "gsc_domain": "sc-domain:example.com"},
+    collect_events=True,       # events end up on result.events
+    on_event=publish,          # ...and/or stream live, for an SSE endpoint
+    stdout=None, warn_stream=None,
+))
+```
+
+**Still out of scope:** the queue, the worker pool, the HTTP framework, the
+scheduler. This makes the agent *callable* by them; owning the transport is the
+control plane's job.
+
 ## How a run executes: async, and why you can ignore that
 
 A run is async from end to end — `AgentRunner.arun()`, every step, every tool
@@ -206,7 +256,12 @@ visible to a step:
 
 - **The reporter** ([`agent/observability/`](../src/agent/observability/)) —
   verbose mode. `-v` reports every stage and tool call with timings and
-  outcomes; `-vv` adds truncated payload previews. It's wired in by *wrapping*:
+  outcomes; `-vv` adds truncated payload previews. There are three
+  implementations of one `event()`/`timed()` contract: text and JSON to a stream
+  (what a terminal wants), and a **collecting** one that keeps the events and/or
+  hands each to a callback as it happens (what a server wants — attached to the
+  `RunResult`, or pushed to an SSE stream or a job-progress row). It's wired in
+  by *wrapping*:
   `observe_tools()` swaps each client for a proxy and `observed_node()` wraps
   each step, both at the `AgentRunner` boundary. With verbose off, the proxies
   aren't in the call path at all — the bundle is returned untouched — so it costs

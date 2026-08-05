@@ -73,19 +73,20 @@ class NullReporter:
         yield {}
 
 
-class StreamReporter:
-    """Writes events to a stream (stderr). Subclasses decide the formatting; this
-    class owns the parts that must not vary: the run-relative clock, thread-safe
-    writes, and the guarantee that a reporting failure never escapes.
+class RunReporter:
+    """What every real reporter shares: the run-relative clock, a lock, the
+    redaction pass, `timed()`, and the guarantee that a reporting failure never
+    escapes. Subclasses implement `_deliver()` — writing a line, appending to a
+    list — and nothing else.
 
     The lock matters — with 2+ discovery sources the pipeline fans out via
-    LangGraph's Send and stage/tool events from concurrent branches are emitted
-    from different threads. Without it, lines interleave mid-write and the stream
-    becomes unreadable exactly when it's most needed.
+    LangGraph's Send, and sync tool calls run in worker threads
+    (agent/utils/async_utils.py), so events genuinely arrive from several threads.
+    Without it, stream lines interleave mid-write and a collected list can drop
+    entries, exactly when the record is most needed.
     """
 
-    def __init__(self, stream=None, level: int = 1) -> None:
-        self._stream = stream if stream is not None else sys.stderr
+    def __init__(self, level: int = 1) -> None:
         self.level = level
         self._lock = threading.Lock()
         self._t0 = time.perf_counter()
@@ -94,17 +95,12 @@ class StreamReporter:
         if self.level < 1:
             return
         try:
-            line = self._format(kind, redact(fields), time.perf_counter() - self._t0)
-            if line is None:
-                return
-            with self._lock:
-                self._stream.write(line + "\n")
-                self._stream.flush()
+            self._deliver(kind, redact(fields), time.perf_counter() - self._t0)
         except Exception:  # noqa: BLE001 - see module docstring rule 2
             # A reporter that breaks a run is worse than a run with no reporting.
             pass
 
-    def _format(self, kind: str, fields: dict, elapsed: float) -> str:
+    def _deliver(self, kind: str, fields: dict, elapsed: float) -> None:
         raise NotImplementedError
 
     @contextmanager
@@ -136,6 +132,53 @@ class StreamReporter:
             **fields,
             **extra,
         )
+
+
+class CollectingReporter(RunReporter):
+    """Keeps the events instead of printing them — what a server needs, where
+    there is no terminal to stream to and the events belong *to the run*, attached
+    to the response or to a job record (see agent/service.py's RunResult).
+
+    Same `event()`/`timed()` contract as the stream reporters; only the delivery
+    differs, which is the whole reason that contract exists. `on_event` is the
+    live half: an SSE endpoint or a progress row needs each event as it happens,
+    not a list at the end. A callback that raises is swallowed like any other
+    reporting failure — a broken progress feed must not fail a good run.
+    """
+
+    def __init__(self, level: int = 1, on_event=None) -> None:
+        super().__init__(level=level)
+        self.events: list[dict] = []
+        self._on_event = on_event
+
+    def _deliver(self, kind: str, fields: dict, elapsed: float) -> None:
+        event = {"event": kind, "t": round(elapsed, 4), **fields}
+        with self._lock:
+            self.events.append(event)
+        if self._on_event is not None:
+            try:
+                self._on_event(event)
+            except Exception:  # noqa: BLE001 - see module docstring rule 2
+                pass
+
+
+class StreamReporter(RunReporter):
+    """Writes events to a stream (stderr). Subclasses decide the formatting."""
+
+    def __init__(self, stream=None, level: int = 1) -> None:
+        super().__init__(level=level)
+        self._stream = stream if stream is not None else sys.stderr
+
+    def _deliver(self, kind: str, fields: dict, elapsed: float) -> None:
+        line = self._format(kind, fields, elapsed)
+        if line is None:
+            return
+        with self._lock:
+            self._stream.write(line + "\n")
+            self._stream.flush()
+
+    def _format(self, kind: str, fields: dict, elapsed: float) -> str:
+        raise NotImplementedError
 
 
 class TextReporter(StreamReporter):
@@ -196,11 +239,23 @@ def _render(value) -> str:
     return str(value)
 
 
-def build_reporter(level: int = 0, fmt: str = "text", stream=None):
-    """The single constructor for a reporter — src/main.py's CLI flags and
-    AgentConfig's defaults both come through here, so "how do I get a reporter"
-    has exactly one answer. level=0 returns NullReporter, which is why a
-    non-verbose run has no reporting overhead at all rather than a disabled one."""
+def build_reporter(level: int = 0, fmt: str = "text", stream=None, *, collect=False, on_event=None):
+    """The single constructor for a reporter — the CLI's flags, AgentConfig's
+    defaults, and agent/service.py all come through here, so "how do I get a
+    reporter" has exactly one answer. level=0 returns NullReporter, which is why a
+    non-verbose run has no reporting overhead at all rather than a disabled one.
+
+    `collect`/`on_event` select the CollectingReporter: events are kept (and
+    optionally handed to a callback as they happen) instead of written to a
+    stream. That is what a server wants — it has no terminal, and the events
+    belong to the run it returns. `fmt` doesn't apply there: collected events are
+    already the same dicts the json format serializes.
+    """
+    if collect or on_event is not None:
+        # level 0 with collection requested still has to record: a caller asking
+        # for events has asked for them, and NullReporter would hand back an empty
+        # list that looks like "nothing happened" rather than "reporting was off".
+        return CollectingReporter(level=level or 1, on_event=on_event)
     if not level:
         return NullReporter()
     if fmt == "json":
