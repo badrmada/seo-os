@@ -9,8 +9,6 @@ from pathlib import Path
 import pytest
 from typer.testing import CliRunner
 
-from agent.config.agent_config import AgentConfig
-from agent.managers import ToolsManager
 from agent.managers.providers import CATALOG
 from cli.app import COMMAND_NAMES, app
 
@@ -236,26 +234,7 @@ def test_an_unknown_command_is_rejected():
     assert _invoke(["frobnicate"]).exit_code != 0
 
 
-# --- the provider catalog can't drift from the builders --------------------
-
-@pytest.mark.parametrize("kind", [k for k in CATALOG if not k.is_list], ids=lambda k: k.kind)
-def test_every_catalogued_provider_is_accepted_by_its_builder(kind):
-    """list-tools reads agent/managers/providers.py; the builders are still
-    if/elif ladders. This asserts they agree, so a provider added to one without
-    the other fails here rather than misleading a user."""
-    for name in kind.providers:
-        manager = ToolsManager(AgentConfig(**{kind.config_field: name}))
-        try:
-            getattr(manager, f"build_{kind.kind}")()
-        except Exception as exc:  # noqa: BLE001 - only the "unknown provider" case matters
-            # Other failures are expected here (a "custom" provider with no class
-            # configured, a vendor client with no credentials) — the only thing
-            # asserted is that the name itself is recognized.
-            assert "Unknown" not in str(exc), f"{kind.kind} builder rejects catalogued {name!r}"
-
-
-@pytest.mark.parametrize("kind", [k for k in CATALOG if not k.is_list], ids=lambda k: k.kind)
-def test_an_uncatalogued_provider_name_is_rejected(kind):
-    manager = ToolsManager(AgentConfig(**{kind.config_field: "definitely-not-a-provider"}))
-    with pytest.raises(Exception, match="Unknown|not a provider|definitely-not"):
-        getattr(manager, f"build_{kind.kind}")()
+# The catalog/builder agreement `list-tools` depends on is pinned in
+# src/tests/test_providers.py — it's a property of the provider registry, not of
+# the CLI, and asserting it there can be exact (set equality) rather than
+# "building each catalogued name doesn't say Unknown".

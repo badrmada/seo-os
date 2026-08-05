@@ -32,7 +32,8 @@ class OpportunitySource(Protocol):
         topics/links worth pursuing and return them in the Opportunity shape. This
         is what Echooers uses in place of a bespoke Reddit/trends integration.
       - agent_config.py's discovery_sources provider="custom" — a tenant registers
-        their own class (reusing ToolsManager._load_custom), for a source too
+        their own class (through agent/managers/plugin_loader.py's load_custom),
+        for a source too
         bespoke for "mock"/"llm" — including one whose discover() itself runs a
         full LLM tool-loop (search, browse, summarize) rather than a single
         prompt: this Protocol doesn't care whether what's behind it is a
@@ -104,7 +105,7 @@ class AppAnalyticsClient(Protocol):
         Echooers itself uses (see src/tenant.json) — no tenant gets a
         bespoke Python client baked into this codebase.
       - AgentConfig's analytics_provider="custom" — a tenant registers their own
-        class (agent/managers/tools_manager.py's ToolsManager._load_custom) for the
+        class (through agent/managers/plugin_loader.py's load_custom) for the
         rare case that genuinely needs code (e.g. calling another API, real
         computation), without forking this repo.
     """

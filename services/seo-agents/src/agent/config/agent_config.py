@@ -24,14 +24,32 @@ class AgentConfig:
     # its own base directory to AgentConfigLoader.load_dict().
     config_base_dir: str = ""
 
+    # --- Provider-owned settings ---
+    # Every provider kind below also takes an `*_options` dict, holding the
+    # settings (and secrets) of *the provider that's actually selected*. That is
+    # where new settings go, and where a "custom" class's own settings go — it
+    # keeps a credential next to the thing that uses it instead of on the generic
+    # config, and it means adding a provider never adds a top-level field.
+    #
+    #   {"llm_provider": "gemini", "llm_options": {"api_key": "...", "model": "..."}}
+    #
+    # The older top-level fields (gemini_api_key, llm_model, gsc_key_file,
+    # cloudflare_api_token, ...) keep working as **aliases**: an option wins when
+    # both are set, and nothing existing has to be migrated. See
+    # agent/managers/tools_manager.py's ProviderContext.option, and
+    # docs/configuration.md for the alias table.
+
     # --- LLM ---
-    llm_provider: str = "mock"  # "gemini" or "mock"
-    llm_model: str = "gemini-2.0-flash"
-    gemini_api_key: str = ""
+    llm_provider: str = "mock"  # "gemini", "mock", or "custom"
+    llm_options: dict = field(default_factory=dict)  # api_key, model, timeout_seconds
+    llm_model: str = "gemini-2.0-flash"  # alias for llm_options.model
+    gemini_api_key: str = ""  # alias for llm_options.api_key
+    llm_custom_class: str = ""  # "module:ClassName", used by llm_provider="custom"
 
     # --- Google Search Console (tools/clients/google_search_console.py GoogleSearchConsoleClient) ---
     gsc_provider: str = "mock"  # "google" (real API calls) or "mock" (offline, deterministic)
-    gsc_key_file: str = "service_account.json"
+    gsc_options: dict = field(default_factory=dict)  # key_file, timeout_seconds
+    gsc_key_file: str = "service_account.json"  # alias for gsc_options.key_file
 
     # --- Site traffic (tools/base.py's SiteTrafficClient Protocol) ---
     # "none" (no traffic tool) | "mock" (product-neutral canned text) | "cloudflare"
@@ -39,8 +57,9 @@ class AgentConfig:
     # JSON, mapped declaratively — see traffic_summary_template below) | "custom"
     # (a tenant-registered class, for cases too bespoke for a template).
     traffic_provider: str = "mock"
-    cloudflare_api_token: str = ""  # used by traffic_provider="cloudflare"
-    cloudflare_zone_id: str = ""  # used by traffic_provider="cloudflare"
+    traffic_options: dict = field(default_factory=dict)  # the selected provider's own settings
+    cloudflare_api_token: str = ""  # alias for traffic_options.api_token
+    cloudflare_zone_id: str = ""  # alias for traffic_options.zone_id
     traffic_custom_class: str = ""  # "module.path:ClassName", used by traffic_provider="custom"
 
     # --- traffic_provider="templated" only (tools/clients/traffic_templated.py) ---
@@ -61,6 +80,7 @@ class AgentConfig:
     # template — see analytics_custom_class below). No tenant gets a bespoke Python
     # client baked into this codebase — "templated" covers that instead.
     analytics_provider: str = "mock"
+    analytics_options: dict = field(default_factory=dict)  # the selected provider's own settings
     analytics_report_path: str = "tools/report.json"  # "templated" provider + source="file"
     analytics_custom_class: str = ""  # "module.path:ClassName", used by the "custom" provider
     analytics_highlights_limit: int = 3  # how many highlights to hand the LLM per draft

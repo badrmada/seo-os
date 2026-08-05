@@ -331,9 +331,18 @@ nothing under `agent/graph/` ever imports Cloudflare, Gemini, or Google directly
 a step's logic never changes based on which vendor (or fake, or template, or
 your own code) is actually behind the interface.
 
+That decision is a **registry**, `kind -> {provider name -> factory}`, not a
+chain of `if`s — and the names in it are asserted to be the same set as the
+catalog `list-tools` reads
+([`agent/managers/providers.py`](../src/agent/managers/providers.py)). Neither
+file can grow a provider the other doesn't have, so `list-tools` cannot advertise
+something that won't build, and nothing can be buildable but undocumented.
+Adding a provider is one factory and one description; its settings go in that
+provider's own `options` rather than becoming another top-level config field.
+
 | Interface | What it provides | Available providers |
 |---|---|---|
-| `LLMClient` | Turn a prompt into text | `mock`, `gemini` |
+| `LLMClient` | Turn a prompt into text | `mock`, `gemini`, `custom` |
 | `GSCClient` | Search Console rows (query, position, clicks) | `mock`, `google` |
 | `AppAnalyticsClient` | Your analytics → `{summary, highlights}` | `mock`, `templated`, `custom` |
 | `SiteTrafficClient` | Your traffic → `{summary}` | `none`, `mock`, `cloudflare`, `templated`, `custom` |

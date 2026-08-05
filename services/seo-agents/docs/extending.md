@@ -42,6 +42,11 @@ So the contract for your class is just this:
   unchanged; they load their own settings from env vars or their own file
   instead, and every example under [`examples/`](../examples/) still does it that
   way.)
+
+  Where that object lives depends on the kind: `llm_options`, `analytics_options`
+  and `traffic_options` for the single-choice jobs, and the entry's own
+  `"options"` key for a discovery source or an output sink. Your class receives
+  exactly that dict — never the surrounding entry.
 - **Method:** whatever the target interface requires (table below). Write it as
   `def` **or** `async def` — both are complete, correct plugins:
 
@@ -78,6 +83,33 @@ So the contract for your class is just this:
 | `traffic_custom_class` | `SiteTrafficClient` | `traffic_summary(self, days: int = 28) -> dict` | `{"summary": str}` |
 | `discovery_sources[i]["class"]` | `OpportunitySource` | `discover(self, context: dict) -> list[dict]` | a list of opportunity dicts (shape below) |
 | `output_sinks[i]["class"]` | `OutputSink` | `emit(self, output: dict) -> None` | nothing — it's a side effect |
+| `llm_custom_class` | `LLMClient` | `generate(self, prompt: str, *, model=None, grounded=False)` | an `LLMResponse` (below) |
+
+**A custom LLM** is how you use a model this repo has no built-in client for — a
+different vendor, a local model, a gateway, or a wrapper that adds retries or
+caching around Gemini. Return
+[`tools/llm/base.py`](../src/tools/llm/base.py)'s `LLMResponse`:
+
+```python
+# userdata/acme/plugins/my_llm.py
+from tools.llm.base import LLMResponse
+
+
+class Client:
+    def __init__(self, config, options=None):
+        self.options = options or {}
+
+    def generate(self, prompt, *, model=None, grounded=False):
+        text = call_your_model(prompt, model=model or self.options.get("model"))
+        return LLMResponse(text=text, tokens=0)
+```
+
+Leave `grounded` False in the response unless your model **actually** performed a
+web search — that flag is a claim the rest of the system trusts when deciding
+whether a link is real or invented (see
+[architecture.md](architecture.md#discovery-the-agent-finding-its-own-work)).
+Ignoring the parameter is fine and expected; claiming grounding you didn't do is
+not.
 
 The return shapes are exactly what the `"templated"` provider produces, and the
 same ones documented in [configuration.md](configuration.md) — `"custom"` is

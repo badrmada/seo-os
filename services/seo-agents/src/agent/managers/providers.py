@@ -2,11 +2,14 @@
 accepts — one declarative place, so the CLI's `list-tools` reports what the system
 actually supports instead of a hand-maintained list that drifts.
 
-Today the concrete builders in tools_manager.py are still if/elif ladders and this
-catalog describes them; `src/tests/test_providers.py` asserts the two agree, so a
-provider added to one without the other fails the suite. PLAN.md Step 1 replaces
-those ladders with a registry built from this catalog, at which point the two
-cannot disagree at all.
+This file stays free of client imports on purpose: `list-tools` answers "what
+could I configure?" without constructing anything, so it must not drag in
+google-genai, httpx, or a tenant's plugins to do it. The factories therefore live
+next to the things they build — `agent/managers/tools_manager.py`'s `_REGISTRY`
+for tools, `agent/managers/output_manager.py`'s `_SINK_FACTORIES` for sinks — and
+`src/tests/test_providers.py` asserts, per kind, that the names here and the
+names there are the *same set*. Neither file can grow a provider the other
+doesn't have.
 """
 
 from dataclasses import dataclass
@@ -42,6 +45,7 @@ CATALOG = (
         providers={
             "gemini": "Google Gemini, with optional Google Search grounding",
             "mock": "offline, deterministic — no API calls",
+            "custom": CUSTOM,
         },
     ),
     ProviderKind(

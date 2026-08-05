@@ -200,6 +200,24 @@ about status and direction.
   framework, the scheduler. See
   [architecture.md](architecture.md#calling-the-agent-the-service-layer).
 
+- **A provider registry, and provider-owned settings.** `ToolsManager`'s five
+  parallel if/elif ladders are one registry, `kind -> {name -> factory}`, and
+  `src/tests/test_providers.py` asserts per kind that its names are the *same
+  set* as the catalog `list-tools` reads. Before, a test could only check that
+  each catalogued name was accepted: a factory nobody had catalogued was
+  invisible, and a catalogued name with no factory reached the user as a
+  confusing "Unknown provider". Adding a provider is now one factory and one
+  description.
+
+  `llm_provider: "custom"` (via `llm_custom_class`) closes the last gap in the
+  `"custom"` mechanism — bringing your own model, gateway, or local LLM no longer
+  means forking. And each kind takes an `<kind>_options` object holding the
+  settings of the provider actually selected, with the top-level fields
+  (`gemini_api_key`, `gsc_key_file`, `cloudflare_api_token`, …) kept as working
+  **aliases**: an option wins where both are set, and no existing tenant config
+  has to be migrated. A credential now lives next to the thing that uses it, and
+  adding a provider never adds a top-level field.
+
 ## Next
 
 Roughly in priority order:

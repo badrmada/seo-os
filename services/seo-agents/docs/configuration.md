@@ -46,6 +46,37 @@ So `"analytics_provider": "templated"` means "map my analytics with a template,"
 and `"traffic_provider": "cloudflare"` means "get traffic from Cloudflare." Once
 you've seen this for one job, every other job reads the same way.
 
+`python src/main.py list-tools --all` prints this menu for every job, with your
+tenant's current choice marked. It reads the same registry the agent builds
+from, so it can't tell you about a provider that doesn't exist, or omit one that
+does.
+
+### Two ways to write a provider's settings
+
+Each job also takes an `<job>_options` object, holding the settings of **the
+provider you actually picked**:
+
+```jsonc
+{
+  "llm_provider": "gemini",
+  "llm_options": { "api_key": "YOUR_GEMINI_API_KEY", "model": "gemini-pro-latest" }
+}
+```
+
+The older top-level fields (`gemini_api_key`, `llm_model`, `gsc_key_file`,
+`cloudflare_api_token`, …) **keep working exactly as before** — they're aliases
+for the same settings, and every example on this page still uses them. If you set
+both, the option wins.
+
+| Prefer `options` when | Prefer the top-level field when |
+|---|---|
+| You're writing a new config, or a `custom` class that needs settings of its own. | You already have a working config. There is nothing to migrate. |
+
+The reason for the shape: a setting belongs next to the provider that uses it —
+that's where its credential belongs too — and it means adding a provider never
+adds another top-level field to every tenant's config. The per-job tables below
+list each provider's option names alongside the field they alias.
+
 The rest of this page goes job by job.
 
 ---
@@ -56,13 +87,30 @@ The model that writes your drafts.
 
 | Field | Type | Default | Notes |
 |---|---|---|---|
-| `llm_provider` | `str` | `"mock"` | `"mock"` (offline, no key) or `"gemini"`. |
-| `llm_model` | `str` | `"gemini-2.0-flash"` | Model name passed to Gemini. |
-| `gemini_api_key` | `str` | `""` | Required when `llm_provider` is `"gemini"`. Get one from [Google AI Studio](https://aistudio.google.com/apikey). |
+| `llm_provider` | `str` | `"mock"` | `"mock"` (offline, no key), `"gemini"`, or `"custom"`. |
+| `llm_model` | `str` | `"gemini-2.0-flash"` | Model name passed to Gemini. Alias for `llm_options.model`. |
+| `gemini_api_key` | `str` | `""` | Required when `llm_provider` is `"gemini"`. Get one from [Google AI Studio](https://aistudio.google.com/apikey). Alias for `llm_options.api_key`. |
+| `llm_custom_class` | `str` | `""` | `"module:ClassName"`, when `llm_provider` is `"custom"`. |
+| `llm_options` | `dict` | `{}` | The selected provider's own settings — for `"gemini"`: `api_key`, `model`, `timeout_seconds` (default 120). For `"custom"`: whatever your class wants. |
 
 ```jsonc
 { "llm_provider": "gemini", "llm_model": "gemini-pro-latest", "gemini_api_key": "YOUR_GEMINI_API_KEY" }
 ```
+
+**Bringing your own model.** `"custom"` points at a class of yours implementing
+one method, exactly like the other jobs — a different vendor, a local model, a
+gateway, or a wrapper that adds retries to Gemini:
+
+```jsonc
+{
+  "llm_provider": "custom",
+  "llm_custom_class": "my_llm:Client",
+  "llm_options": { "endpoint": "http://localhost:11434", "model": "llama3" }
+}
+```
+
+See [extending.md](extending.md) for the class contract (`generate(prompt, *,
+model=None, grounded=False) -> LLMResponse`, sync or async).
 
 ---
 
@@ -75,7 +123,8 @@ can push you onto page one.
 | Field | Type | Default | Notes |
 |---|---|---|---|
 | `gsc_provider` | `str` | `"mock"` | `"mock"` or `"google"`. |
-| `gsc_key_file` | `str` | `"service_account.json"` | Path to your Google **service-account key file** (see below). |
+| `gsc_key_file` | `str` | `"service_account.json"` | Path to your Google **service-account key file** (see below). Alias for `gsc_options.key_file`. |
+| `gsc_options` | `dict` | `{}` | For `"google"`: `key_file`, `timeout_seconds` (default 30, per request). |
 
 ### Setting up the service account (one-time)
 
@@ -138,6 +187,7 @@ reference. You have four ways to provide it.
 | `traffic_api_headers` | `dict` | `{}` | `"templated"` + `source="api"` (e.g. an auth header). |
 | `traffic_api_timeout_seconds` | `float` | `10.0` | `"templated"` + `source="api"`. |
 | `traffic_summary_template` | `str` | `""` | `"templated"` — produces the `summary` text. |
+| `traffic_options` | `dict` | `{}` | The selected provider's own settings. For `"cloudflare"`: `api_token`, `zone_id`, `timeout_seconds` (default 15). For `"templated"`: `source`, `report_path`, `api_url`, `api_method`, `api_headers`, `api_timeout_seconds`, `summary_template` — each aliasing the `traffic_*` field of the same name above. For `"custom"`: whatever your class wants. |
 
 - **`"none"`** — you have no traffic tool. The `summary` stays empty and prompts
   skip it cleanly. Perfectly fine.
@@ -189,6 +239,7 @@ things for the writer:
 | `analytics_api_timeout_seconds` | `float` | `10.0` | `"templated"` + `source="api"`. |
 | `analytics_summary_template` | `str` | `""` | `"templated"` — produces the `summary`. |
 | `analytics_highlights_template` | `str` | `""` | `"templated"` — produces the `highlights` JSON array. |
+| `analytics_options` | `dict` | `{}` | The selected provider's own settings, aliasing the `analytics_*` fields above the same way `traffic_options` does. For `"custom"`: whatever your class wants. |
 
 How to connect it: **use `"templated"` if your analytics is JSON you can map
 with a snippet** (the common case — covered in depth next). Use `"custom"` if it
