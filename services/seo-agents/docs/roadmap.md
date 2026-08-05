@@ -63,6 +63,38 @@ about status and direction.
   ungrounded behavior. This replaces most of the motivation for a bespoke
   Reddit/trends vendor client (below): real web results without maintaining
   another API integration.
+
+- **`SearchClient` — grounding is the system's job, not the model's.** A
+  `search_provider`, defaulting to **`duckduckgo`** (no API key, no account),
+  that `"llm"` discovery uses *ahead of* the model's own grounding. The order is
+  documented and tested: a configured search client, else the LLM's native
+  grounding, else ungrounded — each step falling through to the next when it
+  yields nothing, so a search outage costs a source its grounding rather than its
+  results.
+
+  The reason it outranks native grounding: Gemini can search for itself and most
+  things can't, so building discovery on that made "can this agent see the real
+  web?" a property of which model a tenant picked. Now it isn't — a local model
+  behind `llm_provider: "custom"` grounds exactly as well as Gemini does.
+
+  How it works: one cheap ungrounded call asks the model for a few short search
+  queries (a run usually has no seed keyword — that is what discovery is *for*),
+  those run concurrently, and the merged, de-duplicated results go into the
+  discovery prompt with their URLs as the only trusted list. Native grounding is
+  switched off for that call even on Gemini: the facts are already in the prompt,
+  and searching twice for one answer makes "which URLs are trustworthy?"
+  ambiguous. `"search_provider": "none"` restores the previous behavior exactly,
+  and `"grounded": false` on a source still skips all of it.
+
+  Two things a real run taught, both now in the code: DuckDuckGo **rate-limits by
+  IP** (about twenty searches in, everything fails for a while), so
+  `fallback_backend` asks another engine before a run gives up on grounding; and
+  falling through must never be silent, so every opportunity records
+  `raw.grounding` (`"search"`/`"llm"`/`"none"`) and `raw.grounding_error`. The
+  first version of this shipped a run that reported success while quietly
+  producing unverified links, with nothing anywhere saying so. See
+  [architecture.md](architecture.md#grounding-a-system-capability-not-a-model-feature).
+
 - **Discovery contract enforced, not trusted.** Every item any
   `OpportunitySource` returns (`mock`/`llm`/`custom` alike) is coerced by
   `agent/schemas/opportunity.py`'s `normalize_opportunity`, called from
@@ -237,20 +269,17 @@ lives up to today:
   grow a site; telling someone what to fix on the site they already have is
   another.
 
-1. **`SearchClient` — pluggable grounding.** A search provider discovery can use
-   when the LLM has no native grounding of its own, ahead of the model's own
-   grounding and ahead of ungrounded discovery, in that documented order.
-2. **A built-in `provider: "mcp"` discovery source.** MCP already works as a
+1. **A built-in `provider: "mcp"` discovery source.** MCP already works as a
    `"custom"` class ([`examples/06-mcp-discovery/`](../examples/06-mcp-discovery/)),
    but every user writes the same stdio boilerplate.
-3. **Signal inputs as a named list.** `Tools` has three fixed slots — `gsc`,
+2. **Signal inputs as a named list.** `Tools` has three fixed slots — `gsc`,
    `traffic`, `analytics` — so swapping Cloudflare for Plausible works while
    *adding* a trends feed does not. Signals get the shape `discovery_sources`
    already has: a named list, any number, any provider. The three built-in slots
    stay as views onto it, so no config breaks.
-4. **Stage and pipeline registration.** Config-declared stages, and a pipeline
+3. **Stage and pipeline registration.** Config-declared stages, and a pipeline
    spec per agent type rather than one global default.
-5. **A `seo_audit` agent type.** Crawl the site, read the sitemap, cross-
+4. **A `seo_audit` agent type.** Crawl the site, read the sitemap, cross-
    reference the configured signals, and return prioritized recommendations —
    thin or duplicate pages, weak metadata, broken internal links, orphan pages,
    pages ranking 11–20 that deserve work rather than a new article. A separate
@@ -259,7 +288,7 @@ lives up to today:
    came from; the crawler is bounded by default (robots.txt, rate limits, page
    and depth caps) because it is the one tool here that can hurt someone else's
    server.
-6. **State persistence.** `InMemoryStateStore` promoted to a selectable provider
+5. **State persistence.** `InMemoryStateStore` promoted to a selectable provider
    — file/JSONL first, since it needs no infrastructure and survives the process.
 
 ## Explicitly out of scope for this agent

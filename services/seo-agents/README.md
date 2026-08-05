@@ -12,8 +12,9 @@ It's built as a small **team of specialized workers** rather than one giant
 prompt: one finds opportunities, one decides the best channel, one gathers your
 data, one writes, and one reviews the result. Each worker leans on **tools** you
 plug in — your analytics, your traffic numbers, a search engine, or your own
-code. Out of the box it can search the live web (via Google Search) to find
-what's worth writing about right now.
+code. Out of the box it searches the live web (via DuckDuckGo — no API key) to
+find what's worth writing about right now, and it only recommends pages that
+search actually returned.
 
 The idea in one line: **bring your data, bring your tools, customize the voice —
 and let the agent do the repetitive growth work.**
@@ -47,9 +48,11 @@ Configure it for your own product; no forking required.
 ## What it does
 
 - **Finds its own opportunities** *(optional)* — instead of waiting for you to
-  say what to write about, it can go look. It asks an AI model, calls a search
-  engine or any API, or even runs your own research code to surface topics,
-  threads, and links worth acting on right now.
+  say what to write about, it can go look. It searches the real web, asks an AI
+  model to read the results, calls any API, or runs your own research code to
+  surface topics, threads, and links worth acting on right now. A link it hands
+  you is one search actually returned — a URL the model made up is thrown away,
+  not passed off as real.
 - **Picks the right kind of content** — based on what it found, it decides
   whether this run should be an article on your own site, an article for
   somewhere else (Medium, a partner blog), or a genuine reply in an existing
@@ -195,7 +198,9 @@ Every job is two lines: **which provider**, and **that provider's own options**.
     "highlights_template": "[{% for i in data.data.top_by_upvotes[:limit] %}{\"label\": {{ (i.content[:200] + \" (\" + i.upvotes|string + \" upvotes, \" + i.views|string + \" views)\")|tojson }}, \"url\": {{ (\"https://echooers.com/idea/\" + i.id)|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}]"
   },
 
-  // --- Discovery: let an AI model (backed by live Google Search) find topics ---
+  // --- Discovery: let an AI model find topics, grounded in a real web search ---
+  // Search is on by default via DuckDuckGo — no key, no account, nothing to
+  // configure. "search_provider": "none" turns it off.
   "discovery_sources": [
     { "name": "echooers_ideas", "provider": "llm", "max_opportunities": 5 }
   ],
@@ -229,8 +234,10 @@ instead of a day — nothing more. Every one of them can be dropped or replaced:
 |---|---|
 | don't use Cloudflare | `"traffic_provider": "templated"` (any traffic tool's JSON), or `"none"` |
 | don't have Search Console set up | `"gsc_provider": "mock"` — the agent falls back to your seed keyword and analytics |
-| use a different model, a local one, or a gateway | `"llm_provider": "custom"` + your class |
+| use a different model, a local one, or a gateway | `"llm_provider": "custom"` + your class — grounding still works, it doesn't come from the model |
 | have analytics in your own database | `"analytics_provider": "custom"` + your class |
+| don't want the agent searching the web | `"search_provider": "none"` |
+| have your own search API (Bing, Serper, SearxNG) | `"search_provider": "custom"` + your class |
 
 A `tenant.json` with three lines runs. Everything you leave out keeps a
 sensible, product-neutral default, and `python src/main.py list-tools --all`

@@ -76,7 +76,11 @@ decided (see
       "signal_strength": 0.8,        // 0-1
       "intent": "discussion",         // "commercial" | "informational" | "mixed" | "discussion"
       "suggested_channel_hint": "engagement_comment",  // a Channel value, or null
-      "raw": { },                       // source-specific, kept for context — shape varies by source
+      "raw": { },                       // source-specific, kept for context — shape varies by source.
+                                          // An "llm" source records how it was grounded here:
+                                          // "grounding": "search" | "llm" | "none", the URLs it was
+                                          // allowed to cite in "grounding_sources", and
+                                          // "grounding_error" if a search failed and it fell back.
       "reason": "..."
     }
   ],

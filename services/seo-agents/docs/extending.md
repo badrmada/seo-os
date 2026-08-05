@@ -2,8 +2,8 @@
 
 The whole point of the provider pattern (see
 [architecture.md](architecture.md#the-four-provider-flavors-mock-templated-custom-llm))
-is that plugging in your own analytics source, traffic source, or opportunity
-finder comes down to three steps:
+is that plugging in your own analytics source, traffic source, search engine, or
+opportunity finder comes down to three steps:
 
 1. `pip install -r requirements.txt` (plus whatever your own code needs).
 2. Write one Python class with the method the interface expects.
@@ -459,24 +459,32 @@ the SDK does underneath); prefer the official `mcp` SDK above for real work.
 ## Adding a new provider *kind* (not just a new instance)
 
 Everything above adds a new **instance** of an interface that already exists
-(analytics, traffic, a discovery source) — no repo changes. Adding a genuinely
-new *kind* of pluggable thing — a fifth interface, or a new LLM/GSC vendor
-(since those two don't have a `"custom"` slot today) — does mean touching this
-repo:
+(the LLM, analytics, traffic, search, a discovery source) — no repo changes.
+Adding a genuinely new *kind* of pluggable thing — a seventh interface, or a new
+Search Console vendor (the one kind with no `"custom"` slot today) — does mean
+touching this repo:
 
 1. Add the interface to [`tools/base.py`](../src/tools/base.py).
 2. Add a field for it to
    [`agent/graph/tools.py`](../src/agent/graph/tools.py)'s `Tools` dataclass.
-3. Add a `build_x()` method to
-   [`agent/managers/tools_manager.py`](../src/agent/managers/tools_manager.py)'s
-   `ToolsManager`, plus the matching `*_provider` field(s) in
+3. Add the `<kind>_provider` / `<kind>_options` / `<kind>_custom_class` fields to
    [`agent/config/agent_config.py`](../src/agent/config/agent_config.py).
-4. Use it from whichever step needs it (`agent/graph/stages/`).
+4. Add the kind to **both** halves of the registry: a `ProviderKind` in
+   [`agent/managers/providers.py`](../src/agent/managers/providers.py)'s
+   `CATALOG` (what `list-tools` prints) and a `kind -> {name -> factory}` entry
+   in [`agent/managers/tools_manager.py`](../src/agent/managers/tools_manager.py)'s
+   `_REGISTRY`, plus a `build_<kind>()` method. `src/tests/test_providers.py`
+   fails if the two disagree, so you can't ship half of this.
+5. Use it from whichever step needs it (`agent/graph/stages/`).
 
-This is genuinely rare — the four interfaces that exist today ("keyword data,"
-"product analytics," "traffic," and "content opportunities") already cover a lot
-of ground. If you find yourself here, it's worth opening an issue first, in case
-what you need actually fits one of the existing four with a `"custom"` class.
+`SearchClient` is the most recent worked example of exactly these five steps, if
+you want one to read.
+
+This is genuinely rare — the interfaces that exist today (the model, web search,
+keyword data, product analytics, traffic, and content opportunities) already
+cover a lot of ground. If you find yourself here, it's worth opening an issue
+first, in case what you need actually fits an existing one with a `"custom"`
+class.
 
 ## See also
 

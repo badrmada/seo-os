@@ -89,6 +89,26 @@ class ObservedLLMClient(_Observed):
             return response
 
 
+class ObservedSearchClient(_Observed):
+    """SearchClient proxy. How many results a query got back is the one number
+    that says which grounding path a run actually took: zero means discovery fell
+    through to the LLM's own grounding (or to none at all), which changes what the
+    results mean — see tools/clients/opportunity_llm.py's resolution order."""
+
+    async def search(self, query: str, limit: int = 10) -> list:
+        fields = {"limit": limit}
+        if self._reporter.level >= _DETAIL:
+            fields["query"] = preview(query, 120)
+        with self._call("search", **fields) as call:
+            results = await acall(self._inner.search, query, limit=limit)
+            call["results"] = len(results or ())
+            if self._reporter.level >= _DETAIL and results:
+                call["urls"] = [
+                    result.get("url", "") for result in results if isinstance(result, dict)
+                ]
+            return results
+
+
 class ObservedGSCClient(_Observed):
     async def search_analytics(self, site_url: str, days: int = 28, row_limit: int = 500):
         with self._call("search_analytics", days=days) as call:
@@ -145,6 +165,12 @@ def observe_tools(tools, reporter):
 
     Returns the bundle unchanged when reporting is off, so a non-verbose run has no
     proxies in the call path at all.
+
+    One granularity note, true of the LLM and the search client alike: a discovery
+    source is handed its clients at construction (ToolsManager, before a reporter
+    exists), so the LLM and search calls a source makes *inside* discover() are
+    reported as that one `discover` event rather than individually. The proxies
+    below cover every call made through the Tools bundle itself.
     """
     if getattr(reporter, "level", 0) < 1:
         return tools
@@ -154,6 +180,7 @@ def observe_tools(tools, reporter):
         analytics=ObservedAnalyticsClient(tools.analytics, reporter, "analytics"),
         traffic=ObservedTrafficClient(tools.traffic, reporter, "traffic"),
         llm=ObservedLLMClient(tools.llm, reporter, "llm"),
+        search=ObservedSearchClient(tools.search, reporter, "search"),
         discovery_sources={
             name: ObservedOpportunitySource(source, reporter, name)
             for name, source in tools.discovery_sources.items()

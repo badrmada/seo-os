@@ -54,6 +54,30 @@ class AgentConfig:
     llm_options: dict = field(default_factory=dict)
     llm_custom_class: str = ""  # "module:ClassName", used by llm_provider="custom"
 
+    # --- Web search (tools/base.py's SearchClient Protocol) ---
+    # The system's own grounding for "llm" discovery: search the real web first,
+    # put the results in the prompt, and trust only those URLs. It defaults to
+    # "duckduckgo" — on rather than off, and a search engine rather than the
+    # model — because grounding shouldn't depend on which LLM a tenant picked.
+    # Gemini has native grounding; a local model or a gateway generally doesn't,
+    # and DuckDuckGo needs no API key, account, or billing relationship, so every
+    # tenant gets real pages on their first run.
+    #   "duckduckgo": the default. Options: backend ("duckduckgo"; "auto" lets
+    #                 ddgs aggregate several engines), region ("wt-wt"),
+    #                 safesearch ("moderate"), timelimit ("" | "d"/"w"/"m"/"y"),
+    #                 timeout_seconds (10).
+    #   "none":       no search tool; discovery falls back to the LLM's own
+    #                 grounding, then to ungrounded generation.
+    #   "mock":       offline, deterministic, no network.
+    #   "custom":     a tenant's own class (Bing, Serper, a self-hosted SearxNG,
+    #                 an internal index) via search_custom_class.
+    # Only reached when a discovery source has grounding on; a tenant with no
+    # discovery_sources never searches. See tools/clients/opportunity_llm.py for
+    # the full resolution order.
+    search_provider: str = "duckduckgo"
+    search_options: dict = field(default_factory=dict)
+    search_custom_class: str = ""  # "module.path:ClassName", used by search_provider="custom"
+
     # --- Google Search Console (tools/clients/google_search_console.py GoogleSearchConsoleClient) ---
     gsc_provider: str = "mock"  # "google" (real API calls) or "mock" (offline, deterministic)
     # "google": key_file (default "service_account.json"), timeout_seconds (30)

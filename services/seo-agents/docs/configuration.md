@@ -39,7 +39,7 @@ offers the same small menu:
 | `mock` | A built-in fake. No network, no keys, same output every time. | Trying things out, tests, offline demos. |
 | `templated` | *Your* data (a JSON file or an API), reshaped with a short template. **No code.** | Your data is JSON and you can map it with a snippet — most analytics/traffic cases. |
 | `custom` | *Your* Python class. | The logic is real code: a database query, a bespoke API, a multi-step routine. |
-| A vendor name (`gemini`, `google`, `cloudflare`) | A real, built-in integration with that vendor. | You use that specific vendor. |
+| A vendor name (`gemini`, `google`, `cloudflare`, `duckduckgo`) | A real, built-in integration with that vendor. | You use that specific vendor. |
 | `llm` *(discovery only)* | The AI model itself finds the opportunities. | You want the agent to discover topics without building an integration. |
 
 So `"analytics_provider": "templated"` means "map my analytics with a template,"
@@ -61,8 +61,10 @@ any of them, or all of them:
   `"custom"` runs your own code, and `"none"` turns traffic off entirely.
 - No Search Console? `"gsc_provider": "mock"`. The agent picks its topic from
   your seed keyword, your analytics, or what discovery found instead.
-- Different model, a local one, or a gateway? `"llm_provider": "custom"`.
+- Different model, a local one, or a gateway? `"llm_provider": "custom"` — and
+  grounding still works, because searching is the system's job, not the model's.
 - Analytics in your own database? `"analytics_provider": "custom"`.
+- Don't want the agent searching the web? `"search_provider": "none"`.
 
 A `tenant.json` of `{}` runs. Every job has a working default, and no job
 requires a vendor account.
@@ -134,6 +136,78 @@ gateway, or a wrapper that adds retries to Gemini:
 
 See [extending.md](extending.md) for the class contract (`generate(prompt, *,
 model=None, grounded=False) -> LLMResponse`, sync or async).
+
+---
+
+## Web search (how discovery stays grounded)
+
+When discovery is on, the agent **searches the real web before it writes
+anything**, and only trusts URLs that came back from that search. This is on by
+default and it uses **DuckDuckGo** — no API key, no account, no billing.
+
+| Field | Type | Default | Notes |
+|---|---|---|---|
+| `search_provider` | `str` | `"duckduckgo"` | `"duckduckgo"`, `"none"`, `"mock"`, or `"custom"`. |
+| `search_custom_class` | `str` | `""` | `"module:ClassName"`, when `search_provider` is `"custom"`. |
+| `search_options` | `dict` | `{}` | The selected provider's settings — see below. |
+
+| `search_options` for `"duckduckgo"` | Default | Notes |
+|---|---|---|
+| `backend` | `"duckduckgo"` | Which engine to ask first. `"auto"` lets the library pick; a comma-separated list names specific ones. |
+| `fallback_backend` | `"auto"` | Asked only when `backend` raises or finds nothing. Set to `""` for strictly-DuckDuckGo-or-nothing. |
+| `region` | `"wt-wt"` | Worldwide. `"us-en"`, `"uk-en"`, `"fr-fr"`, … to localize results. |
+| `safesearch` | `"moderate"` | `"on"`, `"moderate"`, or `"off"`. |
+| `timelimit` | `""` | `"d"`, `"w"`, `"m"`, `"y"` to restrict to the last day/week/month/year. `""` is no limit. |
+| `timeout_seconds` | `10` | Per search. |
+
+**Why a search engine rather than the model's own grounding.** Gemini can search
+for itself; a local model, a gateway, or most other vendors can't. Making
+grounding the *system's* job instead of the model's means "does this agent find
+real pages?" stops depending on which model you picked — and you can change model
+without changing what the agent can see.
+
+The order is exact and documented:
+
+1. **A search provider** (the default). The agent writes a few short search
+   queries, runs them, puts the real results in the prompt, and treats those URLs
+   as the only trustworthy ones. Anything else the model claims is discarded.
+2. **The model's own grounding**, if it has any (today: Gemini) — used when
+   search is off or found nothing.
+3. **Neither.** The model answers from training data, and links come back
+   unverified. `-v` says so out loud rather than letting it pass silently.
+
+Each step falls through to the next: a search that errors or returns nothing
+costs the run its search grounding, not its results.
+
+**Falling through is never silent.** Every opportunity records which step
+produced it — `raw.grounding` is `"search"`, `"llm"`, or `"none"`, with
+`raw.grounding_error` when a search failed — so "these links were verified" and
+"the search engine was rate-limiting us" are distinguishable in the output rather
+than both looking like a successful run.
+
+**Why `fallback_backend` exists.** DuckDuckGo rate-limits by IP: after enough
+searches from one address, every request fails for a while. That's fine for the
+occasional run and bad as a *default*, so when DuckDuckGo won't answer the client
+asks another engine rather than letting a run quietly stop grounding.
+
+**Turning it off.** `"search_provider": "none"` goes straight to step 2 —
+Gemini's native grounding, as before. `"grounded": false` on a discovery source
+skips 1 *and* 2 for that source.
+
+**Your own engine.** Bing, Serper, Brave, a self-hosted SearxNG, or an internal
+index — one method, `search(query, limit=10) -> [{"title", "url", "snippet"}]`,
+sync or async:
+
+```jsonc
+{
+  "search_provider": "custom",
+  "search_custom_class": "my_search:Client",
+  "search_options": { "api_key": "…" }
+}
+```
+
+Nothing searches unless `discovery_sources` is configured — a tenant that isn't
+using discovery makes no search calls at all.
 
 ---
 
@@ -484,8 +558,22 @@ depend on the provider:
 | Provider | Extra fields | Notes |
 |---|---|---|
 | `"mock"` | `"fail"` (`bool`, default `false`) | A fixed fixture for testing. `"fail": true` simulates the source erroring. |
-| `"llm"` | `"prompt_template"` (optional), `"max_opportunities"` (default `5`), `"grounded"` (default `true`) | The AI model finds opportunities. **Grounded (default) backs it with live Google Search** — real results with real citation URLs, not a guess from training data. Set `"grounded": false` for the old behavior. |
+| `"llm"` | `"prompt_template"` (optional), `"max_opportunities"` (default `5`), `"grounded"` (default `true`), plus the search settings below | The AI model finds opportunities. **Grounded by default**: it searches the real web first (see [Web search](#web-search-how-discovery-stays-grounded)) and only keeps links that came back from that search. Set `"grounded": false` to skip all grounding for this source. |
 | `"custom"` | `"class"` (`"module:ClassName"` — a file in your tenant's `plugins/` folder) | Your own finder — see [extending.md](extending.md). |
+
+A `"llm"` source decides what to search for by asking the model for a few short
+queries first (a cheap, ungrounded call). These control that half:
+
+| `"llm"` search field | Default | Notes |
+|---|---|---|
+| `"search_queries"` | `[]` | Fixed queries. Set them and the query-writing model call is skipped entirely. |
+| `"max_search_queries"` | `3` | How many queries to run. They go out concurrently, so three cost about what one does. |
+| `"results_per_query"` | `5` | Results requested per query. |
+| `"max_search_results"` | `12` | Cap on the merged, de-duplicated list that reaches the prompt. |
+| `"query_prompt_template"` | `""` | Your own Jinja2 prompt for writing the queries. Same variables as `prompt_template`, plus `max_queries`. |
+
+With no queries and no `input.seed_keyword`, the agent doesn't search — it falls
+through to the model's own grounding rather than guessing at a query.
 
 You can list **several** sources; they all run (in parallel when there are 2+)
 and their results are pooled. Example — one AI source plus your own Reddit
@@ -670,11 +758,12 @@ python src/main.py run --tenant acme -vv     # also shows prompts, responses, an
 [  0.00s] > run 76e5ef96  channel=auto seed_keyword="static site seo" sources=3
 [  0.03s]   > discover_source [trends]
 [  0.03s]     > trends.discover
-[  0.03s]     < trends.discover  0ms  found=1
+[  2.31s]     < trends.discover  2280ms  found=1
 [  0.03s]     ! broken.discover  0ms  error="RuntimeError: source 'broken' configured to fail"
-[  0.04s]     > llm.generate  grounded=True
-[  2.31s]     < llm.generate  2306ms  tokens=812 sources=3
-[  2.31s] < run 76e5ef96  phase=done tokens=812 opportunities=2 tool_errors=1
+[  2.40s]   > draft
+[  2.41s]     > llm.generate  grounded=False
+[  5.02s]     < llm.generate  2610ms  tokens=812 sources=0
+[  5.03s] < run 76e5ef96  phase=done tokens=812 opportunities=2 tool_errors=1
 ```
 
 **All of it goes to stderr**, never stdout — stdout still carries only the result
@@ -683,6 +772,11 @@ JSON, so `python src/main.py run --tenant acme -v | jq` works exactly as before.
 The `!` lines are the reason this exists: the agent degrades rather than aborting
 when a tool fails, so a failed analytics call or discovery source otherwise only
 shows up as a `tool_errors` entry buried in the final JSON.
+
+One thing the trace doesn't break out: the searches and model calls a discovery
+source makes *inside* itself are timed as that single `discover` line (a source is
+handed its clients before there's a reporter to wrap them). So a slow
+`trends.discover` is usually the web search it did, not the model.
 
 | Field | Type | Default | Notes |
 |---|---|---|---|
@@ -809,7 +903,9 @@ Why each non-default choice was made:
   JSON, so two templates map it without any Python.
 - **`discovery_sources` with `provider: "llm"`** — an anonymous platform has no
   profile pages to rank the usual way, so the best way to find topics is a
-  search-backed AI model, not a specific vendor API.
+  search-backed AI model, not a specific vendor API. Note there's no
+  `search_provider` line: DuckDuckGo grounding is already the default, so this
+  config searches the real web without saying anything about it.
 - **The extra `qa_brand_mention_keywords`** — the anonymity pitch *is* the
   brand, so mentioning it in a reply needs a disclosure just like naming the
   product would.
