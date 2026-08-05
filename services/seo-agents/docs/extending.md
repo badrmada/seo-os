@@ -45,6 +45,19 @@ So the contract for your class is just this:
 - **Method:** whatever the target interface requires (table below).
 - **Importable:** the module path is resolved with a normal Python import — see
   [Making your module importable](#making-your-module-importable) below.
+- **Files your class opens itself:** anchor them to `config.config_base_dir`,
+  the folder holding the tenant config, rather than to the working directory:
+
+  ```python
+  self._path = Path(config.config_base_dir or ".") / "data/events.json"
+  ```
+
+  The system already does this for every path *declared in config*
+  ([configuration.md](configuration.md#how-file-paths-in-your-config-are-resolved));
+  a path hardcoded inside your class is the one case it can't reach. Getting
+  this right is what lets your class work regardless of where the command runs
+  from — including from a server running several tenants at once, where the
+  working directory is shared and means nothing.
 
 | Config field | Interface | Method your class needs | Must return |
 |---|---|---|---|

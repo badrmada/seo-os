@@ -3,6 +3,8 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
+from agent.config.paths import resolve_path
+
 # provider="json" (agent/config/agent_config.py's output_sinks) — the default sink,
 # and deliberately the exact behavior this agent has always had: json.dumps(result,
 # indent=2) to stdout. A zero-config tenant's output is byte-for-byte what it was
@@ -26,7 +28,9 @@ class JsonOutputSink:
 
     def __init__(self, config, options: dict = None) -> None:
         options = options or {}
-        self._path = options.get("path", "")
+        # Resolved against the tenant's own config directory, not the process's
+        # working directory — see agent/config/paths.py.
+        self._path = resolve_path(config, options.get("path", ""))
         self._indent = options.get("indent", 2)
         self._append = bool(options.get("append", False))
 

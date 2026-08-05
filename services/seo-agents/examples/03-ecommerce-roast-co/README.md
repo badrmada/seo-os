@@ -51,7 +51,7 @@ is what lets the writer reference real products with real URLs:
 ## See it flow into the prompt
 
 ```bash
-python ../../src/preview_prompt.py
+python ../../src/main.py preview-prompt
 ```
 
 Real output (trimmed) — the summary and the product links are yours, and the

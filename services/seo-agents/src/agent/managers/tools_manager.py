@@ -11,6 +11,7 @@ from tools.mocks.opportunity_mock import MockOpportunitySource
 from tools.mocks.traffic_mock import MockTrafficClient
 from tools.mocks.traffic_null import NullTrafficClient
 
+from ..config.paths import resolve_path
 from ..graph.tools import Tools
 from .plugin_loader import load_custom
 
@@ -64,7 +65,7 @@ class ToolsManager:
         if config.gsc_provider == "mock":
             return MockGoogleSearchConsoleClient()
         if config.gsc_provider == "google":
-            return GoogleSearchConsoleClient(key_file=config.gsc_key_file)
+            return GoogleSearchConsoleClient(key_file=resolve_path(config, config.gsc_key_file))
         raise ValueError(
             f'Unknown gsc_provider {config.gsc_provider!r}; must be "google" or "mock"'
         )
@@ -89,7 +90,7 @@ class ToolsManager:
             return TemplatedTrafficClient(
                 config.traffic_source,
                 config.traffic_summary_template,
-                report_path=config.traffic_report_path,
+                report_path=resolve_path(config, config.traffic_report_path),
                 api_url=config.traffic_api_url,
                 api_method=config.traffic_api_method,
                 api_headers=config.traffic_api_headers,
@@ -116,7 +117,7 @@ class ToolsManager:
                 config.analytics_source,
                 config.analytics_summary_template,
                 config.analytics_highlights_template,
-                report_path=config.analytics_report_path,
+                report_path=resolve_path(config, config.analytics_report_path),
                 api_url=config.analytics_api_url,
                 api_method=config.analytics_api_method,
                 api_headers=config.analytics_api_headers,

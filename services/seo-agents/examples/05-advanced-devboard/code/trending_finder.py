@@ -17,7 +17,9 @@ class TrendingSearches:
 
     def __init__(self, config):
         self._config = config
-        self._path = Path("data/trending.json")
+        # Resolved against the tenant config's own directory rather than the
+        # process's working directory — see analytics_growth.py for why.
+        self._path = Path(config.config_base_dir or ".") / "data/trending.json"
 
     def discover(self, context: dict) -> list[dict]:
         rows = json.loads(self._path.read_text(encoding="utf-8"))

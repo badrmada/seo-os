@@ -21,12 +21,6 @@ from ..context import (
     make_reporter,
 )
 
-# Optional in-process override: import this module and set TOOLS to a Tools(...)
-# instance to bypass ToolsManager's config-driven provider selection. None (the
-# default) means "build the tools from the tenant config."
-TOOLS = None
-
-
 def run(
     tenant: str = TENANT_OPTION,
     input_file: str = INPUT_OPTION,
@@ -58,7 +52,7 @@ def run(
         raise fail(f"output sink configuration: {exc}") from exc
 
     store = InMemoryStateStore()  # in-memory only; a single, in-process run
-    result = AgentRunner(config, tools=TOOLS, reporter=reporter).run(run_input, state_store=store)
+    result = AgentRunner(config, reporter=reporter).run(run_input, state_store=store)
     sinks.emit(result)
 
     # AgentRunner never raises — a failed run comes back as phase="failed" with the

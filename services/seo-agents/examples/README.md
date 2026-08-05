@@ -47,7 +47,7 @@ Two handy variations:
   templates):
 
   ```bash
-  python ../../src/preview_prompt.py
+  python ../../src/main.py preview-prompt
   ```
 
 - **Use a different input file** — some examples include more than one:
@@ -70,7 +70,7 @@ output reflect *your* configuration and which are placeholders:
 | Prompt wording (your templates) | |
 | Self-review notes | |
 
-So the **rendered prompt** (`preview_prompt.py`) is the best thing to look at
+So the **rendered prompt** (`preview-prompt`) is the best thing to look at
 offline — it's built entirely from your config and data. The full run still
 completes end to end so you can see the exact output shape.
 </content>

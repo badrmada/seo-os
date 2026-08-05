@@ -74,7 +74,7 @@ reply disclosed its affiliation and didn't over-mention the product:
 > **Note on the comment text offline.** The mock AI returns a fixed placeholder
 > reply (it doesn't read your brand voice), so offline the wording won't sound
 > like HomelabHub. Preview the prompt to see *your* instructions and disclosure
-> rule — `python ../../src/preview_prompt.py --input input.comment.json` — and
+> rule — `python ../../src/main.py preview-prompt --input input.comment.json` — and
 > switch to `llm_provider: "gemini"` for real, on-brand replies.
 
 ## The disclosure setup

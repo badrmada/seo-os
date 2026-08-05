@@ -451,6 +451,45 @@ Used when a specific run doesn't override them.
 
 ---
 
+## How file paths in your config are resolved
+
+Every path you write in `tenant.json` — `analytics_report_path`,
+`traffic_report_path`, `gsc_key_file`, an output sink's `options.path` —
+resolves **relative to the folder holding that `tenant.json`**, not to the
+directory you happen to run the command from.
+
+So this config:
+
+```jsonc
+{ "analytics_report_path": "data/analytics.json" }
+```
+
+means "`data/analytics.json` next to this config file", and works identically
+whether you run from the tenant's folder, from the repo root, or from anywhere
+else:
+
+```bash
+cd examples/02-saas-blog-pingowl && python ../../src/main.py run    # works
+python src/main.py run --tenant examples/02-saas-blog-pingowl/tenant.json  # also works
+```
+
+Absolute paths and `~` are used as-is. A config built in Python code rather than
+loaded from a file has no folder to anchor to, so its relative paths fall back to
+the working directory.
+
+This matters beyond convenience: when several tenants run in one server process
+they share one working directory, so two tenants that both said
+`data/analytics.json` would otherwise read the same file.
+
+**Writing a custom class that opens its own files?** Do the same — `config`
+carries `config_base_dir`:
+
+```python
+self._path = Path(config.config_base_dir or ".") / "data/events.json"
+```
+
+---
+
 ## Where the result goes (output sinks)
 
 By default a finished run prints one indented JSON document to stdout — exactly

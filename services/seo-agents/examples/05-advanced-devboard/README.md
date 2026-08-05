@@ -117,7 +117,7 @@ their channel hints were summed, and `site_article` won — a **real decision**
 (`"fallback": false`), unlike example 04's offline fallback.
 
 And the custom analytics + templated traffic both show up in the prompt (preview
-it with `PYTHONPATH=code python ../../src/preview_prompt.py --input input.article.json`):
+it with `PYTHONPATH=code python ../../src/main.py preview-prompt --input input.article.json`):
 
 ```
 Recent activity: 250 job posts in the last 7 days, +25% vs the previous 7 days, across 128 companies hiring.

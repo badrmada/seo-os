@@ -12,6 +12,18 @@ class AgentConfig:
     choices, ...) lives in a per-tenant JSON file and overrides these via
     `AgentConfigLoader.load()`; nothing tenant-specific is hardcoded here."""
 
+    # --- Where this config came from (agent/config/paths.py) ---
+    # Set by AgentConfigLoader to the directory holding the tenant JSON, so every
+    # relative path below (analytics_report_path, traffic_report_path,
+    # gsc_key_file, an output sink's options.path) resolves against *this tenant's
+    # own folder* rather than whatever directory the process happens to be running
+    # in. That distinction doesn't matter for one person running one CLI command;
+    # it matters completely once several tenants run in one server process. Empty
+    # (the default, for a config built in code) keeps the old CWD-relative
+    # behavior. A non-file source — a database row, an API request body — passes
+    # its own base directory to AgentConfigLoader.load_dict().
+    config_base_dir: str = ""
+
     # --- LLM ---
     llm_provider: str = "mock"  # "gemini" or "mock"
     llm_model: str = "gemini-2.0-flash"

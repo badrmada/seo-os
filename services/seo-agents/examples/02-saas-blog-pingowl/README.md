@@ -53,7 +53,7 @@ list the agent wants (each value wrapped in `|tojson` so it's safely quoted):
 ## See it flow into the prompt
 
 ```bash
-python ../../src/preview_prompt.py
+python ../../src/main.py preview-prompt
 ```
 
 The rendered prompt (real output) — notice the summary and the post links come

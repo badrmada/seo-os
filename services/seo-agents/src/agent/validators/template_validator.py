@@ -9,6 +9,8 @@ class TemplateValidator:
         # module — only when analytics_provider="templated" is actually used.
         from tools.clients.analytics_templated import load_raw, render_report
 
+        from ..config.paths import resolve_path
+
         if not config.analytics_summary_template or not config.analytics_highlights_template:
             raise ValueError(
                 f'analytics_provider="templated" in {path} requires analytics_summary_template '
@@ -16,7 +18,7 @@ class TemplateValidator:
             )
         try:
             raw = load_raw(
-                config.analytics_source, report_path=config.analytics_report_path,
+                config.analytics_source, report_path=resolve_path(config, config.analytics_report_path),
                 api_url=config.analytics_api_url, api_method=config.analytics_api_method,
                 api_headers=config.analytics_api_headers,
                 api_timeout_seconds=config.analytics_api_timeout_seconds,
@@ -34,13 +36,15 @@ class TemplateValidator:
     def validate_traffic(self, config, path: str) -> None:
         from tools.clients.traffic_templated import load_raw, render_summary
 
+        from ..config.paths import resolve_path
+
         if not config.traffic_summary_template:
             raise ValueError(
                 f'traffic_provider="templated" in {path} requires traffic_summary_template to be set'
             )
         try:
             raw = load_raw(
-                config.traffic_source, report_path=config.traffic_report_path,
+                config.traffic_source, report_path=resolve_path(config, config.traffic_report_path),
                 api_url=config.traffic_api_url, api_method=config.traffic_api_method,
                 api_headers=config.traffic_api_headers,
                 api_timeout_seconds=config.traffic_api_timeout_seconds,
