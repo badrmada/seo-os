@@ -226,21 +226,41 @@ about status and direction.
 
 ## Next
 
-Roughly in priority order:
+In order. Two framings shape the list, and both are things the code only partly
+lives up to today:
 
-1. **Real discovery providers beyond `"llm"`, narrowed to what grounding
-   doesn't cover.** Grounded search (above) already gets real web results
-   with real URLs, so a general "search API" client is no longer the gap.
-   What's left: source-specific signal grounding can't easily reproduce —
-   e.g. Reddit-specific detail (upvotes, comment counts, a specific
-   subreddit) or a dedicated trends API's actual query-volume numbers, if a
-   tenant needs that precision rather than "web results about X."
-2. **A stage-registration mechanism for genuinely custom pipeline stages** —
-   right now the stage registry in `agent/graph/pipeline.py` is a fixed
-   dict of the six built-in stages. Worth revisiting once there's a real
-   use case for a tenant-specific stage beyond what
-   `discover`/`choose_channel`/`analyze_context`/`analyze`/`draft`/`self_qa`
-   already cover.
+- **Inputs are *signals*, and the vendors shipped here are defaults, not the
+  model.** Search Console, Cloudflare and product analytics get someone to a real
+  run quickly; a trends feed, a rank tracker, a keyword API, a crawler or an MCP
+  server are the same kind of thing. Adding one should be config, not a fork.
+- **The deliverable is not always a draft.** Writing an article is one way to
+  grow a site; telling someone what to fix on the site they already have is
+  another.
+
+1. **`SearchClient` — pluggable grounding.** A search provider discovery can use
+   when the LLM has no native grounding of its own, ahead of the model's own
+   grounding and ahead of ungrounded discovery, in that documented order.
+2. **A built-in `provider: "mcp"` discovery source.** MCP already works as a
+   `"custom"` class ([`examples/06-mcp-discovery/`](../examples/06-mcp-discovery/)),
+   but every user writes the same stdio boilerplate.
+3. **Signal inputs as a named list.** `Tools` has three fixed slots — `gsc`,
+   `traffic`, `analytics` — so swapping Cloudflare for Plausible works while
+   *adding* a trends feed does not. Signals get the shape `discovery_sources`
+   already has: a named list, any number, any provider. The three built-in slots
+   stay as views onto it, so no config breaks.
+4. **Stage and pipeline registration.** Config-declared stages, and a pipeline
+   spec per agent type rather than one global default.
+5. **A `seo_audit` agent type.** Crawl the site, read the sitemap, cross-
+   reference the configured signals, and return prioritized recommendations —
+   thin or duplicate pages, weak metadata, broken internal links, orphan pages,
+   pages ranking 11–20 that deserve work rather than a new article. A separate
+   `agent_type` sharing tools, config, the service layer and the result schema
+   (`kind: "site_audit"`), not a fourth channel. Findings carry the URLs they
+   came from; the crawler is bounded by default (robots.txt, rate limits, page
+   and depth caps) because it is the one tool here that can hurt someone else's
+   server.
+6. **State persistence.** `InMemoryStateStore` promoted to a selectable provider
+   — file/JSONL first, since it needs no infrastructure and survives the process.
 
 ## Explicitly out of scope for this agent
 
