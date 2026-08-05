@@ -36,7 +36,9 @@ python src/main.py run --tenant acme
 ```
 
 The workspace root comes from `--userdata/-u`, else `$SEO_AGENT_USERDATA`, else
-`./userdata`. A container mounts a volume and sets the environment variable.
+the nearest `userdata/` folder at or above the current directory — so any command
+works from anywhere inside your project, the same way git finds `.git`. A
+container mounts a volume and sets the environment variable.
 
 `--input/-i` is resolved inside the tenant's folder too — `--input
 input.comment.json` means that file next to the tenant's config — and defaults to

@@ -44,5 +44,11 @@ DA_store/
 *.swp
 *.swo
 *~
-**service_account.json
-**tenant.json
+
+# Tenant workspaces — real configs, credentials, data, and run output.
+# A tenant is a folder here (see services/seo-agents/docs/cli.md).
+userdata/
+
+# Credentials, wherever they land. Real ones live under userdata/ (ignored
+# above); this is the backstop for a key file dropped somewhere else.
+**/service_account.json

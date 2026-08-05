@@ -37,6 +37,11 @@ DA_store/
 *.sqlite3
 *.db
 
+# Tenant workspaces — real configs, credentials, data files, and run output.
+# A tenant is a folder here (see docs/cli.md); none of it belongs in the repo.
+# The runnable examples/ folder is the committed counterpart.
+userdata/
+
 # Editor and OS junk files
 .DS_Store
 .idea/
@@ -44,5 +49,7 @@ DA_store/
 *.swp
 *.swo
 *~
-**service_account.json
-**tenant.json
+
+# Credentials, wherever they land. Your real ones live under userdata/ (already
+# ignored above); this is the backstop for a key file dropped somewhere else.
+**/service_account.json

@@ -49,9 +49,30 @@ class UnknownTenantError(Exception):
 
 
 def resolve_root(explicit: str = None) -> Path:
-    """--userdata → $SEO_AGENT_USERDATA → ./userdata."""
-    root = explicit or os.environ.get(ROOT_ENV_VAR) or DEFAULT_ROOT
-    return Path(root).expanduser().resolve()
+    """--userdata → $SEO_AGENT_USERDATA → the nearest `userdata/` at or above the
+    current directory.
+
+    The upward search is what stops the workspace root from being the one thing
+    still tied to where you're standing. Everything *inside* a tenant already
+    resolves against the tenant's folder; without this, `list-tenants` would find
+    your tenants from the project root and silently find nothing one directory
+    down. Same idea as git locating `.git`.
+    """
+    if explicit:
+        return Path(explicit).expanduser().resolve()
+    from_env = os.environ.get(ROOT_ENV_VAR)
+    if from_env:
+        return Path(from_env).expanduser().resolve()
+    return _find_upwards(Path.cwd()) or (Path.cwd() / DEFAULT_ROOT).resolve()
+
+
+def _find_upwards(start: Path) -> Path | None:
+    """The nearest `userdata/` directory at or above `start`, if any."""
+    for directory in (start, *start.parents):
+        candidate = directory / DEFAULT_ROOT
+        if candidate.is_dir():
+            return candidate.resolve()
+    return None
 
 
 def validate_name(name: str) -> str:

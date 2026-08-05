@@ -472,8 +472,10 @@ python src/main.py run --tenant acme
 python src/main.py list-tenants          # what's available
 ```
 
-The workspace root is `--userdata`, else `$SEO_AGENT_USERDATA`, else `./userdata`
-— a container mounts a volume and sets the environment variable.
+The workspace root is `--userdata`, else `$SEO_AGENT_USERDATA`, else the nearest
+`userdata/` folder at or above the current directory — so any command works from
+anywhere inside your project. A container mounts a volume and sets the
+environment variable.
 
 **Every path in your config resolves against your tenant's folder**, so:
 

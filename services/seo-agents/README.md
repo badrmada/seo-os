@@ -282,8 +282,9 @@ python src/main.py run --tenant acme --input input.comment.json
 python src/main.py run --tenant acme --userdata /srv/tenants
 ```
 
-The workspace root is `--userdata`, else `$SEO_AGENT_USERDATA`, else
-`./userdata`.
+The workspace root is `--userdata`, else `$SEO_AGENT_USERDATA`, else the nearest
+`userdata/` folder at or above where you are — so this works from anywhere in the
+project.
 
 ### 7. Watch it work (optional)
 

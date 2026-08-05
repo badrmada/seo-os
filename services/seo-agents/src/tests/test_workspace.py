@@ -90,15 +90,42 @@ def test_ordinary_tenant_names_are_accepted(name):
 
 # --- the workspace root ----------------------------------------------------
 
-def test_root_precedence_is_flag_then_env_then_default(tmp_path, monkeypatch):
+def test_root_precedence_is_flag_then_env_then_search(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.delenv("SEO_AGENT_USERDATA", raising=False)
-    assert resolve_root() == (tmp_path / "userdata").resolve()
 
     monkeypatch.setenv("SEO_AGENT_USERDATA", str(tmp_path / "from-env"))
     assert resolve_root() == (tmp_path / "from-env").resolve()
 
     assert resolve_root(str(tmp_path / "from-flag")) == (tmp_path / "from-flag").resolve()
+
+
+def test_the_root_is_found_from_any_directory_below_it(tmp_path, monkeypatch):
+    """The workspace root was the last thing still tied to where you're standing:
+    `list-tenants` would find your tenants from the project root and silently find
+    nothing one directory down. It's now searched for upwards, like git's .git."""
+    monkeypatch.delenv("SEO_AGENT_USERDATA", raising=False)
+    root = tmp_path / "project" / "userdata"
+    make_tenant(root, "acme")
+    deep = tmp_path / "project" / "src" / "agent" / "config"
+    deep.mkdir(parents=True)
+
+    for directory in (tmp_path / "project", deep):
+        monkeypatch.chdir(directory)
+        assert resolve_root() == root.resolve()
+        assert list_tenants(resolve_root()) == ["acme"]
+
+
+def test_the_search_falls_back_to_cwd_when_nothing_is_found(tmp_path, monkeypatch):
+    monkeypatch.delenv("SEO_AGENT_USERDATA", raising=False)
+    isolated = tmp_path / "nowhere"
+    isolated.mkdir()
+    monkeypatch.chdir(isolated)
+
+    # No userdata/ anywhere above, unless the machine running this happens to have
+    # one — in which case the found root is still a real directory, never a guess.
+    root = resolve_root()
+    assert root == (isolated / "userdata").resolve() or root.is_dir()
 
 
 # --- plugins ---------------------------------------------------------------
