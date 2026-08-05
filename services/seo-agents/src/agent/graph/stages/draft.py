@@ -1,6 +1,7 @@
 from ... import prompts
 from ...schemas.channel import Channel
 from ...schemas.io import AgentState
+from ...utils.async_utils import call as acall
 from ...utils.json_utils import extract_json
 from ...utils.tool_errors import record_tool_error
 from ..tools import Tools
@@ -14,7 +15,7 @@ class DraftStage:
         self.tools = tools
         self.config = config
 
-    def run(self, state: AgentState) -> dict:
+    async def run(self, state: AgentState) -> dict:
         """Reads: working.channel if ChooseChannelStage set one, else
         input.channel/config.default_channel; input.params; working.chosen_keyword
         or working.context_text/input.context_text (depending on channel);
@@ -36,7 +37,7 @@ class DraftStage:
         """
         working = dict(state.get("working", {}))
         try:
-            draft_obj, tokens_used = self._generate(state, working)
+            draft_obj, tokens_used = await self._generate(state, working)
         except Exception as exc:  # noqa: BLE001 - degrade, don't abort the run
             tool_errors = list(working.get("tool_errors", []))
             record_tool_error(tool_errors, "llm", "draft", exc)
@@ -52,7 +53,7 @@ class DraftStage:
         usage["tokens"] = usage.get("tokens", 0) + tokens_used
         return {"phase": "draft", "working": working, "usage": usage}
 
-    def _generate(self, state: AgentState, working: dict) -> tuple[dict, int]:
+    async def _generate(self, state: AgentState, working: dict) -> tuple[dict, int]:
         input_ = state["input"]
         channel = working.get("channel") or input_.get("channel", self.config.default_channel)
         params = input_.get("params", {})
@@ -76,5 +77,5 @@ class DraftStage:
                 strategy=source_row.get("reason", ""),
             )
 
-        response = self.tools.llm.generate(prompt)
+        response = await acall(self.tools.llm.generate, prompt)
         return extract_json(response.text), response.tokens

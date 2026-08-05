@@ -3,6 +3,7 @@ wrapping hooks, and the three guarantees that make it safe to leave in the code
 path — output goes to stderr only, a broken reporter never fails a run, and
 reporting off costs nothing."""
 
+import asyncio
 import io
 import json
 
@@ -171,7 +172,7 @@ def test_grounding_that_produced_no_sources_is_visible():
     reporter = build_reporter(1, "json", stream=stream)
     llm = observe_tools(_tools(), reporter).llm
 
-    llm.generate("find me some topics", grounded=True)
+    asyncio.run(llm.generate("find me some topics", grounded=True))
 
     end = next(e for e in _events(stream) if e["event"] == "tool_end")
     assert end["grounded"] is True
@@ -206,7 +207,7 @@ def test_unperformed_grounding_is_reported_as_a_tool_error():
     reporter = build_reporter(1, "json", stream=stream)
     llm = observe_tools(_tools(), reporter).llm  # MockLLMClient: does not ground
 
-    llm.generate("find me some topics", grounded=True)
+    asyncio.run(llm.generate("find me some topics", grounded=True))
 
     events = _events(stream)
     errors = [e for e in events if e["event"] == "tool_error"]
@@ -226,6 +227,6 @@ def test_a_provider_that_grounds_produces_no_such_warning():
 
     tools = _tools()
     tools.llm = GroundingClient()
-    observe_tools(tools, reporter).llm.generate("x", grounded=True)
+    asyncio.run(observe_tools(tools, reporter).llm.generate("x", grounded=True))
 
     assert not [e for e in _events(stream) if e["event"] == "tool_error"]

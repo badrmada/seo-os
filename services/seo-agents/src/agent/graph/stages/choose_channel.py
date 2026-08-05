@@ -21,7 +21,7 @@ class ChooseChannelStage:
     def __init__(self, config) -> None:
         self.config = config
 
-    def run(self, state: AgentState) -> dict:
+    async def run(self, state: AgentState) -> dict:
         """Reads: input.channel (if the caller gave one), working.opportunities.
         Writes: phase="choose_channel"; working.channel; working.channel_decision
         ({"chosen": Channel, "reason": str, "fallback": bool} — fallback=True means

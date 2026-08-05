@@ -102,4 +102,3 @@ Because a community reply can quietly become an ad, two settings work together:
 The `llm` discovery source is **grounded in live Google Search by default**, so
 it surfaces real conversations with real links. See
 [docs/configuration.md](../../docs/configuration.md#opportunity-discovery).
-</content>

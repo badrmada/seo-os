@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-import requests
+import httpx
 
 # provider="webhook" (agent/config/agent_config.py's output_sinks) — hand the
 # finished run to an HTTP endpoint: a control plane, a queue, a Slack/Zapier hook,
@@ -40,14 +40,18 @@ class WebhookOutputSink:
         self._headers = options.get("headers", {})
         self._timeout = float(options.get("timeout_seconds", 10.0))
 
-    def emit(self, output: dict) -> None:
-        response = requests.request(
-            self._method,
-            self._url,
-            json=output,
-            headers=self._headers,
-            timeout=self._timeout,
-        )
+    async def emit(self, output: dict) -> None:
+        """Async (like every sink may be — see OutputManager.aemit, which accepts
+        either): sinks still run in configured order, but a slow endpoint now
+        blocks only this run, not every other run sharing the event loop."""
+        async with httpx.AsyncClient(follow_redirects=True) as client:
+            response = await client.request(
+                self._method,
+                self._url,
+                json=output,
+                headers=self._headers,
+                timeout=self._timeout,
+            )
         response.raise_for_status()
 
     def describe(self) -> str:

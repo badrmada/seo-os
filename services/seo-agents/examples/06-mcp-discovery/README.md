@@ -97,4 +97,3 @@ launch command or URL from an env var. In production, use the official
 bridge it into the synchronous `discover()` method with `asyncio.run(...)`. That
 version is shown in
 [docs/extending.md](../../docs/extending.md#using-an-mcp-server-as-a-tool).
-</content>

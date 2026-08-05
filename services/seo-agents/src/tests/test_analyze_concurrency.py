@@ -5,6 +5,8 @@ result instead of re-fetching when it's present, and falls back to fetching
 directly (unchanged, original behavior) when it's not — see
 tests/test_pipeline.py for the end-to-end graph-level join tests."""
 
+import asyncio
+
 from agent.config.agent_config import AgentConfig
 from agent.graph.stages.analyze import AnalyzeContextStage, AnalyzeStage
 from agent.graph.tools import Tools
@@ -44,7 +46,7 @@ def _config() -> AgentConfig:
 def test_analyze_context_stage_populates_analyze_context_key():
     stage = AnalyzeContextStage(_tools(), _config())
 
-    result = stage.run({"input": {}, "working": {}})
+    result = asyncio.run(stage.run({"input": {}, "working": {}}))
 
     context = result["analyze_context"]
     assert context["analytics_summary"]
@@ -60,7 +62,7 @@ def test_analyze_context_stage_degrades_on_failure_without_raising():
 
     stage = AnalyzeContextStage(_tools(analytics=_FailingAnalytics()), _config())
 
-    result = stage.run({"input": {}, "working": {}})
+    result = asyncio.run(stage.run({"input": {}, "working": {}}))
 
     context = result["analyze_context"]
     assert context["analytics_summary"] == ""
@@ -83,7 +85,7 @@ def test_analyze_stage_uses_precomputed_analyze_context_without_refetching():
         },
     }
 
-    result = stage.run(state)
+    result = asyncio.run(stage.run(state))
 
     working = result["working"]
     assert working["analytics_summary"] == "precomputed summary"
@@ -94,7 +96,7 @@ def test_analyze_stage_fetches_directly_when_no_analyze_context():
     stage = AnalyzeStage(_tools(), _config())
     state = {"input": {"channel": "engagement_comment", "context_text": "hi"}, "working": {}}
 
-    result = stage.run(state)
+    result = asyncio.run(stage.run(state))
 
     working = result["working"]
     assert working["analytics_summary"]

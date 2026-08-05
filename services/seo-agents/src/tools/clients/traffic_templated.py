@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from .templated_json import load_raw, render_text
+from .templated_json import aload_raw, load_raw, render_text
 
-__all__ = ["load_raw", "render_summary", "TemplatedTrafficClient"]
+__all__ = ["aload_raw", "load_raw", "render_summary", "TemplatedTrafficClient"]
 
 
 def render_summary(summary_template: str, raw: dict, days: int) -> dict:
@@ -31,8 +31,8 @@ class TemplatedTrafficClient:
         self.api_headers = api_headers or {}
         self.api_timeout_seconds = api_timeout_seconds
 
-    def traffic_summary(self, days: int = 28) -> dict:
-        raw = load_raw(
+    async def traffic_summary(self, days: int = 28) -> dict:
+        raw = await aload_raw(
             self.source, report_path=self.report_path, api_url=self.api_url,
             api_method=self.api_method, api_headers=self.api_headers,
             api_timeout_seconds=self.api_timeout_seconds,

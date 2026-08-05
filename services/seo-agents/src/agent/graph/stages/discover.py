@@ -1,5 +1,6 @@
 from ...schemas.io import AgentState
 from ...schemas.opportunity import normalize_opportunity
+from ...utils.async_utils import call as acall
 from ...utils.tool_errors import record_tool_error
 from ..tools import Tools
 
@@ -28,7 +29,7 @@ class DiscoverStage:
         self.tools = tools
         self.config = config
 
-    def run(self, state: AgentState) -> dict:
+    async def run(self, state: AgentState) -> dict:
         """Reads: input.seed_keyword, input.context_text (passed to every source as
         steering context, which a source may ignore). Writes: phase="discover";
         working.opportunities (list[Opportunity], every source's results merged);
@@ -44,9 +45,13 @@ class DiscoverStage:
         opportunities = list(working.get("opportunities", []))
         tool_errors = list(working.get("tool_errors", []))
 
+        # Awaited one at a time on purpose: this mode only runs with zero or one
+        # source configured (two or more take the parallel_by_source fan-out, where
+        # LangGraph runs the branches concurrently), so there is nothing here to
+        # overlap and a plain loop is the honest description of what happens.
         for name, source in self.tools.discovery_sources.items():
             try:
-                for item in source.discover(context):
+                for item in await acall(source.discover, context):
                     opportunity = normalize_opportunity(item, source=name)
                     if opportunity is not None:
                         opportunities.append(opportunity)
@@ -70,7 +75,7 @@ class DiscoverSourceStage:
     def __init__(self, tools: Tools) -> None:
         self.tools = tools
 
-    def run(self, state: dict) -> dict:
+    async def run(self, state: dict) -> dict:
         name = state["source_name"]
         context = state["context"]
         source = self.tools.discovery_sources[name]
@@ -78,7 +83,7 @@ class DiscoverSourceStage:
         opportunities: list = []
         tool_errors: list = []
         try:
-            for item in source.discover(context):
+            for item in await acall(source.discover, context):
                 opportunity = normalize_opportunity(item, source=name)
                 if opportunity is not None:
                     opportunities.append(opportunity)
@@ -100,7 +105,7 @@ class DiscoverJoinStage:
     sequential path — same opportunities/tool_errors contract either way.
     """
 
-    def run(self, state: AgentState) -> dict:
+    async def run(self, state: AgentState) -> dict:
         working = dict(state.get("working", {}))
         opportunities = list(working.get("opportunities", []))
         tool_errors = list(working.get("tool_errors", []))

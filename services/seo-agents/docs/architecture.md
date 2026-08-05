@@ -8,11 +8,12 @@ forking, see [extending.md](extending.md).
 ## The big picture
 
 The agent is a small **pipeline**: a fixed sequence of steps, each doing one job
-and passing its work to the next. One call to `AgentRunner.run(input_data)`
+and passing its work to the next. One call to `AgentRunner.arun(input_data)`
 builds the pipeline, runs it once, and returns a finished result. There's no
-queue and no background worker — one call in, one draft out.
+queue and no background worker — one call in, one draft out. (`run()` is the
+same thing for callers with no event loop, like the CLI.)
 
-Two design ideas shape everything below, so it's worth stating them up front:
+Three design ideas shape everything below, so it's worth stating them up front:
 
 1. **Every step talks to tools through an interface, never a specific vendor.**
    A step that needs traffic data calls "the traffic tool" — it doesn't know or
@@ -23,6 +24,25 @@ Two design ideas shape everything below, so it's worth stating them up front:
    that hasn't turned on discovery gets a shorter pipeline. The steps that
    handle discovery don't run as empty no-ops — they simply aren't part of that
    product's pipeline at all.
+3. **Many runs share one process.** Runs are async and hold no shared state, so
+   several tenants' runs proceed at once on one event loop. Everything a run
+   touches — config, tools, reporter, result — is built per run and belongs to
+   that run alone.
+
+### Three planes
+
+Almost every question about "where does this belong?" is answered by which of
+these three a thing is part of. They stay separate on purpose.
+
+| Plane | What's in it | Rule |
+|---|---|---|
+| **Tools** | What a step *calls*: the LLM, Search Console, analytics, traffic, discovery sources. Bundled in `Tools`, built by `ToolsManager`. | A step depends only on the interfaces in [`tools/base.py`](../src/tools/base.py). |
+| **Run context** | How a run is *observed and delivered*: the verbose reporter, the output sinks, the state store. | Never enters `Tools` and never enters the result state — a step can't see any of it. |
+| **Result** | `AgentState` and the JSON a run returns, documented in [output-schema.md](output-schema.md). | Deliberately frozen: it's the contract a UI or control plane is built on. |
+
+That's why verbose mode, sinks, and state snapshots exist without a single line
+of reporting or delivery code inside any step — see [The run-context
+plane](#the-run-context-plane-observing-and-delivering-a-run).
 
 ## What one run looks like
 
@@ -88,7 +108,7 @@ docstrings on [`agent/schemas/io.py`](../src/agent/schemas/io.py)'s `AgentState`
 
 The pipeline runs on [LangGraph](https://github.com/langchain-ai/langgraph), a
 small library for wiring steps into a graph. Each step is a plain Python object
-with a `run(state) -> dict` method. Whatever it returns gets merged into the
+with an `async def run(state) -> dict` method. Whatever it returns gets merged into the
 shared state before the next step runs. There's no branching or approval logic
 *inside* the pipeline — those belong to a control layer built on top, not to the
 agent.
@@ -129,6 +149,104 @@ run one after another, but a step can ask for a different shape through its
   wrong — wiring each predecessor separately — would let `analyze` fire as soon
   as *either* branch finished, which could corrupt the shared state. The single
   list form is what guarantees it waits for both.)
+
+## How a run executes: async, and why you can ignore that
+
+A run is async from end to end — `AgentRunner.arun()`, every step, every tool
+call. The reason is concurrency between *runs*: several tenants' runs proceed at
+once on one event loop, via `asyncio.gather`, instead of one operating-system
+thread each.
+
+**The part that matters if you're writing a tool: every interface accepts a
+sync or an async implementation, and neither is wrong.**
+
+```python
+class MySource:                      # ← still a complete, correct plugin
+    def __init__(self, config): ...
+    def discover(self, context): ...        # plain def: run in a worker thread
+
+class MyAsyncSource:
+    def __init__(self, config): ...
+    async def discover(self, context): ...  # async def: awaited directly
+```
+
+Write `def` when the library you're calling is blocking, `async def` when it has
+a native coroutine API. The framework awaits the async one and runs the sync one
+in a worker thread, so a blocking client can never stall the runs sharing the
+process. That's not a hypothetical convenience: `GoogleSearchConsoleClient` is
+sync because `googleapiclient` cannot be anything else, and it runs threaded —
+correctly — rather than pretending otherwise. `GeminiClient` and the HTTP clients
+are natively async because their SDKs are.
+
+The whole decision lives in one function,
+[`agent/utils/async_utils.py`](../src/agent/utils/async_utils.py)'s `call()`,
+reached through the proxies that already wrap every tool call. No step contains
+an `if` about it, and **no existing `custom` class had to change**.
+
+Two practical notes:
+
+- **`run()` vs `arun()`.** `run()` is a thin `asyncio.run(arun(...))` wrapper for
+  callers with no event loop — the CLI, tests, a script. Anything already async
+  (a service layer, an HTTP handler, a queue worker) calls `arun()` directly,
+  because `asyncio.run()` refuses to nest inside a running loop. The same pair
+  exists for `preview_prompt()`/`apreview_prompt()` and for the output manager's
+  `emit()`/`aemit()`.
+- **A whole-run deadline.** Each client already bounds its own calls (the LLM's
+  120s, and so on). `run_timeout_seconds` bounds the *run* — a dozen
+  individually-timely calls, or a custom plugin with no timeout of its own, can
+  still hold a slot far longer than intended. It's `0` (unbounded) by default,
+  which is right for a CLI someone is watching; a server should set it.
+  Overrunning it ends the run as `failed` with a clear error, like any other
+  failure.
+
+## The run-context plane: observing and delivering a run
+
+Three things belong to a *run*, not to the agent's work, and none of them is
+visible to a step:
+
+- **The reporter** ([`agent/observability/`](../src/agent/observability/)) —
+  verbose mode. `-v` reports every stage and tool call with timings and
+  outcomes; `-vv` adds truncated payload previews. It's wired in by *wrapping*:
+  `observe_tools()` swaps each client for a proxy and `observed_node()` wraps
+  each step, both at the `AgentRunner` boundary. With verbose off, the proxies
+  aren't in the call path at all — the bundle is returned untouched — so it costs
+  nothing when unused. Output goes to **stderr**, never stdout, so
+  `run … -v | jq` keeps working, and secrets are redacted by field name.
+- **Output sinks** ([`tools/sinks/`](../src/tools/sinks/)) — where a finished
+  result goes: stdout, a file, JSONL, an HTTP endpoint, or your own class.
+  Several can be configured and they run in order, *after* the graph. A sink
+  that raises is reported and skipped — by then the result exists, and losing one
+  delivery is no reason to throw away a finished run. See
+  [configuration.md](configuration.md#where-the-result-goes-output-sinks).
+- **The state store** ([`src/state/`](../src/state/)) — a snapshot of the run
+  state after each super-step, so progress is observable mid-flight rather than
+  only at the end. In-memory today; the interface (`save`/`load`/`delete`) is the
+  seam for a durable one.
+
+## Where a run happens: a workspace of tenants
+
+A **tenant** is a folder, and a run names it: `run --tenant acme`.
+
+```
+userdata/                 the workspace root (--userdata, $SEO_AGENT_USERDATA, or ./userdata)
+└── acme/                 the tenant name
+    ├── tenant.json       config: providers, brand voice, templates, sinks
+    ├── plugins/          your own Python classes
+    ├── data/             analytics.json, credentials, …
+    └── output/           where results land by default
+```
+
+Every path in a config — and `--input` — resolves against **that tenant's
+folder** (`config.config_base_dir`), not the process's working directory. This
+is what lets one process serve many tenants without them reading each other's
+files: two tenants that both say `data/analytics.json` get their own. Plugins are
+loaded by file location under a per-tenant synthetic package rather than by
+appending to `sys.path`, for the same reason — module names are process-global,
+so two tenants each with `plugins/analytics.py` would otherwise collide, first
+import winning, silently serving one tenant's code to another.
+
+See [configuration.md](configuration.md#a-tenant-is-a-folder) and
+[extending.md](extending.md#where-your-code-goes-the-plugins-folder).
 
 ## Tools: the swappable-vendor pattern
 
@@ -271,10 +389,11 @@ whether there's anything meaningful left to do.
   `failed` with a clear error and skips writing a draft, rather than crashing.
 - **`self_qa`** notices a failed run and passes it through unchanged, instead of
   trying to check a draft that doesn't exist.
-- **`AgentRunner.run()`** is the final safety net for anything that slips
-  through (bad input, a failure before the pipeline even starts). It catches it
-  and returns the same top-level `failed` shape every other path produces. **A
-  caller never needs a `try/except` around `run()`.**
+- **`AgentRunner.arun()`** is the final safety net for anything that slips
+  through (bad input, a failure before the pipeline even starts, the run
+  deadline expiring). It catches it and returns the same top-level `failed`
+  shape every other path produces. **A caller never needs a `try/except` around
+  `run()`/`arun()`.**
 
 The upshot: whether a tool degraded or the run failed, `tool_errors` (surfaced
 as `discovery.tool_errors` in the output) collects one entry per failure across
@@ -314,4 +433,3 @@ when you save your config — not in the middle of a run.
 - [output-schema.md](output-schema.md) — the exact JSON a run returns, for
   building a UI on it.
 - [roadmap.md](roadmap.md) — what's built and what's next.
-</content>

@@ -16,12 +16,16 @@ class GeminiClient:
         self._default_model = default_model
         self._timeout_ms = int(timeout_seconds * 1000)  # google-genai takes milliseconds
 
-    def generate(self, prompt: str, *, model: str = None, grounded: bool = False) -> LLMResponse:
+    async def generate(self, prompt: str, *, model: str = None, grounded: bool = False) -> LLMResponse:
+        """Natively async — google-genai ships a real coroutine API (`client.aio`),
+        so the slowest call in a run doesn't occupy a worker thread while it waits.
+        Callers reach it through agent/utils/async_utils.py's call(), which is also
+        why a tenant's own sync LLM client keeps working unchanged."""
         config = types.GenerateContentConfig(
             http_options=types.HttpOptions(timeout=self._timeout_ms),
             tools=[types.Tool(google_search=types.GoogleSearch())] if grounded else None,
         )
-        response = self._client.models.generate_content(
+        response = await self._client.aio.models.generate_content(
             model=model or self._default_model,
             contents=prompt,
             config=config,

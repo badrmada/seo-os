@@ -101,4 +101,3 @@ Same swaps as the other examples (`llm_provider: "gemini"`, `gsc_provider:
 ```
 
 The two templates don't change — only where the data comes from.
-</content>

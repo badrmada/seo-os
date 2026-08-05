@@ -123,6 +123,18 @@ class AgentConfig:
         default_factory=lambda: [{"name": "stdout", "provider": "json"}]
     )
 
+    # --- Execution ---
+    # An overall bound on one run, in seconds, on top of the per-call timeouts each
+    # client already sets (the LLM's 120s, an api-sourced template's 10s, ...).
+    # Those bound one HTTP request; this bounds the whole pipeline — a dozen
+    # individually-timely calls, or a "custom" plugin with no timeout of its own,
+    # can still hold a worker slot far longer than anyone intends. 0 (the default)
+    # means unbounded, which stays right for a CLI someone is watching; a server
+    # running many tenants' runs in one process should set it. Overrunning it ends
+    # the run as phase="failed" with a clear error, exactly like any other failure
+    # (see agent/managers/run_manager.py's arun()).
+    run_timeout_seconds: float = 0
+
     # --- Verbose mode (agent/observability/) ---
     # 0 = silent (the default; a run prints nothing but its final JSON result).
     # 1 = lifecycle: each stage and each tool call, with timings and outcomes.

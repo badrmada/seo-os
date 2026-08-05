@@ -16,7 +16,7 @@ class SelfQaStage:
     def __init__(self, config) -> None:
         self.config = config
 
-    def run(self, state: AgentState) -> dict:
+    async def run(self, state: AgentState) -> dict:
         """Reads: working.channel if ChooseChannelStage set one, else
         input.channel/config.default_channel; working.draft, and (per channel)
         working.chosen_keyword or working.context_text/input.context_text.

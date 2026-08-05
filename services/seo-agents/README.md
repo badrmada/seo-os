@@ -414,7 +414,9 @@ Every swappable piece — analytics, traffic, opportunity discovery — is defin
 by a small interface (a `Protocol`). To plug in your own:
 
 1. `pip install -r requirements.txt` (plus whatever your own code needs).
-2. Write one Python class with the method that interface expects.
+2. Write one Python class with the method that interface expects — `def` or
+   `async def`, whichever suits the library you're calling; the agent handles
+   both.
 3. Point your config at it: `"..._provider": "custom"`, and
    `"..._custom_class": "module.path:ClassName"`.
 

@@ -101,4 +101,3 @@ See [docs/configuration.md](../../docs/configuration.md) for the Gemini and
 Search Console setup steps. To pull the analytics from a live API instead of a
 file, change `analytics_source` to `"api"` and set `analytics_api_url` — the
 templates stay exactly the same.
-</content>
