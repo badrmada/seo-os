@@ -1,4 +1,5 @@
-# SEO-OS on one host.
+# SEO-OS on one host. Documented in full in README.md next to this file —
+# including how to point a run at a Redis you already have, or at no Redis at all.
 #
 #   cp .env.example .env && edit it
 #   docker compose up -d                          # Redis, so a run is watchable
@@ -45,7 +46,10 @@ services:
         condition: service_healthy
     environment:
       SEO_AGENT_USERDATA: /userdata
-      # Read by a tenant config that wants Redis without hardcoding a host:
+      # For plugin code that reads its own environment, and for the gateway when
+      # it exists. A tenant.json is *not* shell — it does not expand this — so a
+      # tenant asking for Redis writes the URL out, and `redis` is a hostname
+      # because it is the service name above:
       #   "state_provider": "redis",
       #   "state_options": { "url": "redis://redis:6379/0" }
       REDIS_URL: redis://redis:6379/0

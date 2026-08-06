@@ -29,6 +29,7 @@ keys.
 | How do I connect Ahrefs / my CMS / my rank tracker? | [recipes.md](recipes.md) |
 | How do I write my own provider or stage? | [extending.md](../services/seo-agents/docs/extending.md) |
 | What JSON does a run return? | [output-schema.md](../services/seo-agents/docs/output-schema.md) |
+| How do I run this on a server, with state that survives? | [deploy/compose/README.md](../deploy/compose/README.md) |
 | What commands are there? | [cli.md](../services/seo-agents/docs/cli.md) |
 | Why is it built this way? | [architecture.md](../services/seo-agents/docs/architecture.md) |
 | What's built, what's next? | [roadmap.md](roadmap.md) |
