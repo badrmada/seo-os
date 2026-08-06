@@ -28,7 +28,7 @@ from agent.managers.tools_manager import ToolsManager
 from tools.clients.opportunity_mcp import MCPOpportunitySource
 from tools.llm.mocks.mock_client import MockLLMClient
 from tools.mocks.analytics_mock import MockAppAnalyticsClient
-from tools.mocks.gsc_mock import MockGoogleSearchConsoleClient
+from tools.mocks.search_performance_null import NullSearchPerformanceClient
 from tools.mocks.traffic_mock import MockTrafficClient
 
 # A dependency-free MCP server over stdio — enough of the protocol to be driven by
@@ -127,7 +127,7 @@ def _through_the_stage(source, **context) -> dict:
     here, because normalization is where `source` is stamped on and where a
     malformed item is dropped."""
     tools = Tools(
-        gsc=MockGoogleSearchConsoleClient(), analytics=MockAppAnalyticsClient(),
+        search_performance=NullSearchPerformanceClient(), analytics=MockAppAnalyticsClient(),
         traffic=MockTrafficClient(), llm=MockLLMClient(),
         discovery_sources={source.name: source},
     )

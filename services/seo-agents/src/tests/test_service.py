@@ -21,7 +21,7 @@ import pytest
 from agent.config.agent_config import AgentConfig
 from agent.service import AgentService, RunRequest, RunRequestError
 
-INPUT = {"seed_keyword": "static site seo", "gsc_domain": "sc-domain:example.com"}
+INPUT = {"seed_keyword": "static site seo"}
 
 
 def _config(**overrides) -> AgentConfig:

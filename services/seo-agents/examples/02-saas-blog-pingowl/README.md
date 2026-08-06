@@ -73,10 +73,9 @@ Popular existing posts to link where relevant (add the link to internal_links):
 - "Alert fatigue: send fewer, better alerts (980 reads)" — https://pingowl.example.com/blog/alert-fatigue
 ```
 
-(The `Target keyword/topic` is `"anonymous social media app"` because offline the
-keyword comes from the mock Search Console — see [What's real
-offline](../README.md#whats-real-offline-and-what-isnt). Everything else is
-PingOwl's.)
+(The `Target keyword/topic` is PingOwl's own `seed_keyword`, because this example
+connects no rank source — see [What's real
+offline](../README.md#whats-real-offline-and-what-isnt).)
 
 ## Run the full draft
 
@@ -92,8 +91,12 @@ In `tenant.json`, switch the mocks for real tools:
 {
   "llm_provider": "gemini",
   "llm_options": { "api_key": "YOUR_GEMINI_API_KEY" },
-  "gsc_provider": "google",              // now targets PingOwl's real striking-distance keywords
-  "gsc_options": { "key_file": "service_account.json" }
+  // now targets PingOwl's real striking-distance keywords instead of the seed one
+  "search_performance_provider": "google",
+  "search_performance_options": {
+    "gsc_domain": "sc-domain:pingowl.example.com",
+    "key_file": "service_account.json"
+  }
 }
 ```
 

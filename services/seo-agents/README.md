@@ -147,7 +147,7 @@ fakes. Create a tenant:
 ```bash
 mkdir -p userdata/acme
 echo '{}' > userdata/acme/tenant.json
-echo '{ "channel": "site_article", "gsc_domain": "sc-domain:example.com", "seed_keyword": "your topic here" }' \
+echo '{ "channel": "site_article", "seed_keyword": "your topic here" }' \
   > userdata/acme/input.json
 ```
 
@@ -170,6 +170,9 @@ Every job is two lines: **which provider**, and **that provider's own options**.
 
 ```jsonc
 {
+  // --- Which website is this? One vendor-neutral answer, used by every tool ---
+  "site_url": "https://echooers.com",
+
   // --- The AI model that writes drafts ---
   "llm_provider": "gemini",
   "llm_options": {
@@ -177,9 +180,14 @@ Every job is two lines: **which provider**, and **that provider's own options**.
     "api_key": "YOUR_GEMINI_API_KEY"
   },
 
-  // --- Google Search Console: real keyword/ranking data for your site ---
-  "gsc_provider": "google",
-  "gsc_options": { "key_file": "service_account.json" },
+  // --- Search performance: real keyword/ranking data for your site ---
+  // A job, not a vendor — "templated" maps any rank export, "custom" runs your
+  // own code, and the default "none" means the seed keyword drives the run.
+  "search_performance_provider": "google",
+  "search_performance_options": {
+    "gsc_domain": "sc-domain:echooers.com",   // Google's own property identifier
+    "key_file": "service_account.json"
+  },
 
   // --- Website traffic numbers (this example reads them from Cloudflare) ---
   "traffic_provider": "cloudflare",
@@ -233,7 +241,8 @@ instead of a day — nothing more. Every one of them can be dropped or replaced:
 | If you… | Write |
 |---|---|
 | don't use Cloudflare | `"traffic_provider": "templated"` (any traffic tool's JSON), or `"none"` |
-| don't have Search Console set up | `"gsc_provider": "mock"` — the agent falls back to your seed keyword and analytics |
+| don't have Search Console set up | nothing — `search_performance_provider` defaults to `"none"`, and the agent uses your seed keyword, analytics, or discovery |
+| have rank data from somewhere else (Bing, Ahrefs, a CSV) | `"search_performance_provider": "templated"` (any JSON), or `"custom"` + your class |
 | use a different model, a local one, or a gateway | `"llm_provider": "custom"` + your class — grounding still works, it doesn't come from the model |
 | have analytics in your own database | `"analytics_provider": "custom"` + your class |
 | don't want the agent searching the web | `"search_provider": "none"` |
@@ -267,7 +276,6 @@ exact example line by line.
 ```json
 {
   "channel": "site_article",
-  "gsc_domain": "sc-domain:echooers.com",
   "seed_keyword": "anonymous social media app",
   "params": { "max_words": 800, "tone": "friendly and practical" }
 }
@@ -287,7 +295,6 @@ exact example line by line.
 
 ```json
 {
-  "gsc_domain": "sc-domain:echooers.com",
   "params": { "max_words": 600 }
 }
 ```
@@ -356,7 +363,7 @@ Here are two runs against the same Echooers setup, producing very different
 results — showing how the same config adapts to what you ask for.
 
 **Run 1 — you ask for a site article.** You set `channel` to `site_article` and
-give a domain. The agent pulls real keyword data from Search Console, picks a
+give a site. The agent pulls real keyword data from your rank source, picks a
 "striking distance" query (one you almost rank for), and drafts an article
 around it:
 

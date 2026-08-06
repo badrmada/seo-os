@@ -1,26 +1,33 @@
 {
+  "site_url": "https://scribe.example.com",
   "llm_provider": "mock",
-  "gsc_provider": "mock",
   "traffic_provider": "none",
   "analytics_provider": "mock",
-
   "discovery_sources": [
-    { "name": "research_mcp", "provider": "custom", "class": "mcp_discovery:MCPResearchSource" },
+    {
+      "name": "research_mcp",
+      "provider": "custom",
+      "class": "mcp_discovery:MCPResearchSource"
+    },
     {
       "name": "trending",
       "provider": "mcp",
       "options": {
         "command": "python3",
         "cwd": ".",
-        "args": ["server/mock_mcp_server.py"],
+        "args": [
+          "server/mock_mcp_server.py"
+        ],
         "tool_name": "trending_topics",
-        "arguments": { "q": "{{ seed_keyword }}", "limit": 5 },
+        "arguments": {
+          "q": "{{ seed_keyword }}",
+          "limit": 5
+        },
         "items_template": "[{% for hit in data.hits %}{\"topic\": {{ hit.title | tojson }}, \"signal_strength\": {{ hit.score / 100 }}, \"suggested_channel_hint\": {{ hit.kind | tojson }}, \"reason\": {{ hit.why | tojson }}}{% if not loop.last %},{% endif %}{% endfor %}]"
       }
     }
   ],
   "default_channel": "site_article",
-
   "brand_description": "Scribe is an AI writing assistant for teams: draft, edit, and keep a consistent voice across docs, and turn messy notes into clean writing.",
   "agent_goal": "Grow signups from people searching for writing, editing, and productivity topics."
 }

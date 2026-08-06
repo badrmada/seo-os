@@ -12,7 +12,7 @@ from typing import TypedDict
 # agent/config/loader.py to know which names can appear in `signals` in a prompt
 # template. Any other home makes at least one of those a deferred import to avoid
 # closing a cycle (see src/tests/test_imports.py).
-BUILTIN_SIGNAL_NAMES = ("gsc", "traffic", "analytics")
+BUILTIN_SIGNAL_NAMES = ("search_performance", "traffic", "analytics")
 
 
 class Signal(TypedDict):

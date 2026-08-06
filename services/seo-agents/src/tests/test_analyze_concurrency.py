@@ -12,7 +12,7 @@ from agent.graph.stages.analyze import AnalyzeContextStage, AnalyzeStage
 from agent.graph.tools import Tools
 from tools.llm.mocks.mock_client import MockLLMClient
 from tools.mocks.analytics_mock import MockAppAnalyticsClient
-from tools.mocks.gsc_mock import MockGoogleSearchConsoleClient
+from tools.mocks.search_performance_null import NullSearchPerformanceClient
 from tools.mocks.traffic_mock import MockTrafficClient
 
 
@@ -31,7 +31,7 @@ class _ExplodingTraffic:
 
 def _tools(analytics=None, traffic=None) -> Tools:
     return Tools(
-        gsc=MockGoogleSearchConsoleClient(),
+        search_performance=NullSearchPerformanceClient(),
         analytics=analytics or MockAppAnalyticsClient(),
         traffic=traffic or MockTrafficClient(),
         llm=MockLLMClient(),

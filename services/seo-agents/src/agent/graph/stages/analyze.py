@@ -8,11 +8,18 @@ from ...utils.tool_errors import record_tool_error
 from ..tools import Tools
 
 
-def signal_context(input_: dict, channel: str = "") -> dict:
+def signal_context(input_: dict, config, channel: str = "") -> dict:
     """What a signal is told about the run when it's asked to collect (see
     tools/base.py's SignalSource) — the same steering context a discovery source
-    gets from DiscoverStage, plus the two fields a signal about a *site* is most
-    likely to want.
+    gets from DiscoverStage, plus the site the run is about.
+
+    `site_url` comes from the config, since the site is a property of the tenant
+    and doesn't change between runs; `input.site_url` overrides it for a caller
+    driving several sites through one config. It used to be read off
+    `input.gsc_domain`, which handed every signal a *Google Search Console
+    property identifier* ("sc-domain:example.com") under a name promising a URL —
+    so a crawler or a sitemap reader taking it at face value would have fetched a
+    string that isn't an address.
 
     `channel` is "" when this runs concurrently with ChooseChannelStage, which
     hasn't decided one yet — the honest answer at that point, and the reason a
@@ -21,7 +28,7 @@ def signal_context(input_: dict, channel: str = "") -> dict:
     return {
         "seed_keyword": input_.get("seed_keyword", ""),
         "context_text": input_.get("context_text", ""),
-        "site_url": input_.get("gsc_domain", ""),
+        "site_url": input_.get("site_url") or getattr(config, "site_url", "") or "",
         "channel": channel,
     }
 
@@ -80,7 +87,7 @@ async def collect_context(tools: Tools, config, input_: dict, channel: str = "")
     wall-clock time.
     """
     signal_names = list(tools.signals)
-    context = signal_context(input_, channel)
+    context = signal_context(input_, config, channel)
     results = await asyncio.gather(
         acall(tools.analytics.report, limit=config.analytics_highlights_limit),
         acall(tools.traffic.traffic_summary),
@@ -125,19 +132,19 @@ def _pick_keyword(
         row = max(rows, key=lambda r: r.get("clicks", 0))
         return row["query"], row
     if highlights:
-        # No GSC data and no seed keyword: fall back to a real, current highlight
+        # No rank data and no seed keyword: fall back to a real, current highlight
         # from the analytics client rather than a generic placeholder.
         highlight = highlights[0]
         topic = " ".join(highlight["label"].split()[:6]).rstrip(".,;:")
         return topic, {
             "reason": (
-                "No GSC or seed keyword available; using a recent highlight "
+                "No search-performance data or seed keyword available; using a recent highlight "
                 f"as the topic ({highlight['url']})."
             ),
             "source_highlight": highlight,
         }
     if opportunities:
-        # No GSC, no seed keyword, no analytics highlight: fall back to whatever
+        # No rank data, no seed keyword, no analytics highlight: fall back to whatever
         # DiscoverStage found (see stages/discover.py), highest signal first —
         # still a real, current topic rather than a generic placeholder.
         top = max(opportunities, key=lambda o: o.get("signal_strength", 0) or 0)
@@ -155,7 +162,7 @@ class AnalyzeContextStage:
     LangGraph node, a direct child of START in parallel with the
     discover -> choose_channel chain: the analytics/traffic/signal calls it makes
     don't depend on channel or discovered opportunities (unlike the
-    GSC/keyword-picking part of analyze, which does), so there's no reason to wait
+    search-performance/keyword-picking part of analyze, which does), so there's no reason to wait
     for discovery to finish before making them. All of them are one gather — see
     collect_context above, which is also what AnalyzeStage runs when this node
     isn't in the pipeline.
@@ -198,18 +205,17 @@ class AnalyzeStage:
     async def run(self, state: AgentState) -> dict:
         """Reads: working.channel if ChooseChannelStage set one (see
         agent/graph/pipeline.py — only present when config.discovery_sources is
-        configured), else input.channel/config.default_channel; input.gsc_domain,
-        input.seed_keyword; working.opportunities if DiscoverStage ran; and, when
+        configured), else input.channel/config.default_channel; input.seed_keyword; working.opportunities if DiscoverStage ran; and, when
         AnalyzeContextStage ran (config.discovery_sources non-empty), its output
         on state["analyze_context"] instead of collecting that context itself.
         Writes: phase="analyze"; working.analytics_summary + working.analytics_highlights
         + working.traffic_summary + working.signals (always, all channels — growth
         context and, absent other signal, a topic fallback for DraftStage); for
-        site_article/external_article also working.gsc_rows, working.chosen_keyword,
+        site_article/external_article also working.search_performance_rows, working.chosen_keyword,
         working.chosen_keyword_row (the target keyword/topic DraftStage writes for);
         working.tool_errors (appends one ToolError per client that raised).
 
-        Every client call below (GSC, analytics, traffic, and each configured
+        Every client call below (search performance, analytics, traffic, and each configured
         signal) is independently degrade-don't-abort: one failing never fails the
         run or blocks the others — it just falls back to an empty/default value and
         records why, same principle as DiscoverStage. There's always a usable (if
@@ -241,26 +247,26 @@ class AnalyzeStage:
 
         if channel == Channel.ENGAGEMENT_COMMENT:
             working["chosen_keyword"] = None
-            working["gsc_rows"] = []
+            working["search_performance_rows"] = []
             working["chosen_keyword_row"] = None
         else:
-            # gsc_domain can be empty when discovery (not the caller) decided this
-            # run should be a keyword-driven channel — degrade to no GSC rows
-            # rather than call the client with an empty site_url.
-            gsc_domain = input_.get("gsc_domain")
-            rows = []
-            if gsc_domain:
-                try:
-                    # googleapiclient is httplib2-based and sync-only; acall runs
-                    # it in a worker thread so it can't stall the event loop.
-                    rows = await acall(self.tools.gsc.search_analytics, site_url=gsc_domain)
-                except Exception as exc:  # noqa: BLE001 - degrade, don't abort the run
-                    record_tool_error(tool_errors, "gsc", "analyze", exc)
+            # No "is a site configured?" guard here any more: the client knows
+            # which site it is about (see tools/base.py's SearchPerformanceClient),
+            # and the default provider returns no rows rather than needing one. A
+            # provider that can't answer degrades to [] exactly like a failing one,
+            # and _pick_keyword's chain covers both.
+            try:
+                # googleapiclient is httplib2-based and sync-only; acall runs it in
+                # a worker thread so it can't stall the event loop.
+                rows = await acall(self.tools.search_performance.search_analytics)
+            except Exception as exc:  # noqa: BLE001 - degrade, don't abort the run
+                record_tool_error(tool_errors, "search_performance", "analyze", exc)
+                rows = []
             keyword, source_row = _pick_keyword(
                 rows, input_.get("seed_keyword"), working["analytics_highlights"],
                 working.get("opportunities"),
             )
-            working["gsc_rows"] = rows
+            working["search_performance_rows"] = rows
             working["chosen_keyword"] = keyword
             working["chosen_keyword_row"] = source_row
 

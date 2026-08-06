@@ -15,8 +15,8 @@ So they go in `signal_sources`, a named list of *every* input the agent reads.
 - **A custom signal** — a rank tracker that needs real computation.
 - **`summary` / `facts` / `items`** — prose for the prompt, structure for your
   template.
-- **The whole input set in one block** — `gsc` and `traffic` written as entries in
-  the same list.
+- **The whole input set in one block** — `search_performance` and `traffic`
+  written as entries in the same list.
 
 ## The files
 
@@ -33,7 +33,7 @@ input.json
 
 ```jsonc
 "signal_sources": [
-  { "name": "gsc",     "provider": "mock" },
+  { "name": "search_performance", "provider": "none" },
   { "name": "traffic", "provider": "templated", "options": { "...": "..." } },
   { "name": "keyword_trends", "provider": "templated", "options": { "...": "..." } },
   { "name": "rank_tracker",   "provider": "custom",
@@ -41,11 +41,13 @@ input.json
 ]
 ```
 
-`gsc`, `traffic` and `analytics` are **reserved names**: an entry using one
-selects that built-in tool, exactly as `gsc_provider` / `traffic_provider` /
+`search_performance`, `traffic` and `analytics` are **reserved names**: an entry
+using one selects that built-in tool, exactly as
+`search_performance_provider` / `traffic_provider` /
 `analytics_provider` do. Those fields still work and mean the same thing — the
 list is just a way to see every input at once. (This example uses the list for
-`gsc` and `traffic`, and the plain field for `analytics`, to show they mix.)
+`search_performance` and `traffic`, and the plain field for `analytics`, to show
+they mix.)
 
 Every **other** name is a signal of your own. There is no limit and nothing in
 this repo knows their names.
@@ -175,4 +177,5 @@ Point the templated signal at your real API instead of a file:
 ```
 
 and give `RankTracker` your real rank-tracking API. Swap `llm_provider` and the
-`gsc` entry for real vendors as in the other examples. Nothing else changes.
+`search_performance` entry for real vendors as in the other examples. Nothing
+else changes.

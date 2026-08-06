@@ -1,24 +1,27 @@
 {
+  "site_url": "https://homelabhub.example.com",
   "llm_provider": "mock",
-  "gsc_provider": "mock",
   "traffic_provider": "none",
   "analytics_provider": "mock",
-
   "discovery_sources": [
-    { "name": "community_trends", "provider": "mock" }
+    {
+      "name": "community_trends",
+      "provider": "mock"
+    }
   ],
   "default_channel": "engagement_comment",
-
   "brand_description": "HomelabHub is a community forum for self-hosting and home-lab enthusiasts: people share setups, troubleshoot hardware, and compare self-hosted apps.",
   "agent_goal": "Grow the community by joining relevant conversations elsewhere and inviting people who'd genuinely benefit.",
-
   "default_comment_tone": "friendly and specific",
-
   "qa_brand_mention_keywords": [
-    "our platform", "the platform", "our community", "the community",
-    "homelabhub", "homelab hub", "self-hosting community"
+    "our platform",
+    "the platform",
+    "our community",
+    "the community",
+    "homelabhub",
+    "homelab hub",
+    "self-hosting community"
   ],
-
   "prompt_templates": {
     "engagement_comment": "You're replying as a genuine member of the HomelabHub community, not a marketer.\nCommunity you may mention only if truly relevant: {{ brand_description }}\nReplying to: \"\"\"{{ context_text }}\"\"\"\nTone: {{ tone }}. Keep it to 2-4 sentences, specific and actually helpful. If you mention HomelabHub at all, add a clear disclosure such as \"full disclosure, I help run HomelabHub\". Never link-drop or sound like an ad."
   }

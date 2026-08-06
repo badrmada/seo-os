@@ -1,4 +1,5 @@
 {
+  "site_url": "https://acme.example.com",
   "brand_description": "Acme is a placeholder product used to demonstrate the growth agent. Swap this text for a real description of your own product.",
   "agent_goal": "Grow qualified organic traffic to acme.example.com."
 }

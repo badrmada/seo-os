@@ -14,11 +14,11 @@ class Channel(str, Enum):
     dict with a Channel member keeps working unchanged.
     """
 
-    SITE_ARTICLE = "site_article"  # long-form SEO article for your own site, GSC-keyword-driven
+    SITE_ARTICLE = "site_article"  # long-form SEO article for your own site, keyword-driven
     EXTERNAL_ARTICLE = "external_article"  # article for anywhere that isn't your own site
     # (Medium, Substack, a partner blog, ...) — deliberately not one channel per
     # platform, since the system can't hardcode every platform that exists. Which
     # platform it's for is a free-text params.platform_name the caller supplies
     # (see agent/prompts/builder.py), not a separate Channel value.
     ENGAGEMENT_COMMENT = "engagement_comment"  # a short, genuine reply to an existing
-    # post/thread (context_text), never keyword/GSC-driven
+    # post/thread (context_text), never keyword-driven

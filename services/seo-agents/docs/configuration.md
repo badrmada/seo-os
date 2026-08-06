@@ -15,7 +15,7 @@ different kinds of products**, not just the Echooers one.
   first — it's the one concept the rest builds on.
 - Connecting your analytics with no code? Jump to
   [Templates, explained properly](#templates-explained-properly-with-examples).
-- Connecting Google or Cloudflare? See [Google Search Console](#google-search-console)
+- Connecting Google or Cloudflare? See [Search performance](#search-performance-how-your-pages-already-rank)
   and [Website traffic](#website-traffic) for the setup steps.
 - Need real code, not a template? See [extending.md](extending.md).
 - Want a full working config to copy? The [examples/](../examples/) folder has
@@ -59,8 +59,10 @@ any of them, or all of them:
 
 - No Cloudflare? `"traffic_provider": "templated"` maps any traffic tool's JSON,
   `"custom"` runs your own code, and `"none"` turns traffic off entirely.
-- No Search Console? `"gsc_provider": "mock"`. The agent picks its topic from
-  your seed keyword, your analytics, or what discovery found instead.
+- No Search Console? Nothing to do — `search_performance_provider` defaults to
+  `"none"`, and the agent picks its topic from your seed keyword, your analytics,
+  or what discovery found. Have rank data from somewhere else? `"templated"`
+  maps any JSON, `"custom"` runs your own code.
 - Different model, a local one, or a gateway? `"llm_provider": "custom"` — and
   grounding still works, because searching is the system's job, not the model's.
 - Analytics in your own database? `"analytics_provider": "custom"`.
@@ -89,11 +91,18 @@ own settings, and it means a credential sits next to the thing that needs it.
 
 Each job's section below lists the option names for every provider it offers.
 
-> **Upgrading a config written before this?** Settings like `gemini_api_key`,
-> `gsc_key_file`, `cloudflare_api_token`, `analytics_report_path` and
-> `analytics_summary_template` used to sit at the top level. They now belong to
-> their provider's options — the loader rejects the old spelling and names the
-> new location for each one, so a stale config tells you exactly what to move.
+> **Upgrading an older config?** Two kinds of change, and the loader names the
+> destination for both, so a stale config tells you exactly what to fix:
+>
+> - Settings like `gemini_api_key`, `gsc_key_file`, `cloudflare_api_token`,
+>   `analytics_report_path` and `analytics_summary_template` used to sit at the
+>   top level. They now belong to their provider's `options`.
+> - `gsc_provider` / `gsc_options` were **renamed** to
+>   `search_performance_provider` / `search_performance_options` — same meaning,
+>   a name describing the job rather than one vendor. Google's own property
+>   identifier moved off the run's input (`input.gsc_domain`) into
+>   `search_performance_options.gsc_domain`, and the site itself became the
+>   top-level `site_url`.
 
 The rest of this page goes job by job.
 
@@ -211,31 +220,93 @@ using discovery makes no search calls at all.
 
 ---
 
-## Google Search Console
+## Which site is this? (`site_url`)
 
-Real keyword and ranking data for your own site. The agent uses it to find
+One vendor-neutral field naming the website this agent works on:
+
+```jsonc
+{ "site_url": "https://example.com" }
+```
+
+Every signal receives it as `context.site_url`, and any tool that needs to know
+the site — rather than one vendor's name for it — reads this. It's optional; a
+tenant without it still runs.
+
+It is deliberately **not** a provider's identifier. Google Search Console calls
+your site `"sc-domain:example.com"`, which is an identifier in *Google's*
+namespace and means nothing to anything else, so that lives with the provider
+that understands it (below). A run can override `site_url` for itself with
+`input.site_url`, for a caller driving several sites through one config.
+
+---
+
+## Search performance (how your pages already rank)
+
+Which queries your site already appears for, where they rank, and which are
+close enough to page one to be worth work. The agent uses this to find
 "striking distance" keywords — ones you *almost* rank for, where a good article
 can push you onto page one.
 
+**This is a job, not a vendor.** Google Search Console is one way to answer it;
+Bing Webmaster Tools, a rank tracker's export, or an agency's monthly CSV answer
+it just as well, and all of them get the same treatment.
+
 | Field | Type | Default | Notes |
 |---|---|---|---|
-| `gsc_provider` | `str` | `"mock"` | `"mock"` or `"google"`. |
-| `gsc_options` | `dict` | `{}` | For `"google"`: `key_file` (default `"service_account.json"` — your Google **service-account key file**, see below) and `timeout_seconds` (default 30, per request). |
+| `search_performance_provider` | `str` | `"none"` | `"none"`, `"google"`, `"templated"`, `"mock"`, or `"custom"`. |
+| `search_performance_custom_class` | `str` | `""` | `"module:ClassName"`, when the provider is `"custom"`. |
+| `search_performance_options` | `dict` | `{}` | The selected provider's settings — see below. |
+
+| `options` for… | Keys |
+|---|---|
+| `"google"` | `gsc_domain` (**required** — your Search Console property), `key_file` (default `"service_account.json"`), `timeout_seconds` (30, per request) |
+| `"templated"` | `source` (`"file"` or `"api"`), `report_path`, `api_url`, `api_method`, `api_headers`, `api_timeout_seconds`, plus `rows_template` |
+| `"custom"` | whatever your class reads |
+| `"none"`, `"mock"` | none |
+
+### Why the default is "none"
+
+Because a fixture must not outrank you. The agent prefers a striking-distance
+row *over* your `seed_keyword` — that's the point of having rank data. So when
+the default was a fixture, a tenant who asked for `"cron job monitoring"` got a
+draft about the fixture's canned keyword instead, silently, while this page
+promised the seed keyword would be used.
+
+With `"none"`, there are no rows, and the topic comes from your seed keyword,
+then an analytics highlight, then whatever discovery found — all your own
+current data. See [`_pick_keyword`](../src/agent/graph/stages/analyze.py).
+
+`"mock"` is still there for offline demos, and its rows are product-neutral.
+
+### Google Search Console
 
 ```jsonc
-{ "gsc_provider": "google", "gsc_options": { "key_file": "data/service_account.json" } }
+{
+  "site_url": "https://example.com",
+  "search_performance_provider": "google",
+  "search_performance_options": {
+    "gsc_domain": "sc-domain:example.com",
+    "key_file": "data/service_account.json"
+  }
+}
 ```
 
-Not using Search Console? Leave `gsc_provider` at `"mock"`. The agent picks its
-target topic from your seed keyword, your analytics highlights, or whatever
-discovery found — see [`_pick_keyword`](../src/agent/graph/stages/analyze.py).
+`gsc_domain` is **required** and is *not* the same as `site_url`. It is a Search
+Console **property identifier**, in one of two shapes:
 
-### Setting up the service account (one-time)
+- a **domain property**: `"sc-domain:example.com"`
+- a **URL-prefix property**: `"https://example.com/"`
 
-`gsc_provider: "google"` authenticates as a Google *service account* — a robot
-Google account with its own key file. It does **not** use your personal login.
-Two things have to line up: the app needs the key file, and Search Console needs
-to trust that service account. Steps:
+It has to match a property your service account was added to (step 7 below).
+It's checked when the client is built, so `check-data` catches a wrong one
+without spending an API call.
+
+#### Setting up the service account (one-time)
+
+`"google"` authenticates as a Google *service account* — a robot Google account
+with its own key file. It does **not** use your personal login. Two things have
+to line up: the app needs the key file, and Search Console needs to trust that
+service account. Steps:
 
 1. In the [Google Cloud Console](https://console.cloud.google.com/), pick or
    create a project.
@@ -244,11 +315,12 @@ to trust that service account. Steps:
 3. Create a **service account** (IAM & Admin → Service Accounts → Create).
 4. On that service account, create a **key** of type **JSON** and download it.
    This downloaded file is your key file.
-5. Put the key file where the app can read it, and point `gsc_options.key_file` at it.
-   By default the app looks for `service_account.json` inside your tenant's
-   folder; `"data/service_account.json"` puts it in `data/` alongside your other
-   files, and an absolute path like `"/etc/secrets/gsc.json"` also works. In a
-   container, this is the file you **mount** in and point `gsc_options.key_file` at.
+5. Put the key file where the app can read it, and point
+   `search_performance_options.key_file` at it. By default the app looks for
+   `service_account.json` inside your tenant's folder;
+   `"data/service_account.json"` puts it in `data/` alongside your other files,
+   and an absolute path like `"/etc/secrets/gsc.json"` also works. In a
+   container, this is the file you **mount** in.
 6. Copy the service account's email address — it looks like
    `something@your-project.iam.gserviceaccount.com`.
 7. In [Google Search Console](https://search.google.com/search-console) → your
@@ -259,17 +331,38 @@ to trust that service account. Steps:
 The access it requests is read-only (`webmasters.readonly`) — the agent never
 writes to Search Console.
 
-### `gsc_domain` on the input
+### Rank data from anywhere else (`templated`)
 
-Which site to query is set **per run**, in `input.json`, not here — because one
-tenant could own several properties. When `gsc_provider` is `"google"`,
-`input.gsc_domain` must be a real Search Console property identifier, in one of
-two shapes:
+If your rank data is JSON you can reshape with a snippet, you need no code.
+`rows_template` renders to a **JSON array** of
+`{"query", "clicks", "impressions", "ctr", "position"}` objects — the same
+"render to a JSON array" rule as analytics' `highlights_template`:
 
-- a **domain property**: `"sc-domain:example.com"`
-- a **URL-prefix property**: `"https://example.com/"`
+```jsonc
+{
+  "search_performance_provider": "templated",
+  "search_performance_options": {
+    "source": "file",
+    "report_path": "data/rankings.json",
+    "rows_template": "[{% for r in data.rows %}{\"query\": {{ r.term|tojson }}, \"position\": {{ r.rank }}, \"impressions\": {{ r.seen }}, \"clicks\": {{ r.visits }}, \"ctr\": {{ r.ctr }}}{% if not loop.last %},{% endif %}{% endfor %}]"
+  }
+}
+```
 
-It has to match a property the service account was added to in step 7.
+**Your template supplies data, never judgement.** You do not compute
+`opportunity`, `score` or `reason` — the agent does, from the four numbers
+above, using exactly the same logic the Google provider gets. Which keyword is
+worth targeting must not vary by where the numbers came from, and reimplementing
+striking-distance classification in Jinja2 would be miserable anyway.
+
+`trend` and `top_page` come out `"flat"` and `null` here, because a single
+snapshot has no prior period to compare against. Everything else is identical.
+
+### Rank data that needs code (`custom`)
+
+Bing Webmaster Tools, Ahrefs, Semrush, an internal warehouse — one class with one
+method, `search_analytics(days=28, row_limit=500)`. See
+[extending.md](extending.md).
 
 ---
 
@@ -433,27 +526,28 @@ checked at save time — a wrong one renders empty.)
 
 ### The three built-in inputs, in the same list
 
-`gsc`, `traffic` and `analytics` are **reserved names**. An entry using one
+`search_performance`, `traffic` and `analytics` are **reserved names**. An entry using one
 selects that built-in tool instead of adding a fourth signal:
 
 ```jsonc
 "signal_sources": [
-  { "name": "gsc",     "provider": "google",     "options": { "key_file": "service_account.json" } },
+  { "name": "search_performance", "provider": "google",
+    "options": { "gsc_domain": "sc-domain:example.com", "key_file": "service_account.json" } },
   { "name": "traffic", "provider": "cloudflare", "options": { "api_token": "...", "zone_id": "..." } },
   { "name": "trends",  "provider": "templated",  "options": { "...": "..." } }
 ]
 ```
 
-This is purely so you can see every input in one block. `gsc_provider` /
+This is purely so you can see every input in one block. `search_performance_provider` /
 `traffic_provider` / `analytics_provider` and their `*_options` still work and
 mean exactly what they always did — **nothing needs migrating**. Where both
 appear, the `signal_sources` entry wins.
 
-The three keep their own shapes (`gsc` returns query rows, `analytics` returns
+The three keep their own shapes (`search_performance` returns query rows, `analytics` returns
 `highlights`), so they reach the prompt as `keyword`, `analytics_summary`,
 `highlights` and `traffic_summary` — not as `signals` keys. They also get that
-kind's providers: `{"name": "gsc", "provider": "templated"}` is an error, because
-there is no templated Search Console.
+kind's providers: `{"name": "search_performance", "provider": "cloudflare"}` is an
+error, because Cloudflare answers a traffic question, not a ranking one.
 
 ### When one breaks
 
@@ -872,7 +966,7 @@ environment variable.
 ```
 
 means that file inside `userdata/acme/`, no matter which directory you run from.
-The same goes for a traffic provider's `report_path`, `gsc_options.key_file`, and an output sink's
+The same goes for a traffic provider's `report_path`, `search_performance_options.key_file`, and an output sink's
 `options.path`. Absolute paths and `~` are used as-is.
 
 `--input` works the same way: `--input input.comment.json` means that file in
@@ -1043,8 +1137,11 @@ combine in a real product.
     "api_key": "YOUR_GEMINI_API_KEY"
   },
 
-  "gsc_provider": "google",
-  "gsc_options": { "key_file": "service_account.json" },
+  "search_performance_provider": "google",
+  "search_performance_options": {
+    "gsc_domain": "sc-domain:echooers.com",
+    "key_file": "service_account.json"
+  },
 
   "traffic_provider": "cloudflare",
   "traffic_options": {

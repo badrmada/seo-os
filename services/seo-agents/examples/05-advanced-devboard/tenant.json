@@ -1,6 +1,6 @@
 {
+  "site_url": "https://devboard.example.com",
   "llm_provider": "mock",
-  "gsc_provider": "mock",
   "traffic_provider": "templated",
   "traffic_options": {
     "source": "file",

@@ -13,7 +13,7 @@ class Opportunity(TypedDict):
     which source produced it — merged from every configured source by
     agent/graph/stages/discover.py's DiscoverStage into working.opportunities."""
 
-    source: str                              # discovery_sources registry key, e.g. "gsc", "reddit", "echooers_ideas"
+    source: str                              # discovery_sources registry key, e.g. "trends", "reddit", "echooers_ideas"
     topic: str
     signal_strength: float                   # normalized 0-1, comparable across sources
     intent: Literal["commercial", "informational", "mixed", "discussion"]
@@ -76,7 +76,8 @@ class ToolError(TypedDict):
     OpportunitySource raises; the shape is generic so other stages can adopt the
     same degrade-don't-abort pattern for their own tool calls later."""
 
-    tool: str            # discovery_sources registry key, or "gsc"/"analytics"/"traffic"/"llm"
+    tool: str            # discovery_sources/signal_sources key, or
+                          # "search_performance"/"analytics"/"traffic"/"llm"
     node: str             # which graph node triggered it
     error_type: str       # exception class name
     message: str          # str(exception), truncated

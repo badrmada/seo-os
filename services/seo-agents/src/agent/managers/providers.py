@@ -38,8 +38,8 @@ class ProviderKind:
         """Which provider(s) this tenant's config actually selects.
 
         Both branches account for `signal_sources` being able to spell the same
-        choice two ways (see AgentConfig.signal_sources): an entry named "gsc"
-        selects the *gsc* kind, so it has to be read by that kind and skipped by
+        choice two ways (see AgentConfig.signal_sources): an entry named
+        "search_performance" selects that kind, so it has to be read by that kind and skipped by
         the signal kind. Getting this wrong wouldn't break a run — it would just
         make `list-tools` quietly describe the wrong thing as in use, which is the
         one job this file has.
@@ -91,12 +91,15 @@ CATALOG = (
         },
     ),
     ProviderKind(
-        kind="gsc",
-        interface="tools/base.py::GSCClient",
-        config_field="gsc_provider",
+        kind="search_performance",
+        interface="tools/base.py::SearchPerformanceClient",
+        config_field="search_performance_provider",
         providers={
+            "none": "no rank data; the topic comes from your seed keyword, analytics or discovery",
             "google": "Google Search Console API",
+            "templated": "your own rank data (file or API), mapped by a Jinja2 template",
             "mock": "offline, deterministic — no API calls",
+            "custom": CUSTOM,
         },
     ),
     ProviderKind(

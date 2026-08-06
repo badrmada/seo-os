@@ -20,15 +20,17 @@ from tools.clients.cloudflare import CloudflareAnalyticsClient
 from tools.clients.google_search_console import GoogleSearchConsoleClient
 from tools.clients.opportunity_llm import LLMOpportunitySource
 from tools.clients.opportunity_mcp import MCPOpportunitySource
+from tools.clients.search_performance_templated import TemplatedSearchPerformanceClient
 from tools.clients.signal_templated import TemplatedSignalSource
 from tools.clients.traffic_templated import TemplatedTrafficClient
 from tools.llm.gemini_client import GeminiClient
 from tools.llm.mocks.mock_client import MockLLMClient
 from tools.mocks.analytics_mock import MockAppAnalyticsClient
-from tools.mocks.gsc_mock import MockGoogleSearchConsoleClient
 from tools.mocks.opportunity_mock import MockOpportunitySource
 from tools.mocks.search_mock import MockSearchClient
 from tools.mocks.search_null import NullSearchClient
+from tools.mocks.search_performance_mock import MockSearchPerformanceClient
+from tools.mocks.search_performance_null import NullSearchPerformanceClient
 from tools.mocks.signal_mock import MockSignalSource
 from tools.mocks.traffic_mock import MockTrafficClient
 from tools.mocks.traffic_null import NullTrafficClient
@@ -152,6 +154,18 @@ def _mcp_opportunity_source(ctx: ProviderContext) -> MCPOpportunitySource:
     )
 
 
+def _templated_search_performance(ctx: ProviderContext) -> TemplatedSearchPerformanceClient:
+    return TemplatedSearchPerformanceClient(
+        ctx.option("rows_template", ""),
+        ctx.option("source", "file"),
+        report_path=ctx.path_option("report_path"),
+        api_url=ctx.option("api_url", ""),
+        api_method=ctx.option("api_method", "GET"),
+        api_headers=ctx.option("api_headers", {}),
+        api_timeout_seconds=ctx.option("api_timeout_seconds", 10.0),
+    )
+
+
 def _templated_signal(ctx: ProviderContext) -> TemplatedSignalSource:
     return TemplatedSignalSource(
         ctx.extras["name"],
@@ -199,12 +213,16 @@ _REGISTRY = {
         "mock": lambda ctx: MockSearchClient(),
         "custom": lambda ctx: ctx.custom("search_custom_class"),
     },
-    "gsc": {
-        "mock": lambda ctx: MockGoogleSearchConsoleClient(),
+    "search_performance": {
+        "none": lambda ctx: NullSearchPerformanceClient(),
+        "mock": lambda ctx: MockSearchPerformanceClient(),
         "google": lambda ctx: GoogleSearchConsoleClient(
+            gsc_domain=ctx.option("gsc_domain", ""),
             key_file=ctx.path_option("key_file", "service_account.json"),
             timeout_seconds=float(ctx.option("timeout_seconds", 30.0)),
         ),
+        "templated": _templated_search_performance,
+        "custom": lambda ctx: ctx.custom("search_performance_custom_class"),
     },
     "traffic": {
         "none": lambda ctx: NullTrafficClient(),
@@ -286,8 +304,11 @@ class ToolsManager:
             "search", self.config.search_provider, self._options("search_options"),
         )
 
-    def build_gsc(self):
-        return self._build_signal_slot("gsc")
+    def build_search_performance(self):
+        """How the site already performs in search — see tools/base.py's
+        SearchPerformanceClient for why this kind is named after the question
+        rather than after Google."""
+        return self._build_signal_slot("search_performance")
 
     def build_traffic(self):
         """"cloudflare" is a real, reusable vendor integration (not a
@@ -399,14 +420,15 @@ class ToolsManager:
         return sources
 
     def build_all(self, model_override: str = None) -> Tools:
-        """The out-of-the-box Tools: all-mock except the LLM, search, GSC, traffic,
+        """The out-of-the-box Tools: all-mock except the LLM, search, search
+        performance, traffic,
         and analytics clients, which follow config.llm_provider /
-        config.search_provider / config.gsc_provider / config.traffic_provider /
+        config.search_provider / config.search_performance_provider / config.traffic_provider /
         config.analytics_provider."""
         llm = self.build_llm(model_override)
         search = self.build_search()
         return Tools(
-            gsc=self.build_gsc(),
+            search_performance=self.build_search_performance(),
             analytics=self.build_analytics(),
             traffic=self.build_traffic(),
             llm=llm,

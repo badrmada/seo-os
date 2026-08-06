@@ -6,9 +6,9 @@ about status and direction.
 
 ## Shipped
 
-- **Product-agnostic providers.** LLM, GSC, site traffic, and app analytics
+- **Product-agnostic providers.** LLM, search performance, site traffic, and app analytics
   are all config-driven (`mock`/`templated`/`custom`, plus real vendor
-  clients for LLM/GSC/traffic) — no tenant gets a bespoke Python client baked
+  clients for LLM/Search Console/traffic) — no tenant gets a bespoke Python client baked
   into this repo for data it can express declaratively. See
   [configuration.md](configuration.md).
 - **Opportunity discovery.** `discovery_sources` (`mock`/`llm`/`custom`) lets
@@ -29,7 +29,7 @@ about status and direction.
   for a worked example of a discovery source that runs its own multi-step
   tool loop rather than a single call.
 - **Degrade, don't abort — everywhere in the pipeline, not just discovery.**
-  `discover`'s sources, `analyze`'s GSC/analytics/traffic calls, and
+  `discover`'s sources, `analyze`'s search-performance/analytics/traffic calls, and
   `draft`'s LLM call are all wrapped individually at their own call sites. A
   tool, API, or connection failure degrades to a safe default plus one
   recorded `ToolError` wherever a fallback is meaningful (`discover`,
@@ -108,7 +108,7 @@ about status and direction.
   `analyze_context` node, a direct child of `START` alongside
   `discover -> choose_channel`, instead of after it — `analyze` waits on
   both (a LangGraph AND-join, `add_edge([choose_channel, analyze_context],
-  "analyze")`) before doing its own channel-dependent GSC/keyword-picking
+  "analyze")`) before doing its own channel-dependent keyword-picking
   half. A zero-discovery tenant is unaffected: `analyze_context` isn't added
   to that graph at all, and `analyze` fetches analytics/traffic itself
   exactly as before. See
@@ -282,7 +282,7 @@ about status and direction.
 - **Signal inputs as a named list.** `signal_sources` makes every *input* the
   agent reads an open, named list — `{"name", "provider", "options"}`, any number
   of them, `"templated"` for JSON you can map with a snippet and `"custom"` for
-  what needs code. Before it, `Tools` had three fixed slots (`gsc`, `traffic`,
+  what needs code. Before it, `Tools` had three fixed slots (search performance, `traffic`,
   `analytics`), so swapping Cloudflare for Plausible worked while *adding* a
   trends feed or a rank tracker did not — that took a fork. Now it's config, and
   nothing in this repo knows the name of a signal a tenant adds.
@@ -303,18 +303,56 @@ about status and direction.
   it — the prompt's variables are a function of the config, not of which API
   happened to answer.
 
-  **No config breaks, and nothing needed migrating.** `gsc_provider` /
+  **No config breaks, and nothing needed migrating.** `search_performance_provider` /
   `traffic_provider` / `analytics_provider` and their `*_options` work exactly as
-  before; `gsc`, `traffic` and `analytics` are additionally reserved *names* in
+  before; `search_performance`, `traffic` and `analytics` are additionally reserved *names* in
   the list, so the whole input set can be written as one block if you prefer.
   Those three keep their own hand-shaped interfaces rather than being folded into
-  `collect()` — their callers predate it and generalizing Search Console's
+  `collect()` — their callers predate it and generalizing search performance's
   striking-distance keyword picking is a different job.
   [`examples/07-signal-inputs/`](../examples/07-signal-inputs/) runs a templated
   signal and a custom one, offline.
 
   Explicitly not done: capability inference. A signal contributes context; it
   does not rewire the pipeline.
+
+- **Search performance, named after the job instead of the vendor.**
+  `gsc_provider` was the last kind named after one company, and the only one with
+  no escape hatch — `"google"` or a fixture, nothing else. A tenant on Bing
+  Webmaster Tools, Ahrefs, or a Search Console *export* had to fork. It is now
+  `search_performance_provider`, with the menu every other kind has: `"none"`
+  (the default), `"google"`, `"templated"`, `"mock"`, `"custom"`.
+
+  **The default changed from `"mock"` to `"none"`, which fixed a real bug.** The
+  agent prefers a striking-distance row over the caller's `seed_keyword` — that
+  is the point of having rank data — so defaulting to a fixture meant a config
+  asking for "cron job monitoring" silently drafted about the fixture's canned
+  keyword instead, while README and configuration.md both promised the seed
+  keyword would be used. Worse, that fixture shipped one real product's queries
+  and a live URL on its domain, so unrelated examples drafted against someone
+  else's keywords. The mock is now product-neutral, and `"none"` means the topic
+  comes from the tenant's own data: seed keyword, then an analytics highlight,
+  then a discovered opportunity.
+
+  **The site moved out of the run and into the config.** `input.gsc_domain` was
+  required on every article run, which made a *Google property identifier*
+  mandatory for tenants who had never connected Search Console — and it was
+  handed to every signal as `context.site_url`, so a crawler taking it at face
+  value would have fetched `"sc-domain:example.com"`. There are now two separate
+  things: `site_url` ("https://example.com"), one vendor-neutral top-level field
+  every tool can use, and `search_performance_options.gsc_domain`, Google's own
+  identifier living with the provider that understands it. A run may override
+  `site_url` with `input.site_url`.
+
+  **The scoring is shared, not vendor-locked.** Striking-distance classification,
+  trend, intent, scoring and the one-line reason moved out of the Google client
+  into `tools/clients/search_performance_rows.py`, so `"templated"` supplies the
+  four raw numbers it has and gets an identically-classified answer. A tenant
+  never reimplements "which keyword is worth targeting" in Jinja2.
+
+  This is a **breaking config change** — the second, after Step C. The loader
+  rejects `gsc_provider`/`gsc_options` and names the replacement, and the input
+  validator rejects `gsc_domain` and names both of its new homes.
 
 ## Next
 

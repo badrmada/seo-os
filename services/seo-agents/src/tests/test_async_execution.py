@@ -19,7 +19,7 @@ from agent.managers.run_manager import AgentRunner
 from agent.utils.async_utils import call, is_async_callable
 from tools.llm.mocks.mock_client import MockLLMClient
 from tools.mocks.analytics_mock import MockAppAnalyticsClient
-from tools.mocks.gsc_mock import MockGoogleSearchConsoleClient
+from tools.mocks.search_performance_null import NullSearchPerformanceClient
 from tools.mocks.traffic_mock import MockTrafficClient
 
 # Long enough that a sequential run is unmistakably slower than a concurrent one,
@@ -55,7 +55,7 @@ class AsyncSleepingSource:
 
 def _tools(discovery_sources=None) -> Tools:
     return Tools(
-        gsc=MockGoogleSearchConsoleClient(),
+        search_performance=NullSearchPerformanceClient(),
         analytics=MockAppAnalyticsClient(),
         traffic=MockTrafficClient(),
         llm=MockLLMClient(),

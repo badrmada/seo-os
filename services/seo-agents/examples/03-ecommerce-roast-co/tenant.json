@@ -1,6 +1,6 @@
 {
+  "site_url": "https://roast.example.com",
   "llm_provider": "mock",
-  "gsc_provider": "mock",
   "traffic_provider": "none",
   "analytics_provider": "templated",
   "analytics_options": {

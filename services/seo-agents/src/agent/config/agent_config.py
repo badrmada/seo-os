@@ -15,7 +15,7 @@ class AgentConfig:
     # --- Where this config came from (agent/config/paths.py) ---
     # Set by AgentConfigLoader to the directory holding the tenant JSON, so every
     # relative path a provider is given (a templated provider's report_path,
-    # gsc_options.key_file, an output sink's options.path) resolves against *this tenant's
+    # search_performance_options.key_file, an output sink's options.path) resolves against *this tenant's
     # own folder* rather than whatever directory the process happens to be running
     # in. That distinction doesn't matter for one person running one CLI command;
     # it matters completely once several tenants run in one server process. Empty
@@ -23,6 +23,23 @@ class AgentConfig:
     # behavior. A non-file source — a database row, an API request body — passes
     # its own base directory to AgentConfigLoader.load_dict().
     config_base_dir: str = ""
+
+    # --- The site this agent works on ---
+    # One general, vendor-neutral answer to "which website is this?", e.g.
+    # "https://example.com". Read by any tool that needs to know the site rather
+    # than a vendor's name for it, and passed to every signal as context.site_url
+    # (see agent/graph/stages/analyze.py's signal_context).
+    #
+    # It is deliberately *not* a provider's identifier. Google Search Console
+    # names a property "sc-domain:example.com", which is an identifier in Google's
+    # namespace and means nothing to anything else — that belongs in
+    # search_performance_options.gsc_domain, with the provider that understands
+    # it. A future rank source, crawler or sitemap reader wanting "the site" reads
+    # this field instead of learning Google's spelling.
+    #
+    # Empty (the default) is fine: nothing requires it, and a zero-config tenant
+    # still runs.
+    site_url: str = ""
 
     # --- Provider-owned settings ---
     # Each provider kind below is two fields: `<kind>_provider` (which
@@ -78,10 +95,39 @@ class AgentConfig:
     search_options: dict = field(default_factory=dict)
     search_custom_class: str = ""  # "module.path:ClassName", used by search_provider="custom"
 
-    # --- Google Search Console (tools/clients/google_search_console.py GoogleSearchConsoleClient) ---
-    gsc_provider: str = "mock"  # "google" (real API calls) or "mock" (offline, deterministic)
-    # "google": key_file (default "service_account.json"), timeout_seconds (30)
-    gsc_options: dict = field(default_factory=dict)
+    # --- Search performance (tools/base.py's SearchPerformanceClient Protocol) ---
+    # How the site already performs in search: which queries it appears for, where
+    # they rank, and which are close enough to page one to be worth work. Named
+    # after the question, not after Google — Bing Webmaster Tools, a rank
+    # tracker's export or an agency CSV answer it just as well.
+    #   "none":      no rank data at all. **The default.** The run picks its topic
+    #                from the seed keyword, then an analytics highlight, then a
+    #                discovered opportunity — all the tenant's own current data.
+    #   "google":    the real Search Console API. Options: gsc_domain (required —
+    #                your property, "sc-domain:example.com" or a URL-prefix
+    #                property), key_file (default "service_account.json"),
+    #                timeout_seconds (30).
+    #   "templated": your own rank data (file or API) mapped by one Jinja2
+    #                template. Options: source ("file" | "api"), report_path,
+    #                api_url, api_method, api_headers, api_timeout_seconds, and
+    #                rows_template — which must render to a JSON array of
+    #                {"query", "clicks", "impressions", "ctr", "position"}
+    #                objects. It supplies data, never judgement: opportunity/score/
+    #                reason are computed centrally so every source classifies
+    #                "striking distance" the same way.
+    #   "mock":      canned, product-neutral rows; offline and deterministic.
+    #   "custom":    a tenant's own class via search_performance_custom_class.
+    #
+    # Why the default is "none" and not "mock": the mock returns
+    # striking-distance rows, and _pick_keyword prefers one of those *over* the
+    # caller's seed_keyword — so a fixture keyword silently replaced the one a
+    # tenant actually asked for. A fixture is the right default for a shape
+    # nothing else provides; it is the wrong default for a decision the tenant can
+    # already make better.
+    search_performance_provider: str = "none"
+    search_performance_options: dict = field(default_factory=dict)
+    # "module.path:ClassName", used by search_performance_provider="custom"
+    search_performance_custom_class: str = ""
 
     # --- Site traffic (tools/base.py's SiteTrafficClient Protocol) ---
     # "none" (no traffic tool) | "mock" (product-neutral canned text) | "cloudflare"
@@ -139,12 +185,12 @@ class AgentConfig:
     #   - "custom": a tenant-registered class ("class": "module.path:ClassName"),
     #     loaded exactly like every other custom provider.
     #
-    # **`gsc`, `traffic` and `analytics` are reserved names here.** An entry using
+    # **`search_performance`, `traffic` and `analytics` are reserved names here.** An entry using
     # one selects that built-in slot's provider instead of adding a fourth signal,
     # so the whole set of inputs can be written as one list:
     #
     #   "signal_sources": [
-    #     {"name": "gsc",     "provider": "google",     "options": {...}},
+    #     {"name": "search_performance", "provider": "google", "options": {...}},
     #     {"name": "traffic", "provider": "cloudflare", "options": {...}},
     #     {"name": "trends",  "provider": "custom", "class": "trends:Client"}
     #   ]

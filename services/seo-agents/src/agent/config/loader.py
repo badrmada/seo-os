@@ -16,7 +16,7 @@ from .agent_config import AgentConfig
 MOVED_FIELDS = {
     "llm_model": "llm_options.model",
     "gemini_api_key": "llm_options.api_key",
-    "gsc_key_file": "gsc_options.key_file",
+    "gsc_key_file": "search_performance_options.key_file",
     "cloudflare_api_token": "traffic_options.api_token",
     "cloudflare_zone_id": "traffic_options.zone_id",
     "traffic_source": "traffic_options.source",
@@ -35,6 +35,17 @@ MOVED_FIELDS = {
     "analytics_summary_template": "analytics_options.summary_template",
     "analytics_highlights_template": "analytics_options.highlights_template",
 }
+
+# Fields that kept their meaning but were renamed, because the old name was a
+# vendor's and the job isn't. Distinct from MOVED_FIELDS above: nothing about the
+# *value* changes, so the fix is a rename rather than a relocation into an options
+# object, and the message has to say so — telling someone to "move gsc_provider
+# into a provider's options" would be actively wrong advice.
+RENAMED_FIELDS = {
+    "gsc_provider": "search_performance_provider",
+    "gsc_options": "search_performance_options",
+}
+
 
 
 def _signal_names(config: AgentConfig) -> tuple:
@@ -105,6 +116,20 @@ class AgentConfigLoader:
         known = {f.name for f in fields(AgentConfig)}
         unknown = set(data) - known
         if unknown:
+            # Renames are reported before relocations: a config carrying both
+            # gsc_provider and gsc_key_file should be told the kind was renamed
+            # first, since "put it in gsc_options.key_file" names an object that
+            # no longer exists.
+            renamed = sorted(name for name in unknown if name in RENAMED_FIELDS)
+            if renamed:
+                renames = "\n".join(f"  {name} -> {RENAMED_FIELDS[name]}" for name in renamed)
+                raise ValueError(
+                    f"{len(renamed)} field(s) in {source} were renamed: the kind is named after "
+                    f"the job it does, not after one vendor that can do it.\n{renames}\n"
+                    "The value is unchanged — only the field name. Google's own property "
+                    "identifier now lives in search_performance_options.gsc_domain, and the "
+                    'site itself in the top-level "site_url". See docs/configuration.md.'
+                )
             moved = sorted(name for name in unknown if name in MOVED_FIELDS)
             if moved:
                 relocations = "\n".join(f"  {name} -> {MOVED_FIELDS[name]}" for name in moved)

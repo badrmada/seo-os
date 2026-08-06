@@ -30,7 +30,7 @@ from agent.observability import build_reporter, observe_tools
 from agent.schemas.signal import empty_signal, normalize_signal
 from tools.llm.mocks.mock_client import MockLLMClient
 from tools.mocks.analytics_mock import MockAppAnalyticsClient
-from tools.mocks.gsc_mock import MockGoogleSearchConsoleClient
+from tools.mocks.search_performance_null import NullSearchPerformanceClient
 from tools.mocks.signal_mock import MockSignalSource
 from tools.mocks.traffic_mock import MockTrafficClient
 
@@ -72,7 +72,7 @@ class SyncSleepingSignal:
 
 def _tools(signals=None, **overrides) -> Tools:
     return Tools(
-        gsc=overrides.get("gsc") or MockGoogleSearchConsoleClient(),
+        search_performance=overrides.get("search_performance") or NullSearchPerformanceClient(),
         analytics=overrides.get("analytics") or MockAppAnalyticsClient(),
         traffic=overrides.get("traffic") or MockTrafficClient(),
         llm=MockLLMClient(),
@@ -164,21 +164,38 @@ def test_a_signal_is_told_what_the_run_knows_so_far():
     signal = StubSignal()
     _analyze(
         {"trends": signal},
+        config=AgentConfig(site_url="https://example.com"),
         state={
             "input": {
                 "channel": "site_article", "seed_keyword": "kettles",
-                "gsc_domain": "sc-domain:example.com", "context_text": "a thread",
+                "context_text": "a thread",
             },
             "working": {},
         },
     )
 
+    # site_url is the config's, and it is a *URL* — it used to be read off
+    # input.gsc_domain, which handed every signal Google's property identifier
+    # ("sc-domain:example.com") under a name promising an address.
     assert signal.contexts == [{
         "seed_keyword": "kettles",
         "context_text": "a thread",
-        "site_url": "sc-domain:example.com",
+        "site_url": "https://example.com",
         "channel": "site_article",
     }]
+
+
+def test_a_run_can_override_the_configured_site_for_itself():
+    """One config driving several sites is the case this exists for."""
+    signal = StubSignal()
+
+    _analyze(
+        {"trends": signal},
+        config=AgentConfig(site_url="https://example.com"),
+        state={"input": {"channel": "site_article", "site_url": "https://other.example"}, "working": {}},
+    )
+
+    assert signal.contexts[0]["site_url"] == "https://other.example"
 
 
 def test_one_signal_failing_costs_only_that_signal():
@@ -324,7 +341,7 @@ def test_the_same_signals_arrive_with_and_without_a_discovery_pipeline():
         state = {
             "run_id": "r", "phase": "queued", "working": {}, "usage": {"tokens": 0},
             "input": {"channel": "site_article", "seed_keyword": "kettles",
-                      "gsc_domain": "sc-domain:example.com", "params": {}},
+                      "params": {}},
         }
         return asyncio.run(build_graph(tools, config).ainvoke(state))
 
@@ -352,12 +369,12 @@ def test_a_configured_signal_reaches_the_drafted_prompt_keyed_by_its_name():
     llm = _RecordingLLM()
     built = ToolsManager(config).build_all()
     tools = Tools(
-        gsc=built.gsc, analytics=built.analytics, traffic=built.traffic, llm=llm,
+        search_performance=built.search_performance, analytics=built.analytics, traffic=built.traffic, llm=llm,
         signals=built.signals,
     )
 
     result = AgentRunner(config, tools=tools).run(
-        {"seed_keyword": "pour over kettles", "gsc_domain": "sc-domain:example.com"}
+        {"seed_keyword": "pour over kettles"}
     )
 
     assert result["phase"] == "done"
@@ -502,13 +519,16 @@ def test_the_legacy_fields_keep_working_untouched():
 
 
 def test_a_reserved_name_gets_the_built_in_kinds_providers_not_the_signal_ones():
-    """"templated" means something different for traffic than for a signal, and a
-    generic-signal provider name must not be silently accepted for a slot that has
-    no such implementation."""
-    config = AgentConfig(signal_sources=[{"name": "gsc", "provider": "templated"}])
+    """A reserved entry is routed to its own kind, so it is offered that kind's
+    providers — "cloudflare" is a traffic provider and means nothing to search
+    performance, and must not be silently accepted just because the entry sits in
+    the signal_sources list."""
+    config = AgentConfig(
+        signal_sources=[{"name": "search_performance", "provider": "cloudflare"}]
+    )
 
-    with pytest.raises(ValueError, match="Unknown gsc provider"):
-        ToolsManager(config).build_gsc()
+    with pytest.raises(ValueError, match="Unknown search_performance provider"):
+        ToolsManager(config).build_search_performance()
 
 
 def test_an_unknown_signal_provider_names_the_entry_it_came_from():
