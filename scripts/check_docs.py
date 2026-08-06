@@ -11,8 +11,10 @@ Three checks, in order of how often they've caught something:
 3. **Anchors resolve.** Every `#fragment` on a relative link matches a heading in
    the target file. Renaming a heading silently breaks inbound links otherwise.
 
-Commands needing a tenant we don't ship, credentials, or a placeholder are
-skipped and listed, so the skip set stays visible rather than quietly growing.
+Commands run against a scratch workspace built from the quickstart's own
+instructions (see SCRATCH_TENANTS), so `--tenant acme` is checked rather than
+skipped and CI needs no `userdata/` of its own. What is still skipped is named
+per command, so the skip set stays visible rather than quietly growing.
 
     python3 scripts/check_docs.py            # everything
     python3 scripts/check_docs.py --no-run   # links and anchors only (fast, no venv)
@@ -21,10 +23,13 @@ skipped and listed, so the skip set stays visible rather than quietly growing.
 from __future__ import annotations
 
 import argparse
+import contextlib
+import os
 import re
 import shlex
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
@@ -32,15 +37,44 @@ SERVICE = ROOT / "services" / "seo-agents"
 
 SKIP_DIRS = {".git", "vir", ".venv", "venv", "node_modules", ".pytest_cache", "__pycache__"}
 
-# A command is skipped when it names something this repo does not ship: a tenant
-# that only exists on someone's machine, a credential, or a literal placeholder.
-# Keep this list short — every entry is a line nothing verifies.
-SKIP_MARKERS = (
-    "<name>", "<tenant>", "acme", "globex", "echooers", "my-",
-    "--help", "/srv/", "list_channels", "site_audit",
-    "\u2026",  # an ellipsis means the line is prose, not a command
+# `userdata/` is gitignored — a real tenant holds real credentials — so a fresh
+# clone and CI have no tenants at all. That used to mean every `--tenant acme`
+# line in the docs was skipped, and `list-tenants` failed outright with nothing
+# to list: this check passed on a laptop and failed in CI, for the same commit.
+#
+# These are not fixtures standing in for the docs' tenants. They are what the
+# quickstart tells the reader to create — an empty `tenant.json` meaning "use the
+# built-in fake for everything", plus the input files the docs name — which is
+# the only reason running these commands proves anything.
+SCRATCH_TENANTS: dict[str, dict[str, str]] = {
+    "acme": {
+        "tenant.json": "{}",
+        "input.json": '{ "channel": "site_article", "seed_keyword": "your topic here" }',
+        # A reply needs the conversation it is replying to — `context_text` is
+        # required for this channel, exactly as README's second input shows.
+        "input.comment.json": (
+            '{ "channel": "engagement_comment",'
+            ' "context_text": "Why does anonymous feedback make people more honest?" }'
+        ),
+    },
+    # README's "a different one", so `list-tenants` has more than one to list and
+    # the workspace isn't a single-tenant special case.
+    "globex": {
+        "tenant.json": "{}",
+        "input.json": '{ "channel": "site_article", "seed_keyword": "another product" }',
+    },
+}
 
-)
+# A tenant that only exists on one machine, or a literal placeholder. Matched
+# against the *value* of `--tenant`, never as a substring of the line: "acme" as
+# a substring also skipped `01-starter-acme`, an example this repo does ship.
+SKIP_TENANTS = {"echooers", "<name>", "<tenant>"}
+
+# An agent type only one example declares, so it doesn't exist for `acme`.
+SKIP_AGENTS = {"site_audit"}
+
+# An ellipsis means the line is prose describing a command, not a command.
+ELLIPSIS = "\u2026"
 
 LINK_RE = re.compile(r"\[[^\]]*\]\(([^)]+)\)")
 CMD_RE = re.compile(r"python src/main\.py [^\n`\"|]*")
@@ -109,6 +143,61 @@ def commands(files: list[Path]) -> list[tuple[Path, str]]:
     return found
 
 
+def option(args: list[str], flag: str) -> str | None:
+    """The value of `--flag`, or None. Only the long `--flag value` form the docs
+    actually use; this is not an argument parser."""
+    if flag in args:
+        i = args.index(flag) + 1
+        if i < len(args):
+            return args[i]
+    return None
+
+
+def skip_reason(cmd: str) -> str | None:
+    """Why this documented line can't be executed here — or None, meaning run it.
+
+    Every reason names the specific thing that is missing, because the skip list
+    is the part of this check nobody is verifying: a reason that reads "needs a
+    tenant" hides a command that has been broken for a year.
+    """
+    if ELLIPSIS in cmd:
+        return "prose, not a command"
+    try:
+        args = shlex.split(cmd)[2:]          # drop `python src/main.py`
+    except ValueError:
+        return "not a parseable command line"
+
+    tenant = option(args, "--tenant")
+    if tenant in SKIP_TENANTS:
+        return f"--tenant {tenant} is private to one machine, or a placeholder"
+
+    agent = option(args, "--agent")
+    if agent in SKIP_AGENTS:
+        return f"--agent {agent} is declared by one example, not by this tenant"
+
+    userdata = option(args, "--userdata")
+    if userdata and not (SERVICE / userdata).exists():
+        return f"--userdata {userdata} is an illustrative path, not one that exists"
+
+    return None
+
+
+@contextlib.contextmanager
+def scratch_workspace():
+    """The tenants the quickstart tells a reader to create, in a temp folder.
+
+    Commands that pass their own `--userdata` (the examples) are unaffected —
+    that flag wins over the environment variable set here.
+    """
+    with tempfile.TemporaryDirectory(prefix="check-docs-") as tmp:
+        root = Path(tmp) / "userdata"
+        for tenant, files in SCRATCH_TENANTS.items():
+            (root / tenant).mkdir(parents=True)
+            for name, body in files.items():
+                (root / tenant / name).write_text(body + "\n", encoding="utf-8")
+        yield root
+
+
 def check_commands(files: list[Path]) -> tuple[list[str], int, list[str]]:
     python = SERVICE / "vir" / "bin" / "python"
     if not python.exists():
@@ -117,24 +206,29 @@ def check_commands(files: list[Path]) -> tuple[list[str], int, list[str]]:
         return ["no virtualenv found in services/seo-agents (vir/ or .venv/)"], 0, []
 
     problems, skipped, seen, ran = [], [], set(), 0
-    for path, cmd in commands(files):
-        if cmd in seen:
-            continue
-        seen.add(cmd)
+    with scratch_workspace() as workspace:
+        env = {**os.environ, "SEO_AGENT_USERDATA": str(workspace)}
+        for path, cmd in commands(files):
+            if cmd in seen:
+                continue
+            seen.add(cmd)
 
-        if any(m in cmd for m in SKIP_MARKERS):
-            skipped.append(cmd)
-            continue
+            reason = skip_reason(cmd)
+            if reason:
+                skipped.append(f"{cmd}\n        ({reason})")
+                continue
 
-        args = [str(python)] + shlex.split(cmd)[1:]
-        result = subprocess.run(args, cwd=SERVICE, capture_output=True, text=True)
-        ran += 1
-        if result.returncode != 0:
-            tail = (result.stderr or result.stdout).strip().splitlines()[-3:]
-            problems.append(
-                f"{path.relative_to(ROOT)}: `{cmd}` exited {result.returncode}\n"
-                + "\n".join(f"      {line}" for line in tail)
+            args = [str(python)] + shlex.split(cmd)[1:]
+            result = subprocess.run(
+                args, cwd=SERVICE, capture_output=True, text=True, env=env
             )
+            ran += 1
+            if result.returncode != 0:
+                tail = (result.stderr or result.stdout).strip().splitlines()[-3:]
+                problems.append(
+                    f"{path.relative_to(ROOT)}: `{cmd}` exited {result.returncode}\n"
+                    + "\n".join(f"      {line}" for line in tail)
+                )
     return problems, ran, skipped
 
 
@@ -168,7 +262,11 @@ def main() -> int:
         else:
             print(f"ok    commands ({ran} run)")
         if skipped:
-            print(f"      ({len(skipped)} skipped: need a tenant, credentials, or a placeholder)")
+            # Printed in full, with each reason. A skip count on its own is how a
+            # command quietly stops being checked.
+            print(f"\nskip  commands ({len(skipped)})")
+            for s in skipped:
+                print(f"      {s}")
 
     print("\n" + ("FAILED" if failed else "PASSED"))
     return 1 if failed else 0

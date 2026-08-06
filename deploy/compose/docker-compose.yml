@@ -1,0 +1,86 @@
+# SEO-OS on one host.
+#
+#   cp .env.example .env && edit it
+#   docker compose up -d                          # Redis, so a run is watchable
+#   docker compose run --rm agent run --tenant acme
+#
+# Two things to know before reading further:
+#
+# 1. The runtime is a CLI, not a server. There is nothing here to `up` except
+#    Redis until the gateway exists (docs/roadmap.md, step 3) — the agent is a
+#    one-shot container behind the `run` profile, which is why `up` doesn't
+#    start it.
+# 2. A tenant is a folder, mounted rather than baked into the image. One image
+#    serves every tenant under /userdata; a tenant's credentials never enter a
+#    layer.
+
+name: seo-os
+
+services:
+  # The state store. `state_provider: "redis"` is what makes a run's progress
+  # readable by a process that isn't executing it — the seam the gateway and the
+  # frontend are both built on. Not required for a plain CLI run.
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    ports:
+      # Bound to loopback: this is a state store, not a public service.
+      - "127.0.0.1:${REDIS_PORT:-6379}:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+
+  agent:
+    image: ${IMAGE_REPO:-ghcr.io/badrmada/seo-os}/seo-agents:${IMAGE_TAG:-latest}
+    # A profile, so `docker compose up` doesn't try to keep a CLI running and
+    # restart it forever. Reach it with `docker compose run --rm agent …`.
+    profiles: ["run"]
+    depends_on:
+      redis:
+        condition: service_healthy
+    environment:
+      SEO_AGENT_USERDATA: /userdata
+      # Read by a tenant config that wants Redis without hardcoding a host:
+      #   "state_provider": "redis",
+      #   "state_options": { "url": "redis://redis:6379/0" }
+      REDIS_URL: redis://redis:6379/0
+    volumes:
+      - ${USERDATA_PATH:-./userdata}:/userdata
+    # Overridden by whatever follows `docker compose run --rm agent`. The default
+    # is the CLI's own default: print help and do nothing.
+    command: ["--help"]
+
+  # The gateway, when it exists (docs/roadmap.md, step 3) — kept here as a shape
+  # rather than a promise, so that step is configuration and not a rewrite. It is
+  # the first thing in this file that is actually a service: same /userdata
+  # mount, same Redis, a port and a health check of its own.
+  #
+  # gateway:
+  #   image: ${IMAGE_REPO:-ghcr.io/badrmada/seo-os}/gateway:${IMAGE_TAG:-latest}
+  #   restart: unless-stopped
+  #   depends_on:
+  #     redis:
+  #       condition: service_healthy
+  #   environment:
+  #     SEO_AGENT_USERDATA: /userdata
+  #     REDIS_URL: redis://redis:6379/0
+  #   volumes:
+  #     - ${USERDATA_PATH:-./userdata}:/userdata
+  #   ports:
+  #     - "${GATEWAY_PORT:-8000}:8000"
+  #   healthcheck:
+  #     test: ["CMD", "curl", "-fsS", "http://localhost:8000/health"]
+  #     interval: 15s
+  #     timeout: 3s
+  #     retries: 5
+  #
+  # The frontend (step 4) is a client of the gateway and nothing else, so it
+  # arrives as one more service here with a URL pointing at the one above.
+
+volumes:
+  redis-data:

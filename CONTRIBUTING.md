@@ -112,7 +112,8 @@ The full list, with the story behind each, is in
 A change isn't done until:
 
 - its config fields are in `docs/configuration.md`,
-- its status is in `docs/roadmap.md`,
+- its status is in [`docs/roadmap.md`](docs/roadmap.md) — the repo-level one, not
+  the service's,
 - and any command line you added has been **executed, not proofread**.
 
 That last one isn't pedantry, and it's automated:
@@ -127,6 +128,15 @@ actually executing it has caught stale commands four separate times, including a
 `cd` into a directory that never existed — none of which reading ever caught. The
 anchor check found two more the day it was written: links pointing at headings
 that had been renamed out from under them.
+
+Commands run against a **scratch workspace** the script builds itself — the
+`acme` and `globex` tenants exactly as the quickstart tells a reader to create
+them (`SCRATCH_TENANTS` in the script). That's there because `userdata/` is
+gitignored, so CI has no tenants: without it every `--tenant acme` line went
+unchecked and `list-tenants` failed outright, which is how this check used to
+pass on a laptop and fail in CI on the same commit. A command that still can't be
+run is **printed with the reason** rather than counted, since a silent skip is
+how a documented command stops being checked without anyone noticing.
 
 ## A note on crawlers
 

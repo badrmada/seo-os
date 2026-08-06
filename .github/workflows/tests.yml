@@ -1,0 +1,43 @@
+name: tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+# A second push to the same ref cancels the first: the older run's result is not
+# a fact anyone needs.
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  seo-agents:
+    name: seo-agents
+    runs-on: ubuntu-latest
+
+    defaults:
+      run:
+        working-directory: services/seo-agents
+
+    steps:
+      - uses: actions/checkout@v4
+
+      # 3.11 and nothing else, on purpose: requirements.txt is fully pinned and
+      # the Dockerfile is python:3.11-slim, so a second version here would be
+      # testing an interpreter nobody deploys.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: services/seo-agents/requirements.txt
+
+      - name: Install
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # The suite is offline by design — every example runs on built-in fakes, no
+      # keys. A test that needs the network is a bug in the test, not here.
+      - name: Test
+        run: pytest -q

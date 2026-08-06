@@ -1,0 +1,101 @@
+# DISABLED — the build isn't ready to run on every push yet.
+#
+# Re-enable by renaming this file to `images.yml`. It is parked by extension
+# rather than by commenting out its body: GitHub only parses `.yml`/`.yaml` in
+# this folder, whereas a fully-commented workflow file is a YAML document with no
+# `on:` key and shows up as "Invalid workflow file" in the Actions tab.
+#
+# Only `tests.yml` and `docs.yml` run today.
+
+name: images
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: images-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    name: ${{ matrix.service }}
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write        # only used on a push; a PR never reaches the push step
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # One entry per service that has a Dockerfile. `gateway` and `frontend`
+        # join by adding theirs and a line here — which is the whole reason this
+        # is a matrix while there is one service in it.
+        include:
+          - service: seo-agents
+            context: services/seo-agents
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+
+      - uses: docker/setup-buildx-action@v3
+
+      # A pull request builds and never publishes: a fork's PR would otherwise
+      # push to this project's registry.
+      - name: Log in to ${{ env.REGISTRY }}
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Tags and labels
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}/${{ matrix.service }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=pr
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
+            type=sha,format=long
+            type=raw,value=latest,enable={{is_default_branch}}
+
+      - name: Build${{ github.event_name != 'pull_request' && ' and push' || '' }}
+        uses: docker/build-push-action@v6
+        with:
+          context: ${{ matrix.context }}
+          push: ${{ github.event_name != 'pull_request' }}
+          # A PR's image is loaded into the local daemon instead, so the smoke
+          # test below has something to run without a second build.
+          load: ${{ github.event_name == 'pull_request' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          # arm64 costs real time under QEMU, so a PR only proves amd64 builds
+          # (and `load` can't take a manifest list anyway); what actually gets
+          # deployed is built for both.
+          platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
+          cache-from: type=gha,scope=${{ matrix.service }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.service }}
+          provenance: false
+
+      # The image is a CLI with an explicit ENTRYPOINT: a bare run prints help
+      # and does nothing. That makes "does it start?" cheap to ask, and it is the
+      # check that catches a dependency missing from the image rather than from
+      # the tests — the two are not the same list.
+      - name: Smoke test
+        run: |
+          image="$(echo '${{ steps.meta.outputs.tags }}' | head -n 1)"
+          echo "running: $image --help"
+          docker run --rm --pull=missing "$image" --help
