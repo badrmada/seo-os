@@ -3,11 +3,15 @@
 Not built yet. This folder is a placeholder so the intended structure of the
 system is visible; there is no code here.
 
-It is **step 3** of
-[the roadmap](../../docs/roadmap.md#3-the-gateway-the-api-handler) — after an
-image that builds in CI and somewhere to run it, before the frontend that calls
-it. It is also the first thing in this system that is a long-running *service*
-rather than a CLI or a store, which is why
+It is **step 2** of
+[the roadmap](../../docs/roadmap.md#2-the-gateway-the-api) — after
+[an MCP server](../../docs/roadmap.md#1-mcp-the-whole-thing-callable-by-an-llm),
+which puts an LLM in front of the runtime for a fraction of the cost, and before
+the frontend that calls this. It will be a **FastAPI** application: the runtime is async end to end
+and Pydantic-shaped, so a Python gateway *imports* `AgentService` instead of
+re-serializing its whole contract across a language boundary. It is also the
+first thing in this system that is a long-running *service* rather than a CLI or
+a store, which is why
 [`deploy/compose/`](../../deploy/compose/) already carries its shape, commented
 out: a service, a port, a health check.
 
@@ -19,6 +23,10 @@ deliberately refuses to grow into:
 - **An HTTP API** over `AgentService.aexecute()`, which already exists as a
   channel-agnostic entry point for exactly this. The CLI is one adapter over it;
   this would be a second.
+- **Dispatch** — deciding what actually executes an accepted run, and how progress
+  and results get back from it. In a cluster that is a Job per run; on one host it
+  is this process. See
+  [step 3](../../docs/roadmap.md#3-dispatch-and-the-data-flow-between-gateway-and-workers).
 - **Auth and multi-user isolation.** The runtime already isolates agents from each
   other on disk and in memory; deciding *who may run which* is this layer's job.
 - **A queue and workers.** One run is one call today. Scheduling them, retrying

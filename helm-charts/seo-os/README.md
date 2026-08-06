@@ -36,7 +36,7 @@ What the chart renders is two objects and nothing else:
 | `Job` | the run: the image, the args, the mounts, the limits |
 
 No Deployment, no Service, no Ingress, no HPA. There is nothing long-running to
-deploy yet — the gateway is [step 3](../../docs/roadmap.md#3-the-gateway-the-api-handler),
+deploy yet — the gateway is [step 2](../../docs/roadmap.md#2-the-gateway-the-api),
 and it is the thing that will bring a Deployment with it.
 
 ## Your own tenant
