@@ -1,7 +1,7 @@
 # Examples
 
 Eight worked examples for fictional products, from the simplest possible setup to
-advanced ones that plug in custom code. Each folder is a complete, **runnable**
+advanced ones that install custom capabilities and skills. Each folder is a complete, **runnable**
 configuration you can copy and adapt.
 
 Every example runs **fully offline with no API keys** — it uses the built-in
@@ -25,21 +25,20 @@ discovery).
 
 ## Running an example
 
-First install the project once (from the repo root — see the main
-[README](../README.md)):
+First install the project once (see the service [README](../README.md)):
 
 ```bash
-cd services/agents-workers
+cd services/seo-agents
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-Then `cd` into an example and run it. Each example ships its own `tenant.json`
-and `input.json`, and the app reads those two names from the folder you're in:
+Then run any example **from `services/seo-agents/`** — `--userdata examples`
+makes this folder the workspace, and `--tenant` names the example folder inside
+it. Each ships its own `tenant.json` and `input.json`:
 
 ```bash
-cd examples/02-saas-blog-pingowl
-python src/main.py run --userdata examples --tenant <name>
+python src/main.py run --userdata examples --tenant 02-saas-blog-pingowl
 ```
 
 Two handy variations:

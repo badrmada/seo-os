@@ -1,8 +1,8 @@
 # SEO-OS
 
-**An operating system for organic growth.** Bring your own data, install the
-capabilities you want, and run agents that find the work, do it, and show you why
-— on your stack, with no vendor you didn't choose.
+**An agent operating system for organic growth.** Bring your own data, install the
+capabilities and skills you want, and run agents that find the work, do it, and
+show you why — on your stack, with no model or vendor you didn't choose.
 
 ```bash
 git clone https://github.com/badrmada/seo-os && cd seo-os/services/seo-agents
@@ -34,35 +34,40 @@ So the design goal was never "an SEO tool." It was: **whatever you already use
 should plug in, and whatever you need that I've never heard of should plug in
 too — without forking.**
 
-## The idea: an OS, not a tool
+## The idea: an OS for agents, not an SEO tool
 
-An SEO tool decides what your growth process is. An operating system doesn't
-decide anything — it gives you a kernel, a driver model, and a place to install
-whatever you actually need.
+An SEO tool decides what your growth process is. An operating system decides
+nothing — it gives you a runtime, a capability model, and somewhere to install
+what you actually need. That's the "OS" in the name, and every word below is a
+mechanism in the code rather than a metaphor:
 
-SEO-OS is the second one, and the metaphor is literal. Every piece below is a real
-mechanism in the code, not a marketing frame:
-
-| OS concept | In SEO-OS | Means |
+| | What it is | Why you care |
 |---|---|---|
-| **Kernel** | The run engine | Builds the pipeline, runs it, handles failure. Vendor-free — it knows interfaces, never brands. |
-| **Drivers** | **Providers** | The implementation behind a job. `gemini`, `cloudflare`, `duckduckgo`, `redis` ship — so do `mock`, `templated` and `custom`. |
-| **Devices** | **Signal sources** | Anything that feeds data in: a rank tracker, a backlink API, a trends export, your own dashboard. A named list, any length. |
-| **Programs** | **Agent types** | A pipeline you run. `seo_content` (write something) ships; a site audit, a link report or a brief is one you declare. |
-| **Home directory** | The **tenant folder** | One folder per configured agent: its config, its data, its plugins, its output. Many run side by side. |
-| **Processes** | **Runs** | One request in, one result out, each with a `run_id`. |
-| **`/proc`** | The **state store** | A snapshot after every step, so a UI or worker can watch a run that hasn't finished. |
-| **stdout / pipes** | **Output sinks** | Where the result goes: stdout, a JSONL archive, a webhook, your own class. |
-| **Installing a package** | Config, or one class | A `"custom"` provider is `"module:ClassName"` in your tenant's `plugins/`. Nothing in the kernel changes. |
+| **Agent** | A configured worker with a goal, a voice, a set of capabilities, and a pipeline. One folder holds it. | You run several side by side — different goals, different voices, different tools. |
+| **Capability** | A job an agent can do, defined by an interface: write text, search the web, read rankings, read traffic, discover work, persist state. Nine of them today. | The runtime knows jobs, never brands. Nothing is hardwired to a vendor. |
+| **Provider** | The implementation behind a capability. `gemini`, `cloudflare`, `duckduckgo`, `redis` — plus `mock`, `templated` and `custom`. | Swap any one by editing config. Your own class counts as a provider. |
+| **Specialists** | The team inside a run: one finds the work, one picks the channel, one gathers your data, one writes, one reviews. | Not one giant prompt. Each step is inspectable, and `list-specialists` prints yours. |
+| **Tools & signals** | What specialists call. Backlink APIs, rank trackers, trends exports, your own dashboard — a named list of any length, collected concurrently. | Plugging in a data source this project never heard of is config, not a fork. |
+| **MCP** | Model Context Protocol servers as first-class sources — stdio or streamable HTTP. | The tool server you already run becomes a capability here without glue code. |
+| **Grounding** | Real web search first, the model's own grounding second, ungrounded last. | A link an agent hands you is one a search returned. Invented URLs are discarded, not shipped. |
+| **Skills** | A packaged deliverable you drop into an agent's folder: its pipeline, its stages, its templates, its data. | This is how you get an agent that does something we never built — see below. |
+| **Runs** | One request in, one result out, each with a `run_id` and a readable state snapshot after every step. | A UI or worker can watch a run that hasn't finished. |
 
-The consequence worth internalizing: **there is no privileged vendor.** Google
-Search Console, Cloudflare and Gemini are shipped drivers so your first real run
-takes minutes instead of a day. Drop all three and the system is exactly as
-capable.
+The consequence worth internalizing: **there is no privileged vendor and no
+privileged model.** Gemini, Google Search Console and Cloudflare ship so your
+first real run takes minutes instead of a day. Drop all three — or run a local
+model behind a `custom` provider — and the system is exactly as capable, because
+grounding, discovery and review belong to the runtime rather than to whatever is
+generating text.
+
+> On the word *skill*: it's the right modern name for what this does, so the docs
+> use it — but there's no `skills` field to grep for. A skill here is spelled
+> `pipelines` in config plus classes in `plugins/` and templates in `templates/`,
+> all inside one agent's folder.
 
 ## What's in the box
 
-The default program is `seo_content`, and it will:
+The agent that ships is `seo_content`, and it will:
 
 - **Read your data.** Traffic, product analytics and how your pages already rank
   reach the prompt as facts, from whichever tools you connected. Until you connect
@@ -121,8 +126,8 @@ completes, and you learn the shape.
 {}
 ```
 
-**Level 1 — config.** You use a tool that ships as a driver. Two fields: which
-provider, and that provider's own options.
+**Level 1 — config.** You use a tool that already ships as a provider. Two
+fields: which provider, and that provider's own options.
 
 ```jsonc
 { "traffic_provider": "cloudflare",
@@ -143,23 +148,23 @@ analytics, traffic and rank data, including from a live API.
 
 **Level 3 — your class.** The logic is real code: a database query, a paginated
 API, a multi-step research routine. Write one class with one method, point config
-at it, and nothing in the kernel changes.
+at it, and nothing in the runtime changes.
 
 ```jsonc
 { "analytics_provider": "custom", "analytics_custom_class": "analytics:MyAnalytics" }
 ```
 
 That class can be a thin API wrapper or an entire multi-step agent of its own
-(search → fetch → summarize) hiding behind the same interface. The kernel can't
-tell the difference, which is the point.
+(search → fetch → summarize) hiding behind the same interface — a sub-agent, in
+current terms. The runtime can't tell the difference, which is the point.
 
 ## Real-world: what you actually wire in
 
 Nobody's growth stack is only what ships here. These are the shapes that come up
 most, with the real field names:
 
-**Backlinks from Ahrefs, Majestic or Moz** — a signal source. The kernel has never
-heard of them; it doesn't need to.
+**Backlinks from Ahrefs, Majestic or Moz** — a signal. The runtime has never heard
+of them; it doesn't need to.
 
 ```jsonc
 "signal_sources": [
@@ -192,7 +197,8 @@ template change.
 That last row is the strongest claim here, so it ships as proof rather than
 prose: [`examples/08-custom-pipeline/`](services/seo-agents/examples/08-custom-pipeline/)
 is a complete site audit — three stages, its own report template, its own output
-`kind` — built entirely inside a tenant folder with **no change to the kernel**.
+`kind` — a skill living entirely in one agent's folder, with **no change to the
+runtime**.
 
 ## Learn by example
 
@@ -218,11 +224,11 @@ SEO-OS is a monorepo of services. Today there is one, and it's the important one
 
 | Service | What it is | Status |
 |---|---|---|
-| [`services/seo-agents/`](services/seo-agents/) | **The kernel** — the run engine, the driver model, the CLI. Everything above lives here. | Shipped, tested, in use |
+| [`services/seo-agents/`](services/seo-agents/) | **The runtime** — the agent engine, the capability model, the CLI. Everything above lives here. | Shipped, tested, in use |
 | `services/frontend/` | A UI over runs, tenants and drafts | Planned |
-| `services/gateway/` | HTTP API, auth, queueing and scheduling in front of the kernel | Planned |
+| `services/gateway/` | HTTP API, auth, queueing and scheduling in front of the runtime | Planned |
 
-The kernel deliberately has no queue, no scheduler, no approval workflow and no
+The runtime deliberately has no queue, no scheduler, no approval workflow and no
 publishing. Those belong to the layer above it — and what it gives that layer is a
 run whose state is durable and readable while it's still going, which is the seam
 a queue needs, not the queue.
@@ -233,10 +239,11 @@ Start here, then go as deep as you need:
 
 | Doc | Read it for |
 |---|---|
+| [docs/concepts.md](docs/concepts.md) | **The model, properly** — the nine capabilities, the four levels of installing one, what a run is, and where your own code goes. Read this second. |
 | [seo-agents/README.md](services/seo-agents/README.md) | The full quickstart: the two files, a real `tenant.json` explained line by line, two runs compared. |
 | [docs/configuration.md](services/seo-agents/docs/configuration.md) | Every config field, every provider's options, templates taught properly. |
-| [docs/architecture.md](services/seo-agents/docs/architecture.md) | How the kernel is built: the pipeline, the three planes, grounding, how a failing tool degrades instead of crashing. |
-| [docs/extending.md](services/seo-agents/docs/extending.md) | Writing your own driver, signal, sink, state store or pipeline stage — with full walkthroughs. |
+| [docs/architecture.md](services/seo-agents/docs/architecture.md) | How the runtime is built: the pipeline, the specialists, grounding, how a failing tool degrades instead of crashing. |
+| [docs/extending.md](services/seo-agents/docs/extending.md) | Writing your own provider, signal, sink, state store or pipeline stage — including a discovery source that's itself an agent. |
 | [docs/cli.md](services/seo-agents/docs/cli.md) | Every command, and how to add one. |
 | [docs/output-schema.md](services/seo-agents/docs/output-schema.md) | The exact JSON a run returns, success and failure — the contract to build a UI on. |
 | [docs/roadmap.md](services/seo-agents/docs/roadmap.md) | What's built, what's next, what's deliberately left out. |
@@ -249,7 +256,7 @@ growing something through search runs the same loop with a different set of tool
 Issues and pull requests are welcome.
 
 The one thing worth reading first: if you're adding a whole new *kind* of
-capability rather than another driver for an existing one, see
+capability rather than another provider for an existing one, see
 [extending.md](services/seo-agents/docs/extending.md#adding-a-new-provider-kind-not-just-a-new-instance).
 Most integrations aren't that — they're a class in your own tenant folder, and
 they need no change here at all.

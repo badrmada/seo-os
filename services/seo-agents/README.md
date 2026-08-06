@@ -1,20 +1,24 @@
-# Growth Agent
+# seo-agents — the SEO-OS runtime
 
-A small AI system that helps a product grow its organic traffic — the visitors
-who find you through search and online conversations, not through ads.
+> This is the service. For what SEO-OS *is*, why it exists, and the vocabulary
+> used throughout, start at the [repo root README](../../README.md) and
+> [docs/concepts.md](../../docs/concepts.md). This page is how you run it.
 
-You point it at your product and your data. It looks around, finds an
+The runtime builds and executes agents that grow a product's organic traffic —
+the visitors who find you through search and online conversations, not through
+ads.
+
+You point an agent at your product and your data. It looks around, finds an
 opportunity worth acting on — a keyword you could rank for, a discussion you
 could join, a topic worth writing about — decides what kind of content fits
 best, and writes the draft. A human reviews it before anything goes live.
 
-It's built as a small **team of specialized workers** rather than one giant
-prompt: one finds opportunities, one decides the best channel, one gathers your
-data, one writes, and one reviews the result. Each worker leans on **tools** you
-plug in — your analytics, your traffic numbers, a search engine, or your own
-code. Out of the box it searches the live web (via DuckDuckGo — no API key) to
-find what's worth writing about right now, and it only recommends pages that
-search actually returned.
+A run is a **team of specialists** rather than one giant prompt: one finds
+opportunities, one decides the best channel, one gathers your data, one writes,
+and one reviews the result. Each leans on **tools** you plug in — your analytics,
+your traffic numbers, a search engine, or your own code. Out of the box it
+searches the live web (via DuckDuckGo — no API key) to find what's worth writing
+about right now, and it only recommends pages that search actually returned.
 
 The idea in one line: **bring your data, bring your tools, customize the voice —
 and let the agent do the repetitive growth work.**
@@ -29,21 +33,6 @@ and let the agent do the repetitive growth work.**
 You can run the whole thing with zero setup and no API keys — it ships with
 built-in fake data so you can see exactly how it behaves before connecting
 anything real.
-
-## Why this exists
-
-Growing traffic organically is a grind. Writing SEO articles, getting mentioned
-on other sites, showing up in the right conversations, tracking what's actually
-working — it's constant, repetitive work, and doing it well every day is close
-to a full-time job that most small teams can't staff.
-
-This was built to solve that for one real product,
-[**Echooers**](https://echooers.com), where the problem is especially hard.
-Echooers is an anonymous platform: no user profiles, no author pages, nothing
-personal to rank in search. There's no "easy" SEO to fall back on. But the same
-challenge shows up for almost any product that grows through content and search
-— which is why this is open source instead of a private internal script.
-Configure it for your own product; no forking required.
 
 ## What it does
 
@@ -72,8 +61,7 @@ Configure it for your own product; no forking required.
 ## How it works
 
 Think of a run as an assembly line. Your request goes in one end; a finished
-draft comes out the other. Along the way, a few specialized workers each do one
-job:
+draft comes out the other. Along the way, a few specialists each do one job:
 
 ```mermaid
 flowchart LR
@@ -108,7 +96,7 @@ degrades gracefully instead of crashing the run — is in
 ### 1. Install
 
 ```bash
-cd services/agents-workers
+cd services/seo-agents
 python3.11 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
@@ -339,10 +327,12 @@ Verbose output goes to stderr, so `python src/main.py run --tenant acme -v | jq`
 `run` is what you get by default, but it isn't the only thing:
 
 ```bash
-python src/main.py check-data --tenant acme  # validate the config and every tool, no LLM call
-python src/main.py show-graph --tenant acme  # which stages will actually run
-python src/main.py list-tenants             # every provider available, with yours marked
-python src/main.py --help           # all of them
+python src/main.py check-data --tenant acme        # validate the config and build every tool, no LLM call
+python src/main.py show-graph --tenant acme        # which specialists will actually run
+python src/main.py list-specialists --tenant acme  # what this agent has wired in
+python src/main.py list-tools --all                # every provider available, with yours marked
+python src/main.py list-tenants                    # what's in the workspace
+python src/main.py --help                          # all of them
 ```
 
 `check-data` is the one to reach for after editing a config — it catches a broken
@@ -351,12 +341,13 @@ run spends an API call. See [docs/cli.md](docs/cli.md).
 
 ### Learn by example
 
-The **[examples/](examples/)** folder has six complete, runnable setups for
+The **[examples/](examples/)** folder has eight complete, runnable setups for
 different kinds of products — a developer SaaS, an online store, a community
-forum, a job board, and one that pulls discovery from an MCP server — going from
-the simplest config to plugging in your own code. Every one runs offline with no
-keys, and each shows how to go live. It's the fastest way to find a starting
-point close to your own product.
+forum, a job board, one that pulls discovery from an MCP server, and one whose
+deliverable is a site audit rather than a draft — going from the simplest config
+to plugging in your own code. Every one runs offline with no keys, and each shows
+how to go live. It's the fastest way to find a starting point close to your own
+product.
 
 ## Two real runs, side by side
 
@@ -435,13 +426,14 @@ shape, including what a failed run looks like, is in
 
 | Doc | Read it for |
 |---|---|
+| [../../docs/concepts.md](../../docs/concepts.md) | The model behind all of this: capabilities, providers, specialists, skills — and the vocabulary these pages use. |
 | [docs/cli.md](docs/cli.md) | Every command (`run`, `check-data`, `show-graph`, …), and how to add one of your own. |
 | [docs/architecture.md](docs/architecture.md) | How the whole thing is built: the pipeline, the swappable-tool pattern, how discovery scores opportunities, how errors are handled. |
 | [docs/configuration.md](docs/configuration.md) | Every config field, with the full Echooers example explained line by line. |
 | [docs/extending.md](docs/extending.md) | Plugging in your own code — analytics, traffic, a signal input of your own, or a custom opportunity finder (including one that's its own mini-agent) — without forking. |
 | [docs/output-schema.md](docs/output-schema.md) | The exact JSON a run returns (success and failure), for building a UI on top of it. |
 | [docs/roadmap.md](docs/roadmap.md) | What's built, what's next, and what's deliberately left out. |
-| [examples/](examples/) | Seven complete, runnable example configs (SaaS, e-commerce, community, job board, MCP, signal inputs), simple to advanced. |
+| [examples/](examples/) | Eight complete, runnable example configs (SaaS, e-commerce, community, job board, MCP, signal inputs, a site audit), simple to advanced. |
 
 ## Bring your own tools, no fork required
 
@@ -465,20 +457,20 @@ a discovery source that's itself an agent, are in
 
 This agent drafts one thing per call and hands it back. It has no queue, no
 background workers, no scheduling, no approval workflow, no publishing to a CMS
-or a community, and no memory carried from one run into the next. Those are a
-separate, worker-shaped layer you'd build on top — what the agent gives that
-layer is a run whose state it can read while it happens
-(`"state_provider": "file"` or `"redis"`), not the layer itself. See
-[docs/roadmap.md](docs/roadmap.md) for what *is* planned inside the agent itself.
+or a community, and no memory carried from one run into the next. Those belong to the
+service layer above this one (see the [repo root](../../README.md#the-repository))
+— what the runtime gives that layer is a run whose state it can read while it
+happens (`"state_provider": "file"` or `"redis"`), not the layer itself. See
+[docs/roadmap.md](docs/roadmap.md) for what *is* planned inside the runtime.
 
 ## Contributing
 
-This is open source so other teams facing the same problem — growth for a
-product that doesn't fit the usual SEO playbook — can use it and improve it.
-Issues and pull requests are welcome. If you're adding a whole new *kind* of
-provider (not just a new instance of an existing one), read
+See the [root README](../../README.md#contributing) for the general pitch. The
+one thing specific to this service: if you're adding a whole new *kind* of
+capability (not just another provider for an existing one), read
 [docs/extending.md](docs/extending.md#adding-a-new-provider-kind-not-just-a-new-instance)
-first.
+first. Most integrations aren't that — they're a class in your own agent's
+folder, needing no change here at all.
 
 Running the tests:
 
