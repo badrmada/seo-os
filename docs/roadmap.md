@@ -10,7 +10,7 @@ about status and direction.
 | [`services/seo-agents/`](../services/seo-agents/) — the runtime | Shipped, tested, in use |
 | [`services/gateway/`](../services/gateway/) — the HTTP API, queue and approval loop | Planned — [step 3](#3-the-gateway-the-api-handler) |
 | [`services/frontend/`](../services/frontend/) — the UI over agents, runs and drafts | Planned — [step 4](#4-the-frontend-watching-an-agent-work) |
-| Build and deployment | [Step 1](#1-images-built-and-tested-in-ci) done bar signing/SBOM/`pip-audit` — tests, docs and the image build run in CI, images publish to GHCR with OCI metadata, and a Makefile carries the same commands. CI stops at the image and does not deploy. [Step 2](#2-deployment-compose-now-a-helm-chart-later) is Compose, [documented](../deploy/compose/README.md); the cluster half is [planned](#kubernetes-how-a-run-becomes-a-job), not written |
+| Build and deployment | [Step 1](#1-images-built-and-tested-in-ci) done bar signing/SBOM/`pip-audit` — tests, docs and the image build run in CI, images publish to GHCR with OCI metadata, and a Makefile carries the same commands. CI stops at the image and does not deploy. [Step 2](#2-deployment-compose-now-a-helm-chart-later) ships both halves: Compose for one host, [documented](../deploy/compose/README.md), and a [Helm chart](../helm-charts/seo-os/) that runs a tenant as a `Job` — a Secret and a Job, no Deployment, installed and run against a real cluster, [CronJob and gateway still to add](#kubernetes-how-a-run-becomes-a-job) |
 
 ## Shipped — the runtime
 
@@ -603,14 +603,52 @@ commented out and waiting, so that step is configuration rather than a rewrite.
 
 #### Kubernetes: how a run becomes a Job
 
-**Not being implemented now** — no manifests, no chart, no chart scaffolding.
-Raw manifests existed here briefly and were deleted rather than kept: a chart is
-what people actually install, and a folder of loose YAML is not a step towards
-one, it is a second thing to keep in sync with the first. What follows is the
-design, written now because the decisions it contains are the reason the chart is
-worth waiting for — and because one of them (secrets) turns out to be a question
-for the *runtime*, which is much better found on this page than halfway through
-writing templates.
+**Shipped, and proven on a real cluster with a real tenant**:
+[`helm-charts/seo-os/`](../helm-charts/seo-os/) renders **two objects** — a
+`Secret` holding one tenant's folder, and a `Job` that runs it — and
+`helm install seo-os ./helm-charts/seo-os` produces a finished run in
+`kubectl logs` on any cluster, with no credentials, no storage class and no
+ingress involved. Installed with the echooers tenant delivered by `--set-file`
+straight from its gitignored folder, the Job completed in 97 seconds:
+`phase=done`, five search-grounded opportunities, zero `tool_errors`, a 415-word
+draft, and the whole result JSON in the pod's log. Raw manifests existed here briefly and were deleted rather than
+kept: a chart is what people actually install, and a folder of loose YAML is not
+a step towards one, it is a second thing to keep in sync with the first.
+
+`helm create`'s scaffolding went the same way. The Deployment, Service, Ingress,
+HPA, ServiceAccount and test hook it generates are the shape of a web service,
+and this is not one — deleting them is most of what made the chart legible.
+There is no long-running process here to deploy until the gateway exists, and
+that is [step 3](#3-the-gateway-the-api-handler)'s Deployment to bring.
+
+**Two things that first cluster run taught, both now fixed rather than only
+noted.** Neither was visible from the templates, and both are the same *kind* of
+bug — a thing that is true on the machine you develop on and false in a pod:
+
+- **The GHCR package was private**, so the first install sat in
+  `ImagePullBackOff` behind a 403. GHCR makes a package private on its first push
+  regardless of the repository's visibility, and a successful `docker push`
+  cannot tell you, because the machine that pushed is authenticated. That is now
+  `make pullable`, which asks the registry the question a *cluster* asks and
+  prints both fixes; `make publish` ends with it. Two related bugs fell out of
+  looking: `make push` sent only the version tag while `latest` — the tag Compose
+  and the chart both default to — was never pushed by hand at all, and
+  `deploy/README.md` claimed the package was public.
+- **A tenant's `state_options.url` said `redis://localhost:6379/0`**, and a pod's
+  `localhost` is the pod. The run was completely unaffected, which is the design
+  working (a state-store outage is no reason to discard a finished run) and also
+  exactly why it is worth writing down: what you get is a correct result plus one
+  stderr line per save, and a run nobody could have watched. Documented in the
+  chart's README next to the sinks, because the fix is a hostname in
+  `tenant.json` — config values are literal, so no environment variable reaches
+  it.
+
+The design below is what the chart implements; where it is still a plan (the
+CronJob, the gateway's Deployment, who creates a run's Job) it says so.
+[`helm-charts/seo-os/README.md`](../helm-charts/seo-os/README.md) is the
+operator-facing half — a real tenant's keys via `--set-file`, the three ways a
+tenant folder reaches the pod, per-tenant images for plugins, and where a result
+goes when the pod is gone.
 
 **A run is a `Job`, not a `Deployment`.** The runtime is a process that does one
 run and exits, which is precisely the workload type Kubernetes already has. The
@@ -680,11 +718,29 @@ Three delivery mechanisms are on the table, and the chart will not pick only one
    pod), the object limit is 1 MiB, and `data/` fixtures of any size have no
    business in etcd.
 
-**The default will be 2 for the folder and 3 for `tenant.json`**, with 1 as a
-`values.yaml` switch for clusters that have RWX and want the laptop's ergonomics.
-That composite is the practical shape: bulk content arrives as an immutable
-snapshot in an `emptyDir`, the one file holding API keys arrives as a Secret
-mounted over it, and the pod never has a persistent volume attached at all.
+**The plan said the default would be 2 for the folder and 3 for `tenant.json`.
+What shipped is 3 alone**, and the reason is worth recording: mechanism 2's init
+container only earns its keep when there is bulk content to fetch, and a tenant
+that is a config, an input and a credential file — which is every tenant here
+today, echooers included — has none. So the Secret *is* the folder
+(`tenant.secret.mount: directory`, mounted at `/userdata/<name>`), and the chart
+installs on any cluster with nothing added to it.
+
+The other two are values rather than forks, and they compose exactly as planned:
+`workspace.volume` takes any Pod volume (an RWX PVC is mechanism 1, the laptop's
+ergonomics back), `initContainers` takes the S3 or git sync (mechanism 2, with
+the fetch credentials in a container that isn't running tenant code), and
+`tenant.secret.mount: files` switches the Secret from *being* the folder to
+landing one `subPath` at a time *over* whatever provides it — the composite the
+plan wanted, available to anyone who needs it and costing nothing to anyone who
+doesn't. The pod still never has a persistent volume attached by default.
+
+Two shapes only became visible once it rendered, both now in the chart's README:
+a volume mounted at `/userdata` **hides** what a per-tenant image baked there
+(hence `workspace.enabled: false`, which mounts nothing at all and lets the image
+be the workspace), and a `directory`-mode Secret replaces the whole tenant folder,
+plugins included (hence `files` mode for that case). Getting either wrong fails
+in a way that looks like the plugins were never there.
 
 **Plugins are code, and code belongs in an image.** This is the boundary the
 Kubernetes design has to be strictest about, because it is the one where a
@@ -709,15 +765,23 @@ version of this plan said API keys would reach the container through `envFrom`
 rather than sitting in a `tenant.json`. That was wrong about the runtime: config
 values are literal, there is no `${VAR}` expansion, so `gemini_api_key` in
 `llm_options` is the actual key and the practical route is the *whole file* as a
-Secret. That works today and needs nothing new. The open question worth deciding
-**before** the chart rather than after: whether the runtime grows env-var
-interpolation in config values (`"api_key": "${GEMINI_API_KEY}"`), which would
-let a `tenant.json` be a non-secret ConfigMap, make `envFrom` the whole story,
-and make a rotated key not a re-uploaded config file. It is a small, contained
-change in the config loader — and it is the only thing on this page that the
-cluster deployment asks of the runtime, which is the claim this design is here to
-test. Alongside it: `imagePullSecrets` for private images, and the state store's
-own credentials (a managed Redis URL with a password in it) landing in the same
+Secret. That works today and needs nothing new — and it is what the chart does,
+which settles the claim this design was here to test: **the cluster deployment
+asked the runtime for nothing.** No code in `services/seo-agents/` changed to
+make a run a Job.
+
+The env-var interpolation question (`"api_key": "${GEMINI_API_KEY}"`, which would
+let a `tenant.json` be a non-secret ConfigMap and make a rotated key not a
+re-uploaded config file) therefore stays open rather than blocking, and is now a
+question about ergonomics instead of feasibility. What took most of its urgency
+away is `--set-file`: `--set-file tenant.configJson=…/userdata/echooers/tenant.json`
+installs the real, gitignored file straight from the folder you already run
+locally, so keys reach the cluster without ever entering a values file or a
+commit. What it does *not* fix, and what would still argue for interpolation: the
+keys are then visible in `helm get values` and in the release Secret, which is why
+`tenant.secret.existing` (external-secrets, sops) is the other supported route.
+Alongside it: `imagePullSecrets` for private images, and the state store's own
+credentials (a managed Redis URL with a password in it) landing in the same
 Secret as everything else.
 
 **Where a run's output goes when the pod is gone.** A Job's filesystem dies with
@@ -725,14 +789,21 @@ it, so an `output_sinks` entry writing a file into an `emptyDir` is a result
 nobody will ever read — the single most likely way for a first cluster run to be
 quietly disappointing. In a cluster the two that make sense are `webhook` (post
 the finished result to the gateway) and `state_provider: "redis"` (the snapshot
-the frontend reads while it is still going). The chart should ship that as the
-default tenant config it renders rather than leaving it to be discovered, which
-is one of the very few places the chart is entitled to an opinion about a
-tenant's configuration.
+the frontend reads while it is still going).
 
-**Scheduling is a `CronJob` per scheduled tenant**, and deliberately the whole
-scheduler: a cluster already has one, and using it needs nothing added to the
-runtime. `concurrencyPolicy: Forbid`, because two overlapping runs of one tenant
+The plan said the chart should ship those as the default tenant config it
+renders. It doesn't, and the reason is that there is nothing yet to send them
+*to*: a default webhook URL pointing at a gateway that doesn't exist would fail
+every first install, and a default Redis would make the chart depend on a
+subchart to run at all. The default instead leans on the fact that the runtime's
+own default sink writes to **stdout** — so `kubectl logs` is the delivery
+mechanism, the trap is avoided rather than configured around, and the chart keeps
+its opinion to a documented section of its README until step 3 gives it something
+to point at.
+
+**Scheduling is a `CronJob` per scheduled tenant** — not in the chart yet, and
+deliberately the whole scheduler when it is: a cluster already has one, and using
+it needs nothing added to the runtime. `concurrencyPolicy: Forbid`, because two overlapping runs of one tenant
 are two drafts of the same thing at twice the API cost;
 `startingDeadlineSeconds`, so a cluster that was down for an hour doesn't
 stampede on recovery; small history limits. One CronJob per tenant does not scale
@@ -751,14 +822,23 @@ isolation — a tenant's plugin code executing in its own pod is worth a lot —
 it makes the gateway a cluster-privileged component, and that is not a small
 thing to hand a service that also terminates HTTP.
 
-**What the chart is, concretely:** one chart; `values.yaml` lists tenants; the
-templates are a Secret per tenant (or `external-secrets` references), a CronJob
-per scheduled tenant, the gateway's Deployment/Service/Ingress, a Redis subchart
-with an `external.url` escape hatch for a managed one, and a Job template that
-`helm template` can render for a single ad-hoc run. Explicitly **not** a
-per-tenant CRD or an operator: nothing here needs a reconciliation loop, a Job is
-already the Kubernetes-native spelling of "run this once", and an operator would
-put a new API in front of one that already exists.
+**What the chart is, concretely.** One chart, and today one tenant per release:
+`tenant.name` plus its config, rendered as a Secret and a Job. A list of tenants
+in `values.yaml` was the plan and is deferred on purpose — a `range` over tenants
+is a rewrite of every template, and it buys nothing until there is a second
+tenant *in the same release* that wants the same schedule. `helm install` twice
+with two release names is the answer until then, and it keeps one release's
+failure to itself.
+
+Still to add, in the order they'll be wanted: a **CronJob** (the same pod spec,
+`schedule` and `concurrencyPolicy: Forbid`, which is a values flag over the
+template that already exists); a **Redis subchart** with an `external.url` escape
+hatch, once something reads the state it writes; and the **gateway's
+Deployment/Service/Ingress**, which arrives with the gateway itself.
+
+Explicitly **not** a per-tenant CRD or an operator: nothing here needs a
+reconciliation loop, a Job is already the Kubernetes-native spelling of "run this
+once", and an operator would put a new API in front of one that already exists.
 
 ### 3. The gateway, the API handler
 

@@ -1,0 +1,168 @@
+{{/*
+A run is a Job. The runtime is a process that does one run and exits, which is
+exactly the workload Kubernetes already has a name for — so the container args
+are the CLI's, unchanged, and nothing in the runtime learns what a cluster is.
+*/}}
+{{- $args := .Values.run.args }}
+{{- if not $args }}
+{{- $args = list "run" "--tenant" .Values.tenant.name }}
+{{- if gt (int .Values.run.verbosity) 0 }}
+{{- $args = append $args (printf "-%s" (repeat (int .Values.run.verbosity) "v")) }}
+{{- end }}
+{{- $args = concat $args .Values.run.extraArgs }}
+{{- end }}
+{{- $paths := splitList "\n" (trim (include "seo-os.tenantPaths" .)) }}
+{{- if not (has .Values.tenant.secret.mount (list "directory" "files")) }}
+{{- fail (printf "tenant.secret.mount must be \"directory\" or \"files\", got %q" .Values.tenant.secret.mount) }}
+{{- end }}
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "seo-os.jobName" . }}
+  labels:
+    {{- include "seo-os.labels" . | nindent 4 }}
+  {{- with .Values.job.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  backoffLimit: {{ .Values.job.backoffLimit }}
+  {{- with .Values.job.activeDeadlineSeconds }}
+  activeDeadlineSeconds: {{ . }}
+  {{- end }}
+  {{- with .Values.job.ttlSecondsAfterFinished }}
+  ttlSecondsAfterFinished: {{ . }}
+  {{- end }}
+  template:
+    metadata:
+      labels:
+        {{- include "seo-os.selectorLabels" . | nindent 8 }}
+        seo-os.io/tenant: {{ .Values.tenant.name | quote }}
+        {{- with .Values.job.podLabels }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.job.podAnnotations }}
+      annotations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+    spec:
+      restartPolicy: Never
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.serviceAccountName }}
+      serviceAccountName: {{ . }}
+      {{- end }}
+      {{- with .Values.podSecurityContext }}
+      securityContext:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.initContainers }}
+      # Where a tenant folder gets materialized when it doesn't come from the
+      # Secret — an S3 sync, a git checkout. See README.md.
+      initContainers:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      containers:
+        - name: seo-agents
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag | default .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          args:
+            {{- toYaml $args | nindent 12 }}
+          env:
+            # Mounting a folder here *is* the --userdata flag.
+            - name: SEO_AGENT_USERDATA
+              value: /userdata
+            # The root filesystem is read-only, so anything that reaches for a
+            # home directory or a cache gets the emptyDir instead of an error.
+            - name: HOME
+              value: /tmp
+            - name: PYTHONDONTWRITEBYTECODE
+              value: "1"
+            {{- with .Values.run.env }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          {{- with .Values.run.envFrom }}
+          envFrom:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.securityContext }}
+          securityContext:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.resources }}
+          resources:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          volumeMounts:
+            {{- if .Values.workspace.enabled }}
+            - name: userdata
+              mountPath: /userdata
+            {{- end }}
+            - name: tmp
+              mountPath: /tmp
+            {{- if .Values.tenant.secret.enabled }}
+            {{- if eq .Values.tenant.secret.mount "directory" }}
+            # The Secret is the whole tenant folder.
+            - name: tenant
+              mountPath: /userdata/{{ .Values.tenant.name }}
+              readOnly: true
+            {{- else }}
+            # One file at a time, landing over whatever provides the folder.
+            {{- range $paths }}
+            - name: tenant
+              mountPath: /userdata/{{ $.Values.tenant.name }}/{{ . }}
+              subPath: {{ . }}
+              readOnly: true
+            {{- end }}
+            {{- end }}
+            {{- end }}
+            {{- with .Values.extraVolumeMounts }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+      volumes:
+        {{- if .Values.workspace.enabled }}
+        - name: userdata
+          {{- if .Values.workspace.volume }}
+          {{- toYaml .Values.workspace.volume | nindent 10 }}
+          {{- else }}
+          emptyDir: {}
+          {{- end }}
+        {{- end }}
+        - name: tmp
+          emptyDir: {}
+        {{- if .Values.tenant.secret.enabled }}
+        - name: tenant
+          secret:
+            secretName: {{ include "seo-os.tenantSecretName" . }}
+            # Read-only to everyone in the pod, and nobody else can be: a Secret
+            # volume is a tmpfs that exists only here. Not 0400 — these files are
+            # owned by root and the container deliberately isn't.
+            defaultMode: 0444
+            {{- if .Values.tenant.secret.items }}
+            items:
+              {{- toYaml .Values.tenant.secret.items | nindent 14 }}
+            {{- else if not .Values.tenant.secret.existing }}
+            items:
+              {{- range $paths }}
+              - key: {{ include "seo-os.tenantSecretKey" . }}
+                path: {{ . }}
+              {{- end }}
+            {{- end }}
+        {{- end }}
+        {{- with .Values.extraVolumes }}
+        {{- toYaml . | nindent 8 }}
+        {{- end }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}

@@ -1,0 +1,201 @@
+# SEO-OS: one run, one Job.
+#
+# The defaults below install and run with no credentials, no storage class and
+# no cluster features: a tenant whose providers are all mock, delivered as a
+# Secret, printing its result JSON to the pod's log. That is deliberately the
+# whole of the default — everything else (a real tenant's keys, plugins, a
+# shared volume, an S3 sync, a webhook) is documented in README.md next to this
+# file and reached by changing values, not by editing templates.
+
+image:
+  repository: ghcr.io/badrmada/seo-os/seo-agents
+  # Empty means the chart's appVersion. Pin `sha-<commit>` for anything you
+  # care about; `latest` moves.
+  tag: ""
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# --- The tenant -------------------------------------------------------------
+#
+# A tenant is a folder (services/seo-agents/docs/cli.md). On a laptop and in
+# Compose that folder is a bind mount; here it is a Secret, because the one file
+# that matters most in it — tenant.json — holds literal API keys. The runtime
+# does no ${VAR} expansion, so the whole file is the credential.
+#
+# The Secret is mounted at /userdata/<name> and the container runs
+# `run --tenant <name>`. Nothing in the runtime learns what a cluster is.
+tenant:
+  name: acme
+
+  # tenant.json, as YAML you can override with --set / -f. Every option is
+  # documented in services/seo-agents/docs/configuration.md.
+  #
+  # These defaults name no provider at all, which means the runtime's own:
+  # llm_provider "mock", analytics/traffic "mock", state "memory", and a single
+  # `json` output sink writing to stdout. It runs anywhere, costs nothing, and
+  # proves the plumbing before a key is involved.
+  config:
+    brand_description: >-
+      A placeholder brand. Replace this whole config with your tenant's —
+      see README.md next to this file for doing it from the real file.
+    agent_goal: Increase qualified organic traffic.
+    default_article_tone: informative
+
+  # input.json — the run's request. Omit both this and `inputJson` only if the
+  # tenant folder arrives with its own (a workspace volume, an init container).
+  input:
+    channel: site_article
+    seed_keyword: your topic here
+
+  # The same two files verbatim, which is how you ship a real tenant without
+  # its keys ever entering a values file or git:
+  #
+  #   helm install seo-os ./helm-charts/seo-os \
+  #     --set tenant.name=echooers \
+  #     --set-file tenant.configJson=services/seo-agents/userdata/echooers/tenant.json \
+  #     --set-file tenant.inputJson=services/seo-agents/userdata/echooers/input.json
+  #
+  # Set, these win over `config`/`input` above.
+  configJson: ""
+  inputJson: ""
+
+  # Anything else the folder needs, as `relative/path: contents`. Keys may
+  # contain slashes; they land as files under the tenant folder. Same --set-file
+  # trick, and the same 1 MiB ceiling every Secret has:
+  #
+  #   --set-file 'tenant.files.data/service_account\.json=./sa.json'
+  #
+  # files:
+  #   data/report.json: |
+  #     {"data": {"overview": {}}}
+  files: {}
+
+  secret:
+    # false when the tenant folder comes from somewhere else entirely — a
+    # PersistentVolumeClaim under `workspace.volume`, or an init container that
+    # materializes it. See README.md.
+    enabled: true
+
+    # A Secret you already manage (external-secrets, sops, kubectl). Set this
+    # and the chart renders no Secret of its own; the keys above are ignored.
+    existing: ""
+
+    # How the Secret reaches the tenant folder:
+    #   directory — mounted as the whole folder at /userdata/<name>. Simplest,
+    #               and correct when the Secret is the entire tenant.
+    #   files     — one subPath mount per file, so the Secret lands *over* a
+    #               folder something else provides. subPath mounts never receive
+    #               updates, which is irrelevant to a Job that reads once and
+    #               exits, and a trap for anything long-lived.
+    mount: directory
+
+    # Explicit volume items, for an `existing` Secret whose keys this chart
+    # can't know. Each entry: {key, path}. Leave empty otherwise.
+    items: []
+
+    annotations: {}
+
+# --- The workspace ----------------------------------------------------------
+#
+# What backs /userdata, the root the tenant folder sits in. Empty means an
+# emptyDir: the pod is stateless, nothing outlives the run, and the chart needs
+# no storage class. It is left empty rather than spelled out because Helm merges
+# values — a spelled-out `emptyDir: {}` here would survive alongside whatever you
+# set and render a volume with two sources. Anything a Pod volume accepts works:
+#
+#   volume:
+#     persistentVolumeClaim:
+#       claimName: seo-os-userdata     # ReadWriteMany, the Compose bind mount's
+#                                      # literal translation. See README.md.
+workspace:
+  # false mounts nothing at /userdata at all, leaving whatever the image has
+  # there — which is the point of a per-tenant image that bakes in `plugins/`,
+  # since a volume mounted at /userdata would hide it. See README.md.
+  enabled: true
+  volume: {}
+
+# --- The run ----------------------------------------------------------------
+run:
+  # 0 off, 1 = -v (stages and tool calls), 2 = -vv (payloads too). Verbose goes
+  # to stderr, the result to stdout, so both land in the log without mixing.
+  verbosity: 1
+
+  # Appended to the generated `run --tenant <name>` — e.g. ["--agent", "seo"].
+  extraArgs: []
+
+  # Replaces the generated args entirely. `["check-data", "--tenant", "acme"]`
+  # turns this release into a config check that touches no LLM.
+  args: []
+
+  # SEO_AGENT_USERDATA, HOME and PYTHONDONTWRITEBYTECODE are set by the chart.
+  # Add your own here — plugin code that reads its own environment, say.
+  env: []
+  #  - name: REDIS_URL
+  #    value: redis://redis-master.default.svc:6379/0
+
+  # Whole Secrets/ConfigMaps as environment. Note this does *not* reach
+  # tenant.json: config values are literal, so a key belongs in the file.
+  envFrom: []
+
+# --- The Job ----------------------------------------------------------------
+job:
+  # A run spends real money on LLM calls and the pipeline already degrades
+  # rather than crashing, so a pod that failed anyway failed for a reason a
+  # retry won't fix. A failed run is a recorded run, not a pod to run again.
+  backoffLimit: 0
+
+  # The backstop for a pod that never got far enough to hit the runtime's own
+  # `run_timeout_seconds`. Keep it comfortably above that setting, so the clean,
+  # recorded failure wins the race with this one.
+  activeDeadlineSeconds: 3600
+
+  # The Job object is not where anyone should read history from.
+  ttlSecondsAfterFinished: 86400
+
+  annotations: {}
+  podAnnotations: {}
+  podLabels: {}
+
+# A tenant's own plugin code executes in this pod. It gets no root, no writable
+# image, and no capabilities.
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  runAsGroup: 1000
+  fsGroup: 1000
+  seccompProfile:
+    type: RuntimeDefault
+
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: true
+  capabilities:
+    drop:
+      - ALL
+
+resources:
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    cpu: "1"
+    memory: 1Gi
+
+# The default ServiceAccount is enough: nothing here talks to the API server.
+serviceAccountName: ""
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
+
+# --- Escape hatches ---------------------------------------------------------
+#
+# The three mechanisms README.md documents — an RWX volume, an init container
+# syncing from S3/git, extra ConfigMaps — are all reachable from here without
+# touching a template.
+initContainers: []
+extraVolumes: []
+extraVolumeMounts: []

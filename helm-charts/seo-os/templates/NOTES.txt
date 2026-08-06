@@ -1,0 +1,28 @@
+One run of tenant {{ .Values.tenant.name | quote }} was submitted as a Job.
+
+The result JSON goes to the pod's stdout{{ if gt (int .Values.run.verbosity) 0 }}, with the stage-by-stage
+report on stderr{{ end }} — so the run is the log:
+
+  kubectl -n {{ .Release.Namespace }} wait --for=condition=complete --timeout={{ .Values.job.activeDeadlineSeconds | default 3600 }}s \
+    job/{{ include "seo-os.jobName" . }}
+  kubectl -n {{ .Release.Namespace }} logs -f job/{{ include "seo-os.jobName" . }}
+
+Run it again — same tenant, new Job:
+
+  helm upgrade --install {{ .Release.Name }} <this chart> --reuse-values
+
+The Job disappears {{ .Values.job.ttlSecondsAfterFinished | default 86400 }}s after it finishes, so read its log before then,
+or send the result somewhere that outlives the pod (`output_sinks`, or
+`state_provider: "redis"` — README.md, "Where the result goes").
+{{- if and .Values.tenant.secret.enabled (not .Values.tenant.secret.existing) }}
+
+The tenant folder is Secret/{{ include "seo-os.tenantSecretName" . }}, mounted at
+/userdata/{{ .Values.tenant.name }}. `helm get values` will show whatever you passed in it —
+including API keys. `--set-file tenant.configJson=...` from the real file keeps
+them out of a values file and out of git.
+{{- end }}
+{{- if and (not .Values.tenant.configJson) (not (hasKey (default dict .Values.tenant.config) "llm_provider")) }}
+
+Note: no llm_provider is set, so this run uses the mock LLM. It proves the
+plumbing and writes nothing real.
+{{- end }}
