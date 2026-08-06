@@ -18,6 +18,7 @@ from rich.table import Table
 
 from agent.managers import ToolsManager
 from agent.managers.output_manager import OutputManager
+from agent.managers.state_manager import build_state_store
 from agent.validators.input_validator import InputValidator
 
 from agent.graph.pipeline import spec_for
@@ -76,6 +77,11 @@ def check_data(
             lambda: f"{len(manager.build_discovery_sources(_NoLLM()))} built",
         ))
     checks.append(_check("output sinks", lambda: f"{len(OutputManager(config).sinks)} built"))
+    # Building the store is the honest half of this check: it creates the folder a
+    # file store writes into and resolves a custom class, both of which fail here
+    # rather than mid-run. It deliberately does *not* connect — a Redis store
+    # connects on first write, and a run degrades rather than fails if it can't.
+    checks.append(_check("state store", lambda: _describe_store(config)))
 
     console = Console()
     table = Table(title="[bold]check-data[/bold]", title_justify="left")
@@ -106,6 +112,12 @@ def _check(name: str, build) -> tuple[str, bool, str]:
 def _describe_pipeline(config, agent: str) -> str:
     spec = spec_for(config, agent or "")
     return f"{spec.agent_type}: {' -> '.join(stage.name for stage in spec.stages)}"
+
+
+def _describe_store(config) -> str:
+    store = build_state_store(config)
+    detail = store.describe() if hasattr(store, "describe") else ""
+    return f"{config.state_provider}: {detail}" if detail else config.state_provider
 
 
 def _check_templates(config) -> tuple[str, bool, str]:

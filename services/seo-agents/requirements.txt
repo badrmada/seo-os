@@ -57,6 +57,7 @@ pyparsing==3.3.2
 pytest==9.1.1
 python-multipart==0.0.32
 PyYAML==6.0.3
+redis==8.1.0
 referencing==0.37.0
 requests-toolbelt==1.0.0
 requests==2.34.2

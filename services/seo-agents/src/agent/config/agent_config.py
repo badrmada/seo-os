@@ -266,6 +266,36 @@ class AgentConfig:
         default_factory=lambda: [{"name": "stdout", "provider": "json"}]
     )
 
+    # --- Run state snapshots (state/base.py's StateStore) ---
+    # Where the run's state is written *while it happens*: a snapshot after every
+    # super-step, and the finished result at the end, both keyed by run_id. This
+    # is how something outside the process — a progress endpoint, a job row, a
+    # worker asking how far the last attempt got — can see a run that hasn't
+    # returned yet. It is not where the *result* is delivered; that's output_sinks.
+    #   - "memory": in-process dict. **The default**, and right for a CLI: the
+    #     snapshots live exactly as long as anything can read them.
+    #   - "file": one JSON file per run. Options: path (a folder, default
+    #     "state", resolved against this tenant's own directory). No
+    #     infrastructure, survives the process.
+    #   - "redis": one key per run. Options: url (default
+    #     "redis://localhost:6379/0"), key_prefix ("seo-agent:run:"), ttl_seconds
+    #     (0 = no expiry), timeout_seconds (5). What a multi-process worker pool
+    #     wants.
+    #   - "custom": a tenant's own class (Postgres, DynamoDB, their own job table)
+    #     via state_custom_class, loaded like every other custom provider.
+    #
+    # A store's failures are deliberately *not* fatal: a snapshot that doesn't
+    # land degrades the run and is recorded (RunResult.state_errors, and the
+    # verbose event stream), because a Redis outage is no reason to discard a
+    # finished draft. A store that can't be built at all is a request error, since
+    # nothing has been attempted yet.
+    #
+    # This is not LangGraph's `checkpointer=`, which is a different mechanism for
+    # *resuming* an interrupted graph. Nothing here resumes anything.
+    state_provider: str = "memory"
+    state_options: dict = field(default_factory=dict)
+    state_custom_class: str = ""  # "module.path:ClassName", used by state_provider="custom"
+
     # --- Which agent this tenant runs (agent/graph/pipeline.py) ---
     # The built-in "seo_content" writes an article or a reply: discover ->
     # choose_channel -> analyze -> draft -> self_qa, with which of those exist

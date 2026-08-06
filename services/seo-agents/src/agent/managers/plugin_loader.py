@@ -1,7 +1,6 @@
 """The one place a tenant-registered class gets turned into an object — shared by
 every `"custom"` provider there is: analytics, traffic, discovery sources, output
-sinks, and (PLAN.md Step 8) the state store. One contract, one error message, one
-thing to document.
+sinks, the state store. One contract, one error message, one thing to document.
 
 `class_path` is always `"module:ClassName"`, and `module` is a file in that
 tenant's `plugins/` folder (see agent/config/workspace.py). Nothing else is

@@ -1,8 +1,6 @@
 import asyncio
 import uuid
 
-from state.memory_store import InMemoryStateStore
-
 from .. import prompts
 from ..graph.pipeline import build_graph, spec_for
 from ..graph.stages import AnalyzeStage
@@ -12,6 +10,7 @@ from ..schemas.channel import Channel
 from ..schemas.io import AgentInput, AgentState
 from ..utils.async_utils import deadline
 from ..validators.input_validator import InputValidator
+from .state_manager import StateSnapshots
 from .tools_manager import ToolsManager
 
 
@@ -81,7 +80,7 @@ class AgentRunner:
             tools = ToolsManager(self.config).build_all(input_data.get("model"))
         return observe_tools(tools, self.reporter)
 
-    def run(self, input_data: dict, *, state_store: InMemoryStateStore = None) -> dict:
+    def run(self, input_data: dict, *, state_store=None) -> dict:
         """Sync wrapper around arun(), for callers with no event loop of their own
         (the CLI, tests, scripts). Carries arun()'s never-raises contract unchanged:
         asyncio.run() re-raises whatever the coroutine raised, and arun() raises
@@ -93,7 +92,7 @@ class AgentRunner:
         """
         return asyncio.run(self.arun(input_data, state_store=state_store))
 
-    async def arun(self, input_data: dict, *, state_store: InMemoryStateStore = None) -> dict:
+    async def arun(self, input_data: dict, *, state_store=None) -> dict:
         """Always returns the same top-level shape (see agent/schemas/io.py's
         AgentState) — this is the run() boundary a caller/UI depends on, so nothing
         past this point is allowed to raise. Bad input, a graph-node exception that
@@ -102,7 +101,13 @@ class AgentRunner:
         config.run_timeout_seconds, or anything else that goes wrong lands as
         {"phase": "failed", "error": str(exc), ...} instead of propagating — never
         a raw traceback in place of the documented JSON shape.
+
+        `state_store` is anything satisfying state/base.py's StateStore — sync or
+        async, whichever the store's own library wants. It is wrapped here (see
+        agent/managers/state_manager.py) so that nothing it does can fail this run,
+        and it is *not* owned here: whoever built the store closes it.
         """
+        snapshots = StateSnapshots.wrap(state_store, self.reporter)
         run_id = input_data.get("run_id") or str(uuid.uuid4())
         self.reporter.event(
             "run_start",
@@ -115,7 +120,7 @@ class AgentRunner:
         bound = deadline(timeout)
         try:
             async with bound:
-                result = await self._run(input_data, run_id, state_store)
+                result = await self._run(input_data, run_id, snapshots)
         except TimeoutError as exc:
             # str(TimeoutError()) is "", so an expired deadline has to say what
             # happened. bound.expired() distinguishes it from a TimeoutError a tool
@@ -123,9 +128,9 @@ class AgentRunner:
             # error looking at the wrong timeout.
             if bound.expired():
                 exc = TimeoutError(f"run exceeded run_timeout_seconds ({timeout:g}s)")
-            return self._failed(input_data, run_id, exc, state_store)
+            return await self._failed(input_data, run_id, exc, snapshots)
         except Exception as exc:  # noqa: BLE001 - this is the public run() boundary; see docstring
-            return self._failed(input_data, run_id, exc, state_store)
+            return await self._failed(input_data, run_id, exc, snapshots)
 
         self.reporter.event(
             "run_end",
@@ -138,7 +143,9 @@ class AgentRunner:
         )
         return result
 
-    def _failed(self, input_data: dict, run_id: str, exc: BaseException, state_store) -> dict:
+    async def _failed(
+        self, input_data: dict, run_id: str, exc: BaseException, snapshots: StateSnapshots,
+    ) -> dict:
         """The documented failure shape (docs/output-schema.md), built in one place
         because arun() now has two ways to reach it — an ordinary exception and the
         run deadline expiring."""
@@ -156,12 +163,14 @@ class AgentRunner:
             "usage": {"tokens": 0, "cost_usd": 0},
             "error": str(exc),
         }
-        if state_store is not None:
-            state_store.save(run_id, dict(failed_state))
+        # Terminal, like the one at the end of a successful run: a failure is a
+        # thing anything watching this run most needs to see, so it is written even
+        # when a store has been failing all the way through.
+        await snapshots.save(run_id, dict(failed_state), final=True)
         self.reporter.event("run_end", run_id=run_id, phase="failed", error=str(exc))
         return failed_state
 
-    async def _run(self, input_data: dict, run_id: str, state_store: InMemoryStateStore = None) -> dict:
+    async def _run(self, input_data: dict, run_id: str, snapshots: StateSnapshots) -> dict:
         self._input_validator.validate(input_data, self.config)
 
         # Which pipeline this run is. Resolved before anything else because it
@@ -198,16 +207,18 @@ class AgentRunner:
             "error": None,
         }
 
-        if state_store is not None:
+        if snapshots.active:
             # Checkpoint after every node transition so a run's progress is observable
             # mid-flight, not just at the end. graph.stream(..., stream_mode="values")
             # yields the accumulated state after each super-step.
-            state_store.save(run_id, dict(initial_state))
+            await snapshots.save(run_id, dict(initial_state))
             final_state = dict(initial_state)
             async for state in graph.astream(initial_state, stream_mode="values"):
                 final_state = dict(state)
-                state_store.save(run_id, final_state)
+                await snapshots.save(run_id, final_state)
         else:
+            # Streaming exists here only to produce snapshots; with no store there
+            # is nothing to produce them for, and ainvoke is the cheaper path.
             final_state = dict(await graph.ainvoke(initial_state))
 
         working = final_state.pop("working", {})
@@ -230,6 +241,13 @@ class AgentRunner:
             "channel_decision": working.get("channel_decision"),
             "tool_errors": working.get("tool_errors", []),
         }
+        # The terminal snapshot is the *result*, not the last raw graph state — so
+        # a reader that comes back after a run finished gets exactly the JSON the
+        # caller got (docs/output-schema.md), rather than an internal state with
+        # `working` on it and no `discovery`. The snapshots before it are the raw
+        # states, which is what "where is this run right now" needs; both carry
+        # run_id and phase, so a progress reader never has to tell them apart.
+        await snapshots.save(run_id, final_state, final=True)
         return final_state
 
     def preview_prompt(self, input_data: dict) -> dict:

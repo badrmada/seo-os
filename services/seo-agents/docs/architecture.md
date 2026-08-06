@@ -208,8 +208,9 @@ flags into a `RunRequest` and prints the `RunResult`.
   have), the run input, and per-run overrides: verbosity, output sinks, the run
   deadline. Overrides apply to that run only — a request is not a config edit.
 - **`RunResult`** carries the run dict ([output-schema.md](output-schema.md)),
-  the events the reporter recorded, and the names of any sinks that failed to
-  deliver. **Returned, never printed.**
+  the events the reporter recorded, the names of any sinks that failed to
+  deliver, and any state-store writes that didn't land. **Returned, never
+  printed.**
 - **A failed run is a successful request.** It comes back as a `RunResult` whose
   `run["phase"] == "failed"`. Only a request that couldn't be started at all —
   unknown tenant, unloadable config, a webhook sink with no URL — raises
@@ -309,8 +310,27 @@ visible to a step:
   [configuration.md](configuration.md#where-the-result-goes-output-sinks).
 - **The state store** ([`src/state/`](../src/state/)) — a snapshot of the run
   state after each super-step, so progress is observable mid-flight rather than
-  only at the end. In-memory today; the interface (`save`/`load`/`delete`) is the
-  seam for a durable one.
+  only at the end, keyed by `run_id`. Selected like every other kind
+  (`state_provider`): `memory` (the default, and the whole story for a CLI),
+  `file` (one JSON per run, atomic, no infrastructure), `redis` (one key per run —
+  what makes snapshots visible to *another* process), or your own class. The last
+  snapshot of a finished run is the result itself, so a reader arriving late gets
+  the documented JSON rather than an internal state.
+
+  Two rules make it safe to put a network hop in this position. **A store failure
+  degrades the run, never fails it** — by the time the terminal snapshot is
+  written the result already exists, and losing a bookkeeping entry is no reason
+  to throw it away — and it is **recorded** either way, on
+  `RunResult.state_errors` and in the event stream, since a degrade nothing
+  records is a bug. A store that is down is attempted twice per run, not once per
+  step, so its timeout can't accumulate into the run's wall clock. See
+  [`agent/managers/state_manager.py`](../src/agent/managers/state_manager.py).
+
+  This is deliberately **not** LangGraph's `checkpointer=`, which is a separate
+  mechanism for *resuming* an interrupted graph. These snapshots are for watching
+  a run, not for continuing one; adopting a checkpointer is a decision for the day
+  resume is genuinely wanted, and "we already persist state" would be a wrong
+  answer to it.
 
 ## Where a run happens: a workspace of tenants
 

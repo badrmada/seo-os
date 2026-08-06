@@ -72,6 +72,16 @@ def run(
         # ran, so there is no result to print, just a clear error.
         raise fail(str(exc)) from exc
 
+    # A snapshot that didn't land never fails the run (agent/service.py), so with
+    # verbose off it would otherwise be invisible — and a store nobody notices is
+    # broken is a store nobody fixes. Same warning OutputManager prints for a
+    # failed sink, printed here because this adapter is the one that owns this
+    # terminal, and suppressed when verbose is on for the same reason: the event
+    # stream already has it, and one failure reported twice reads as two.
+    if not (0 if quiet else (verbose or getattr(config, "verbose", 0))):
+        for message in result.state_errors:
+            typer.secho(f"warning: state store: {message}", fg=typer.colors.YELLOW, err=True)
+
     # The service never raises for a failed run — it comes back as
     # phase="failed" with the full result shape intact (that's the documented
     # contract, and the sinks still received it). But a CLI that exits 0 on

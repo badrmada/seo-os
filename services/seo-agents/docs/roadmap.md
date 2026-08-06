@@ -429,22 +429,50 @@ about status and direction.
   undocumented top-level field on *every* run, because LangGraph materializes
   every declared channel whether or not a graph uses it.
 
+- **State persistence — a run is watchable from outside the process.**
+  `InMemoryStateStore` is now one provider among four: `state_provider` selects
+  `memory` (unchanged, still the default), `file` (one atomic `<run_id>.json` per
+  run under the tenant's folder), `redis` (one key per run, optional TTL — the one
+  that makes a run's progress visible to a *different* process) or `custom`, with
+  connection details in `state_options` like every other provider. The interface
+  it always had — `save`/`load`/`delete`, plus optional `flush`/`close` — is now
+  written down in [`src/state/base.py`](../src/state/base.py), and a store may be
+  sync or async like every other pluggable thing here.
+
+  **The store is the one provider whose failures are routine**, so the guard
+  around it is the substance of the step rather than the stores themselves. A
+  `save()` used to propagate out of `AgentRunner._run` and be caught by the
+  outermost handler — turning a run that had produced a good draft into
+  `phase="failed"`. Now every call is degrade-record-continue
+  ([`state_manager.py`](../src/agent/managers/state_manager.py)): the failure
+  lands on `RunResult.state_errors` and the event stream, and a store that is down
+  is attempted twice per run rather than once per super-step, since `save` runs
+  after each one and a five-second timeout five times over is a run nobody can
+  explain. Building the store is the opposite: an unknown provider or a folder
+  that can't be created is a `RunRequestError` before anything runs, exactly like
+  a misconfigured sink.
+
+  **The terminal snapshot is the result**, not the last raw graph state — so
+  something reading a finished run gets the documented JSON
+  ([output-schema.md](output-schema.md)) rather than an internal state with
+  `working` on it. Explicitly *not* adopted: LangGraph's `checkpointer=`. Resuming
+  an interrupted graph is a different feature with different guarantees, and
+  nothing has asked for it; conflating the two would have made "we persist state"
+  a wrong answer to it later.
+
 ## Next
 
-In order.
-
-(Both framings this roadmap was steered by have now shipped: *inputs are signals*
-as `signal_sources`, and *the deliverable is not always a draft* as agent types
-and pipelines. What's left is smaller and more mechanical.)
-
-1. **State persistence.** `InMemoryStateStore` promoted to a selectable provider
-   — file/JSONL first, since it needs no infrastructure and survives the process.
+Nothing planned inside the agent itself. Every step this roadmap was steered by
+has shipped — *inputs are signals* as `signal_sources`, *the deliverable is not
+always a draft* as agent types and pipelines, and a run's state now outlives the
+process that produced it. What's next is the layer above (see below), or whatever
+a real use case turns out to need.
 
 ## Explicitly out of scope for this agent
 
-No queue, no worker pool, no persistence beyond a single in-process run
-(state snapshots are in-memory only — see
-[`src/state/memory_store.py`](../src/state/memory_store.py)), no approval
-gate, no scheduling, no CMS/community posting integration. Those are a
-worker/control-plane concern layered on top of `AgentRunner.run()`, not
-something this agent should grow into doing itself.
+No queue, no worker pool, no approval gate, no scheduling, no CMS/community
+posting integration. Those are a worker/control-plane concern layered on top of
+`AgentService.aexecute()`, not something this agent should grow into doing itself
+— what it now provides them is a run whose state is durable and readable by
+another process ([`src/state/`](../src/state/)), which is the seam a queue needs,
+not the queue.

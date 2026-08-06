@@ -6,10 +6,15 @@ This file stays free of client imports on purpose: `list-tools` answers "what
 could I configure?" without constructing anything, so it must not drag in
 google-genai, httpx, or a tenant's plugins to do it. The factories therefore live
 next to the things they build — `agent/managers/tools_manager.py`'s `_REGISTRY`
-for tools, `agent/managers/output_manager.py`'s `_SINK_FACTORIES` for sinks — and
+for tools, `agent/managers/output_manager.py`'s `_SINK_FACTORIES` for sinks,
+`agent/managers/state_manager.py`'s `_STORE_FACTORIES` for the state store — and
 `src/tests/test_providers.py` asserts, per kind, that the names here and the
 names there are the *same set*. Neither file can grow a provider the other
 doesn't have.
+
+The last two are the run-context plane (docs/architecture.md): a sink and a store
+are things a *run* has, not things a stage calls, which is why they aren't in
+`Tools` and their factories aren't in the tools registry.
 """
 
 from dataclasses import dataclass
@@ -155,6 +160,17 @@ CATALOG = (
         providers={
             "json": "indented JSON to stdout, or to a file (optionally JSONL)",
             "webhook": "POST the result to an HTTP endpoint",
+            "custom": CUSTOM,
+        },
+    ),
+    ProviderKind(
+        kind="state",
+        interface="state/base.py::StateStore",
+        config_field="state_provider",
+        providers={
+            "memory": "in-process snapshots — the default; gone when the process ends",
+            "file": "one JSON file per run, under this tenant's folder",
+            "redis": "one key per run, optionally expiring — for many processes",
             "custom": CUSTOM,
         },
     ),

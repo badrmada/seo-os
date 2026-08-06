@@ -17,6 +17,14 @@ You never need a `try/except` around `run()`/`arun()`, and you never need to bra
 "did this tenant have discovery configured" before reading `discovery` — it's
 always there, just possibly empty.
 
+**This is also what a finished run leaves in the state store**, if one is
+configured ([configuration.md](configuration.md#where-the-runs-state-is-kept-state_provider)):
+the terminal snapshot is exactly this object, so a reader that arrives after the
+run gets the same shape as the caller who started it. The snapshots written
+*during* the run are the raw pipeline state instead — they carry `run_id` and
+`phase` too, but a `working` block in place of `discovery`, and only `phase`
+tells you which you're holding.
+
 ## Top level
 
 | Key | Type | Notes |
