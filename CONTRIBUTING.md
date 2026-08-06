@@ -146,6 +146,41 @@ pass on a laptop and fail in CI on the same commit. A command that still can't b
 run is **printed with the reason** rather than counted, since a silent skip is
 how a documented command stops being checked without anyone noticing.
 
+## How a change lands
+
+Fork, branch, open a pull request against `main`. `main` takes no direct pushes —
+not from contributors, not from the maintainer.
+
+**A first-time contributor's PR waits for someone to press "approve and run"
+before CI starts.** That is a GitHub setting, not a judgement about your patch:
+a workflow triggered by a stranger's branch runs that branch's code, so the first
+one gets a human glance. Subsequent PRs from you start automatically.
+
+Then three checks have to go green, and they are required — nothing merges
+around them:
+
+| Check | Is |
+|---|---|
+| `tests / seo-agents` | `pytest` on 3.11 |
+| `docs / check` | `check_docs.py` — every documented command executed, every link resolved |
+| `image (seo-agents)` | the runtime image builds, and `--help` runs inside it |
+
+They all hang off [`images.yml`](.github/workflows/images.yml), which is the one
+entry point: the build declares `needs: [tests, docs]`, so a red suite stops the
+image rather than racing it. **Your PR builds the image but never publishes it.**
+Publishing happens from `main` and `v*` tags only — a fork's PR pushing to this
+project's registry is exactly the thing that arrangement prevents, which is also
+why the GHCR login step is skipped on pull requests.
+
+Review is by a code owner (currently one person, so expect days rather than
+hours), and merges are **squash-only** — one commit per change on `main`, which
+is what makes the history readable and the release tags mean something. Your
+branch is deleted on merge; nothing is lost, the commit is on `main`.
+
+If a check fails on something that looks unrelated to your change, say so in the
+PR rather than pushing empty commits at it. That is a bug in the check, and it is
+worth fixing for everyone.
+
 ## A note on crawlers
 
 If you contribute anything that fetches other people's sites — an example, a

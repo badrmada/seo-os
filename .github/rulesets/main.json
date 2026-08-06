@@ -1,0 +1,74 @@
+{
+  "_comment": [
+    "Branch protection for the default branch, kept as a file so it is reviewable",
+    "and reproducible instead of clicked once into a settings page and forgotten.",
+    "Apply it with scripts/apply-ruleset.sh; that script PUTs this document over",
+    "the existing ruleset of the same name, so this file is the source of truth.",
+    "",
+    "APPLY THIS AFTER the workflows have run at least once. The three required",
+    "contexts below only exist once GitHub has seen them, and a ruleset that",
+    "requires a check which never reports blocks every pull request forever.",
+    "",
+    "The `_comment` keys are stripped, recursively, before this is sent — they",
+    "are notes for whoever reads the file, not part of the API schema."
+  ],
+
+  "name": "main",
+  "target": "branch",
+  "enforcement": "active",
+
+  "conditions": {
+    "ref_name": {
+      "include": ["~DEFAULT_BRANCH"],
+      "exclude": []
+    }
+  },
+
+  "bypass_actors": [
+    {
+      "_comment": [
+        "The sole maintainer, exempted because GitHub does not let anyone approve",
+        "their own pull request: with one required approval and one maintainer,",
+        "an unexempted owner cannot merge their own work at all.",
+        "",
+        "This entry is the temporary half of the arrangement. When a second",
+        "maintainer joins, delete it — the rule underneath already says what it",
+        "should say, and removing the bypass is what turns it on."
+      ],
+      "actor_id": 38039114,
+      "actor_type": "User",
+      "bypass_mode": "always"
+    }
+  ],
+
+  "rules": [
+    { "type": "deletion" },
+
+    { "type": "non_fast_forward" },
+
+    {
+      "type": "pull_request",
+      "parameters": {
+        "required_approving_review_count": 1,
+        "require_code_owner_review": true,
+        "dismiss_stale_reviews_on_push": true,
+        "required_review_thread_resolution": true,
+        "require_last_push_approval": false,
+        "allowed_merge_methods": ["squash"]
+      }
+    },
+
+    {
+      "type": "required_status_checks",
+      "parameters": {
+        "strict_required_status_checks_policy": true,
+        "do_not_enforce_on_create": false,
+        "required_status_checks": [
+          { "context": "tests / seo-agents" },
+          { "context": "docs / check" },
+          { "context": "image (seo-agents)" }
+        ]
+      }
+    }
+  ]
+}

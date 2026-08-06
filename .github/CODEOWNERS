@@ -1,0 +1,8 @@
+# Every path, one owner, for now. The `main` ruleset requires a code owner's
+# review, so this file is what makes that rule mean anything.
+#
+# Adding a maintainer is two edits, not a rewrite: a line here scoping them to
+# the paths they own, and dropping @badrmada from the ruleset's bypass list
+# (.github/rulesets/main.json) so approvals are earned rather than waived.
+
+*       @badrmada

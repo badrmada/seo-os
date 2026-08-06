@@ -1,0 +1,49 @@
+# Three ecosystems, because this repo pins in three places and a pin nobody
+# bumps is just an old version with extra steps.
+#
+# The actions entry is the one that pays for itself: the workflows pin every
+# action to a commit SHA, which is the right call for a repo that takes pull
+# requests from strangers, and it is also the thing that silently rots without
+# something watching upstream. Dependabot rewrites the SHA *and* the trailing
+# version comment.
+
+version: 2
+
+updates:
+  # The workflows' pinned action SHAs.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+    groups:
+      # One PR for the routine bumps rather than six. Anything with a breaking
+      # major still arrives on its own, which is when a human should be looking.
+      actions:
+        update-types: [minor, patch]
+
+  # The runtime's fully-pinned requirements.txt — the same file the image and
+  # the test job both install from, so a bump here is a bump everywhere.
+  - package-ecosystem: pip
+    directory: /services/seo-agents
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: deps
+    groups:
+      python:
+        update-types: [minor, patch]
+
+  # The `python:3.11-slim` base. Majors are deliberately excluded: the pinned
+  # requirements and the test job are both 3.11: moving the base image off it is
+  # a decision, not a dependency bump.
+  - package-ecosystem: docker
+    directory: /services/seo-agents
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: deps
+    ignore:
+      - dependency-name: python
+        update-types: [version-update:semver-major]
