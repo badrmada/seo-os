@@ -84,6 +84,13 @@ template edited in the wrong file renders perfectly and says the wrong thing,
 which nothing else surfaces. A missing or out-of-folder template file fails the
 config load itself, one row above.
 
+The `state store` row *builds* the store — which creates a file store's folder and
+imports a custom class — but deliberately doesn't connect to anything: a Redis
+store connects on its first write, and a run degrades rather than fails when it
+can't (see
+[configuration.md](configuration.md#where-the-runs-state-is-kept-state_provider)).
+So this row answers "is it configured?", not "is the server up?".
+
 It exits non-zero if any check fails, so it works in CI.
 
 **`show-graph`** answers "which stages will actually run?" — which depends
@@ -194,4 +201,5 @@ config-registered tool plugins.
 
 - [configuration.md](configuration.md) — every config field.
 - [configuration.md#watching-a-run-happen-verbose-mode](configuration.md#watching-a-run-happen-verbose-mode) — `-v`/`-vv`.
+- [configuration.md#where-the-runs-state-is-kept-state_provider](configuration.md#where-the-runs-state-is-kept-state_provider) — the state store.
 - [configuration.md#where-the-result-goes-output-sinks](configuration.md#where-the-result-goes-output-sinks) — output sinks.

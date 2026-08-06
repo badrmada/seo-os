@@ -29,7 +29,10 @@ PACKAGES = [
     "agent.validators",
     "cli",
     "cli.commands",
+    "state.base",
+    "state.file_store",
     "state.memory_store",
+    "state.redis_store",
     "tools.base",
     "tools.sinks",
 ]

@@ -17,7 +17,14 @@ import pytest
 from agent.config.agent_config import AgentConfig
 from agent.managers.output_manager import _SINK_FACTORIES, OutputManager
 from agent.managers.providers import BY_KIND, CATALOG
+from agent.managers.state_manager import _STORE_FACTORIES, build_state_store
 from agent.managers.tools_manager import _REGISTRY, ToolsManager
+
+# The kinds a stage actually calls. The other two — output sinks and the state
+# store — are the run-context plane: their factories live in their own managers
+# (see agent/managers/providers.py), so they get their own set-equality tests
+# below rather than being looked up in the tools registry.
+TOOL_KINDS = [kind for kind in CATALOG if kind.kind not in ("output", "state")]
 
 
 def _tenant(tmp_path, plugins: dict = None, **config) -> AgentConfig:
@@ -34,7 +41,7 @@ def _tenant(tmp_path, plugins: dict = None, **config) -> AgentConfig:
 # --- the catalog and the factories are one list ----------------------------
 
 
-@pytest.mark.parametrize("kind", [k for k in CATALOG if k.kind != "output"], ids=lambda k: k.kind)
+@pytest.mark.parametrize("kind", TOOL_KINDS, ids=lambda k: k.kind)
 def test_every_catalogued_tool_provider_has_a_factory_and_vice_versa(kind):
     assert set(kind.providers) == set(_REGISTRY[kind.kind]), (
         f"{kind.kind}: agent/managers/providers.py and tools_manager.py's _REGISTRY disagree"
@@ -49,7 +56,14 @@ def test_the_output_sink_catalog_matches_its_factories():
     assert set(BY_KIND["output"].providers) == set(_SINK_FACTORIES) | {"custom"}
 
 
-@pytest.mark.parametrize("kind", [k for k in CATALOG if not k.is_list], ids=lambda k: k.kind)
+def test_the_state_store_catalog_matches_its_factories():
+    """Same rule again, for the other run-context kind. A store catalogued but
+    unbuildable would reach a tenant as "Unknown state store provider 'redis'"
+    from a name `list-tools` had just told them to use."""
+    assert set(BY_KIND["state"].providers) == set(_STORE_FACTORIES) | {"custom"}
+
+
+@pytest.mark.parametrize("kind", [k for k in TOOL_KINDS if not k.is_list], ids=lambda k: k.kind)
 def test_an_uncatalogued_provider_name_is_rejected(kind):
     manager = ToolsManager(AgentConfig(**{kind.config_field: "definitely-not-a-provider"}))
     with pytest.raises(ValueError, match="Unknown"):
@@ -260,3 +274,18 @@ def test_a_custom_discovery_source_error_names_the_entry(tmp_path):
 def test_an_unknown_sink_provider_is_rejected():
     with pytest.raises(ValueError, match="Unknown output sink provider"):
         OutputManager(AgentConfig(output_sinks=[{"name": "x", "provider": "carrier-pigeon"}]))
+
+
+# --- and so does the state store -------------------------------------------
+
+
+def test_an_unknown_state_store_provider_is_rejected():
+    """Never a silent fallback to "memory": a tenant who asked for Redis and got
+    in-process snapshots finds out from an empty dashboard, days later."""
+    with pytest.raises(ValueError, match="Unknown state store provider"):
+        build_state_store(AgentConfig(state_provider="carrier-pigeon"))
+
+
+def test_a_custom_state_store_with_no_class_configured_says_so():
+    with pytest.raises(ValueError, match="state_custom_class"):
+        build_state_store(AgentConfig(state_provider="custom"))

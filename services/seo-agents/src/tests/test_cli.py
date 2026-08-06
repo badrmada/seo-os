@@ -118,6 +118,33 @@ def test_run_exits_non_zero_when_the_run_fails(tmp_path):
     assert json.loads(result.stdout)["phase"] == "failed"
 
 
+def test_run_warns_when_a_snapshot_did_not_land_but_still_succeeds(tmp_path):
+    """A store failure degrades the run rather than failing it — which with
+    verbose off would be completely silent without this warning."""
+    root = make_tenant(tmp_path / "userdata", "acme", {
+        **TENANT,
+        "state_provider": "custom",
+        "state_custom_class": "dead_store:DeadStore",
+    })
+    plugins = root / "acme" / "plugins"
+    plugins.mkdir()
+    # Builds fine, writes never land — the shape a real outage takes, and the one
+    # a store that failed to *build* would not reach (that's a request error).
+    (plugins / "dead_store.py").write_text(
+        "class DeadStore:\n"
+        "    def __init__(self, config, options=None):\n"
+        "        pass\n"
+        "    def save(self, run_id, state):\n"
+        "        raise RuntimeError('disk is full')\n"
+    )
+
+    result = _cmd("run", root)
+
+    assert result.exit_code == 0
+    assert json.loads(result.stdout)["phase"] == "done"
+    assert "warning: state store" in result.stderr
+
+
 def test_show_graph_needs_no_tools_and_names_every_stage(workspace):
     result = _cmd("show-graph", workspace)
 

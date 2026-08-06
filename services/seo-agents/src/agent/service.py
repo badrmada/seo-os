@@ -33,11 +33,10 @@ import asyncio
 from dataclasses import dataclass, field
 from typing import Callable
 
-from state.memory_store import InMemoryStateStore
-
 from .config.workspace import TenantWorkspace
 from .managers.output_manager import PROCESS_STDERR, OutputManager
 from .managers.run_manager import AgentRunner
+from .managers.state_manager import StateSnapshots, build_state_store
 from .observability import build_reporter
 
 __all__ = ["RunRequest", "RunResult", "AgentService", "RunRequestError"]
@@ -111,12 +110,16 @@ class RunResult:
     `phase="failed"` shape, since a failed *run* is a successful *request*.
     `events` is what the reporter recorded (empty unless the request asked for
     them). `failed_sinks` names the sinks that couldn't deliver, which is
-    otherwise invisible to a caller that isn't watching stderr.
+    otherwise invisible to a caller that isn't watching stderr. `state_errors` is
+    the same idea for the state store: a snapshot that didn't land never fails a
+    run, so without this a store that has been dead for a week looks exactly like
+    one that is working.
     """
 
     run: dict
     events: list[dict] = field(default_factory=list)
     failed_sinks: list[str] = field(default_factory=list)
+    state_errors: list[str] = field(default_factory=list)
 
     @property
     def ok(self) -> bool:
@@ -167,14 +170,31 @@ class AgentService:
         except Exception as exc:  # noqa: BLE001 - a misconfigured sink is a request error
             raise RunRequestError(f"output sink configuration: {exc}") from exc
 
-        store = InMemoryStateStore()
-        run = await AgentRunner(config, reporter=reporter).arun(request.input, state_store=store)
-        failed_sinks = await sinks.aemit(run)
+        # Same split as a sink, and for the same reason: a store that can't be
+        # *built* (an unknown provider, a custom class that won't import, a folder
+        # that can't be created) is a request error raised before anything runs,
+        # while a store that can't be *written to* only degrades the run — a Redis
+        # outage must not throw away a finished draft. Built per request, like
+        # every other resource here, so it is closed per request too.
+        try:
+            store = build_state_store(config)
+        except Exception as exc:  # noqa: BLE001 - a misconfigured store is a request error
+            raise RunRequestError(f"state store configuration: {exc}") from exc
+        snapshots = StateSnapshots(store, reporter)
+
+        try:
+            run = await AgentRunner(config, reporter=reporter).arun(
+                request.input, state_store=snapshots,
+            )
+            failed_sinks = await sinks.aemit(run)
+        finally:
+            await snapshots.close()
 
         return RunResult(
             run=run,
             events=list(getattr(reporter, "events", ())),
             failed_sinks=failed_sinks,
+            state_errors=list(snapshots.failures),
         )
 
     def execute(self, request: RunRequest) -> RunResult:

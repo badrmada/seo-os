@@ -39,7 +39,7 @@ offers the same small menu:
 | `mock` | A built-in fake. No network, no keys, same output every time. | Trying things out, tests, offline demos. |
 | `templated` | *Your* data (a JSON file or an API), reshaped with a short template. **No code.** | Your data is JSON and you can map it with a snippet — most analytics/traffic cases. |
 | `custom` | *Your* Python class. | The logic is real code: a database query, a bespoke API, a multi-step routine. |
-| A vendor name (`gemini`, `google`, `cloudflare`, `duckduckgo`) | A real, built-in integration with that vendor. | You use that specific vendor. |
+| A vendor name (`gemini`, `google`, `cloudflare`, `duckduckgo`, `redis`) | A real, built-in integration with that vendor. | You use that specific vendor. |
 | `llm` *(discovery only)* | The AI model itself finds the opportunities. | You want the agent to discover topics without building an integration. |
 
 So `"analytics_provider": "templated"` means "map my analytics with a template,"
@@ -1098,6 +1098,68 @@ Two behaviors worth knowing, because they're deliberate opposites:
 
 Note that the list **replaces** the default rather than adding to it — if you want
 your own sink *and* the usual stdout JSON, list both, as the example above does.
+
+---
+
+## Where the run's state is kept (`state_provider`)
+
+A sink answers "where does the finished result go?". This answers a different
+question: **where is this run right now?** The agent writes a snapshot of the run's
+state after every step, keyed by `run_id`, so something outside the process — a
+progress endpoint, a job row, a dashboard — can watch a run that hasn't returned
+yet. By default those snapshots live in memory and disappear with the process,
+which is exactly right for a CLI and useless for anything else.
+
+```jsonc
+{
+  "state_provider": "file",
+  "state_options": { "path": "state" }
+}
+```
+
+```jsonc
+{
+  "state_provider": "redis",
+  "state_options": {
+    "url": "redis://localhost:6379/0",
+    "key_prefix": "seo-agent:run:",
+    "ttl_seconds": 604800
+  }
+}
+```
+
+| Provider | Options | Notes |
+|---|---|---|
+| `memory` | — | **The default.** An in-process dict; the snapshots live exactly as long as the process that made them. |
+| `file` | `path` (a folder, default `"state"`, resolved against your tenant folder) | One `<run_id>.json` per run, replaced atomically as the run progresses. No infrastructure, survives the process. |
+| `redis` | `url` (default `"redis://localhost:6379/0"`), `key_prefix` (`"seo-agent:run:"`), `ttl_seconds` (`0` = never expires), `timeout_seconds` (`5`) | One key per run. What a worker pool wants, since every process sees the same snapshots. Set `ttl_seconds` on anything long-lived — nothing else expires them. |
+| `custom` | `state_custom_class` (`"module:ClassName"`), plus any `options` you like | Three methods: `save(run_id, state)`, `load(run_id)`, `delete(run_id)`. See [extending.md](extending.md#walkthrough-a-state-store-of-your-own). |
+
+**Two snapshot shapes, on purpose.** While a run is in flight each snapshot is the
+raw pipeline state (it has a `working` block, and no `discovery`); the last one,
+written when the run ends, is exactly the JSON the caller gets back
+([output-schema.md](output-schema.md)). Both carry `run_id` and `phase`, so a
+progress reader never has to tell them apart — and a reader arriving after the run
+finished gets the real result rather than an internal state.
+
+Three behaviors worth knowing:
+
+- **A store that can't be built fails the request immediately** — an unknown
+  provider, a custom class that won't import, a folder that can't be created.
+  Nothing has run yet, so you're told before a pipeline spends anything.
+- **A store that can't be *written to* never fails the run.** A Redis outage is no
+  reason to discard a finished draft. The failure is recorded instead (on
+  `RunResult.state_errors`, and as an event when verbose is on), and a store that
+  is down is retried at most twice per run rather than once per step — otherwise
+  its timeout would be added to your run's wall clock five times over.
+- **Anything you put in the state must be JSON-serializable.** That holds for
+  everything the agent puts there; a stage of your own that parks a live object
+  (an open client, a file handle) in the state is the one way to break it, and it
+  shows up as a recorded save failure.
+
+This is *not* LangGraph's `checkpointer=`, which is a separate mechanism for
+**resuming** an interrupted graph. Nothing here resumes anything; these snapshots
+are for watching, not for continuing.
 
 ---
 

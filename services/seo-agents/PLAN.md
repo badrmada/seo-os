@@ -5,9 +5,15 @@ and removed from this file. What follows is only what is left to build.
 
 ## START HERE
 
-**Next task: Step I (state persistence).** Steps F, J and G have shipped, and so
-did the search-performance rename (unplanned — see below); nothing is
-half-finished and the tree is green. Step I is the last one on the list.
+**Nothing is left on this list.** Step I (state persistence) has shipped, and it
+was the last one; F, J and G shipped before it, along with the
+search-performance rename (unplanned — see below). Nothing is half-finished and
+the tree is green.
+
+A new step starts by being written down here with the same treatment the ones
+below got: what it is, why it comes when it does, and which invariants it may not
+break. The list of invariants is the part worth reading first — it is what the
+shipped steps cost to learn.
 
 **J was taken before G on purpose**, and it paid off: G's deliverable is a tenant
 declaring their own stages, which means a tenant writing their own prompts, and
@@ -17,8 +23,8 @@ have shipped it in the form J exists to remove.
 
 ```bash
 cd services/seo-agents
-pip install -r requirements.txt                   # includes pytest, ddgs and mcp
-pytest                                            # 402 passing
+pip install -r requirements.txt                   # includes pytest, ddgs, mcp and redis
+pytest                                            # 437 passing (the Redis ones skip without a server)
 python src/main.py list-tenants                   # the workspace
 python src/main.py check-data --tenant echooers   # the real tenant, no API calls
 python src/main.py run --userdata examples --tenant 06-mcp-discovery  # MCP, offline
@@ -26,7 +32,7 @@ python src/main.py preview-prompt --userdata examples --tenant 07-signal-inputs 
 python src/main.py run --userdata examples --tenant 08-custom-pipeline  # a site audit, not a draft, offline
 ```
 
-### Remaining steps, in order
+### Steps, in the order they were done
 
 | # | Step | Why in this order |
 |---|---|---|
@@ -36,7 +42,7 @@ python src/main.py run --userdata examples --tenant 08-custom-pipeline  # a site
 | ~~G~~ | ~~Stage and pipeline registration~~ | **Done** — see docs/roadmap.md. `config.pipelines` + `--agent`; `examples/08-custom-pipeline/` is the site audit that proves the bar. |
 | ~~H~~ | ~~`seo_audit` agent type~~ | **Dropped** — the `"custom"` mechanism plus G covers it. See below. |
 | ~~J~~ | ~~Template values: inline or from a file~~ | **Done, ahead of G** — see docs/roadmap.md. `{"file": "x.j2"}` anywhere a template string is accepted. Taken first because G's whole point is a tenant authoring their own stages and prompts. |
-| **I** | **State persistence** | Next, and last. Becomes load-bearing the moment a queue exists. |
+| ~~I~~ | ~~State persistence~~ | **Done, and last** — see docs/roadmap.md. `state_provider`: memory/file/redis/custom, with the guard around a store (degrade, record, bound the retries) as the substance rather than the stores. |
 
 Letters are order-of-work, nothing more — they are not renumbered when a step is
 dropped, since docs and commits already refer to them.
@@ -111,13 +117,20 @@ which a remaining step is judged too narrow:
 - **`AgentService` owns the sequence around a run.** A new channel adapts to it;
   it does not drive `AgentRunner` itself.
 - **A failed run is a successful request.** `RunResult.run["phase"] == "failed"`;
-  only an unrunnable *request* raises `RunRequestError`. Step I's store must not
-  break this by letting a save failure escape.
+  only an unrunnable *request* raises `RunRequestError`. The state store does not
+  break this: every call goes through `state_manager.py::StateSnapshots`, which
+  degrades and records instead of letting a save failure escape. Anything else
+  added to the run-context plane owes the same — the plane is *around* the run,
+  so nothing in it may decide the run's outcome.
 - **Nothing writes to process file descriptors unconditionally.** `stdout` and
   `warn_stream` are request-level.
 - **A new provider is a factory in `_REGISTRY` plus a name in `CATALOG`**, and
   its settings go in that provider's `options` — never a new top-level config
-  field. `src/tests/test_providers.py` fails if the two disagree.
+  field. `src/tests/test_providers.py` fails if the two disagree. A *run-context*
+  kind keeps the `CATALOG` half and puts its factories in its own manager
+  (`output_manager.py::_SINK_FACTORIES`, `state_manager.py::_STORE_FACTORIES`),
+  because a sink and a store are not things a stage calls; the same set-equality
+  test covers each.
 - **The `"custom"` class contract**: `__init__(self, config)` keeps working, with
   `(self, config, options)` as an opt-in, sync or async either way.
 - **No further breaking config change without the same treatment** Step C got: a
@@ -219,7 +232,7 @@ The rule that keeps the remaining steps non-invasive.
    (`agent/graph/tools.py`), built by `ToolsManager`. Stages depend only on the
    Protocols in `tools/base.py`.
 2. **Run context plane** — how a run is *observed and persisted*: the reporter,
-   the output sinks, the state store (Step I). Orchestration concerns, not things
+   the output sinks, the state store. Orchestration concerns, not things
    a stage calls.
 3. **Result plane** — `AgentState` and the returned JSON, documented in
    `docs/output-schema.md` and deliberately frozen. **No step below adds a field
@@ -456,49 +469,59 @@ finished:
 
 ---
 
-## Step I — State persistence
+## ~~Step I — State persistence~~ — shipped
 
-`InMemoryStateStore` already has the right shape (`save`/`load`/`delete`), and
-`AgentRunner.arun()` already takes the store as an argument rather than
-constructing one, so the seam mostly exists.
+Kept only for the decisions a later step needs to know about; the full write-up is
+in `docs/roadmap.md`, `docs/architecture.md` and `docs/configuration.md`.
 
-- **Promote the interface** to `state/base.py::StateStore`, with
-  `InMemoryStateStore` unchanged as the default.
-- **Select by provider**, as every other kind is selected: `state_provider` =
-  `"memory"` | `"file"` | `"sqlite"` | `"redis"` | `"postgres"` | `"custom"`,
-  connection details in that provider's `options`, `"custom"` through
-  `load_custom`. A file/JSONL store is the useful first real one — zero
-  infrastructure, survives the process.
-- **Keep it in the run-context plane.** Not a `Tools` member, not an `AgentState`
-  field. Stages never see it; only `AgentRunner` writes to it.
-
-**Contract:**
-
-- `save(self, run_id: str, state: dict) -> None`
-- `load(self, run_id: str) -> dict | None`
-- `delete(self, run_id: str) -> None`
-
-Four constraints, cheap now and expensive later:
-
-1. **State must stay JSON-serializable.** It happens to hold today (`Channel`
-   subclasses `str`, everything else is plain data) and must keep holding: no
-   live objects, clients, or file handles in `AgentState`.
-2. **A store failure must not fail the run.** Today a `save()` exception
-   propagates out of `_run` and is caught by the outermost handler, turning a
-   *successful* run into `phase="failed"`. Already wrong for the in-memory store;
-   routine with a network-backed one. Wrap it at the call site: degrade, record,
-   continue.
-3. **Snapshot frequency is a write amplifier.** `save()` runs after every
-   super-step — against a remote store that is N round-trips on the critical
-   path. The interface should permit batching or async writes, and the terminal
-   save must always happen.
-4. **Two different persistence concerns — do not conflate them.** This store
-   holds *observable run snapshots*. LangGraph's `checkpointer=` on `compile()`
-   is a separate mechanism for *resuming* an interrupted graph. This step covers
-   the first only; adopt a checkpointer if and when resume is genuinely needed.
-
-Retention and multi-writer coordination are out of scope: keyed by `run_id`,
-last-write-wins, single process.
+- **The stores were the easy half; the guard is the step.** `save()` propagating
+  out of `_run` turned a run that had produced a good draft into
+  `phase="failed"` — already wrong for the in-memory store, routine with a
+  network-backed one. Every call now goes through
+  `state_manager.py::StateSnapshots`: degrade, record, continue. **Anything else
+  put in the run-context plane owes exactly this**, and the reason is structural
+  rather than defensive — that plane is *around* the run, so nothing in it may
+  decide the run's outcome.
+- **A degrade needs somewhere to land that isn't the verbose stream.** The
+  failure goes to the reporter *and* to `RunResult.state_errors`, mirroring
+  `failed_sinks`. Without the second, a store that has been dead for a week looks
+  exactly like a working one to every non-verbose caller — the same lesson Step D
+  recorded as `raw.grounding_error`, in a different place.
+- **`save()` runs after every super-step, so a dead store must be bounded.** With
+  five super-steps and a five-second connect timeout, "degrade and continue"
+  alone silently adds 25s to every run. After the first failure the intermediate
+  saves are skipped and only the terminal one is attempted — the general rule
+  being that a per-step degrade needs a bound, not just a fallback.
+- **The terminal snapshot is the *result*, not the last raw graph state.** A
+  reader arriving after the run gets exactly the documented JSON
+  (docs/output-schema.md); the snapshots before it are the raw states, which is
+  what "where is this run right now" needs. Both carry `run_id` and `phase`, so a
+  progress reader never branches on which it holds.
+- **`run_id` becomes a filename, and `run_id` comes from the caller.** The file
+  store rejects anything that isn't one (no separators, no leading dot, bounded
+  length) and re-checks containment *after* resolving, since a symlink out of the
+  folder only shows up then — the treatment Step J's containment note said this
+  step owed.
+- **State staying JSON-serializable is now enforced rather than hoped for.** A
+  real run against the file store is in the suite; a live object anywhere in
+  `AgentState` shows up as a recorded save failure. A stage that parks a client or
+  a handle in the state breaks persistence for everyone, and this is where that
+  gets caught.
+- **`redis` is a new dependency and a cheap one** — one pin, no transitive
+  packages, and `redis.asyncio` is a native coroutine client. Imported *inside*
+  `RedisStateStore.__init__` (like `mcp` in `opportunity_mcp.py`), because the
+  provider registry is loaded by every CLI command and a tenant on "memory"
+  should not pay for a client they never build. The Redis tests run against a real
+  server and skip without one (`SEO_AGENT_TEST_REDIS_URL`): a store whose client
+  is only ever mocked is a store nobody has run.
+- **Explicitly not adopted: LangGraph's `checkpointer=`.** Resuming an
+  interrupted graph is a different feature with different guarantees. These are
+  observable snapshots; conflating the two would make "we already persist state"
+  a wrong answer to resume, later, when it is expensive to unpick.
+- Retention and multi-writer coordination stayed out of scope: keyed by `run_id`,
+  last write wins, one writer per run. Redis gets `ttl_seconds` because expiry is
+  that vendor's own mechanism and belongs in its options — not because the
+  interface has an opinion about retention.
 
 ---
 

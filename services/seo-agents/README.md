@@ -248,6 +248,7 @@ instead of a day — nothing more. Every one of them can be dropped or replaced:
 | don't want the agent searching the web | `"search_provider": "none"` |
 | have your own search API (Bing, Serper, SearxNG) | `"search_provider": "custom"` + your class |
 | have a data source none of these covers (trends, rank tracking, a competitor watcher) | a `"signal_sources"` entry — a named list, any number of them, no fork |
+| want to watch a run's progress from another process (a UI, a worker) | `"state_provider": "file"` or `"redis"` — a snapshot per step, keyed by `run_id` |
 
 A `tenant.json` with three lines runs. Everything you leave out keeps a
 sensible, product-neutral default, and `python src/main.py list-tools --all`
@@ -464,9 +465,11 @@ a discovery source that's itself an agent, are in
 
 This agent drafts one thing per call and hands it back. It has no queue, no
 background workers, no scheduling, no approval workflow, no publishing to a CMS
-or a community, and no memory beyond a single run. Those are a separate,
-worker-shaped layer you'd build on top. See [docs/roadmap.md](docs/roadmap.md)
-for what *is* planned inside the agent itself.
+or a community, and no memory carried from one run into the next. Those are a
+separate, worker-shaped layer you'd build on top — what the agent gives that
+layer is a run whose state it can read while it happens
+(`"state_provider": "file"` or `"redis"`), not the layer itself. See
+[docs/roadmap.md](docs/roadmap.md) for what *is* planned inside the agent itself.
 
 ## Contributing
 

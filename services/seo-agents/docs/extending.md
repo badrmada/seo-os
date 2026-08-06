@@ -412,6 +412,71 @@ the run is already complete by then. But a failure in your **constructor** is
 fatal, and deliberately so: sinks are built before the run starts, so a bad
 setting fails immediately instead of after a pipeline has spent real LLM calls.
 
+## Walkthrough: a state store of your own
+
+A sink receives a finished run. A **state store** receives the run *while it's
+happening* — a snapshot after every step, keyed by `run_id` — which is what lets
+something outside the process show progress for a run that hasn't returned yet.
+Three methods, `def` or `async def` as you like:
+
+```python
+# userdata/acme/plugins/pg_state.py
+import json
+
+import asyncpg
+
+
+class PostgresStateStore:
+    def __init__(self, config, options=None):
+        options = options or {}
+        self._dsn = options["dsn"]
+        self._pool = None
+
+    async def _connect(self):
+        if self._pool is None:
+            self._pool = await asyncpg.create_pool(self._dsn)
+        return self._pool
+
+    async def save(self, run_id: str, state: dict) -> None:
+        pool = await self._connect()
+        await pool.execute(
+            "INSERT INTO agent_runs (run_id, state) VALUES ($1, $2) "
+            "ON CONFLICT (run_id) DO UPDATE SET state = EXCLUDED.state",
+            run_id, json.dumps(state),
+        )
+
+    async def load(self, run_id: str) -> dict | None:
+        pool = await self._connect()
+        row = await pool.fetchrow("SELECT state FROM agent_runs WHERE run_id = $1", run_id)
+        return json.loads(row["state"]) if row else None
+
+    async def delete(self, run_id: str) -> None:
+        pool = await self._connect()
+        await pool.execute("DELETE FROM agent_runs WHERE run_id = $1", run_id)
+
+    async def close(self) -> None:      # optional — called when the run is over
+        if self._pool is not None:
+            await self._pool.close()
+```
+
+```jsonc
+{
+  "state_provider": "custom",
+  "state_custom_class": "pg_state:PostgresStateStore",
+  "state_options": { "dsn": "postgres://user:pass@localhost/agent" }
+}
+```
+
+Your `save` can raise — a snapshot that doesn't land degrades the run and is
+recorded on `RunResult.state_errors`, never fatal, since throwing away a finished
+draft over a bookkeeping row would be the worse failure. Two optional methods are
+called if you define them: `close()` when the run is over (for a pool or a
+handle), and `flush()` with the final snapshot, if your `save` batches.
+
+Note that `save` runs after **every** step, so against a remote store it's on the
+critical path. If that matters, buffer in `save` and write in `flush` — the
+terminal snapshot always calls it.
+
 ## Walkthrough: an opportunity source that's itself an agent
 
 A discovery source doesn't have to be one call, or even one AI call — it can run
@@ -677,6 +742,14 @@ eighth interface — does mean touching this repo:
 
 `SearchClient` is the most recent worked example of exactly these five steps, if
 you want one to read.
+
+Steps 1, 2 and 5 don't apply if the new kind is something a *run* has rather than
+something a stage calls — an output sink, the state store. Those aren't in `Tools`
+and aren't visible to a stage, so their factories live in their own manager
+([`output_manager.py`](../src/agent/managers/output_manager.py),
+[`state_manager.py`](../src/agent/managers/state_manager.py)) and their interface
+lives next to its implementations rather than in `tools/base.py`. The catalog
+half (step 4) is identical, and tested the same way.
 
 This is genuinely rare — the interfaces that exist today (the model, web search,
 keyword data, product analytics, traffic, and content opportunities) already
