@@ -3,10 +3,13 @@
 Not built yet. This folder is a placeholder so the intended structure of the
 system is visible; there is no code here.
 
-It is **step 4** of
-[the roadmap](../../docs/roadmap.md#4-the-frontend-watching-an-agent-work), and
-last on purpose: it is a client of the [gateway](../gateway/) and of nothing
-else, so a UI built before that one exists would be a client of a mock.
+It is **step 7** of
+[the roadmap](../../docs/roadmap.md#7-the-frontend), and last on purpose: it is a
+client of the [gateway](../gateway/) and of nothing else, so a UI built before
+that one exists would be a client of a mock. It will be **Next.js** (App Router,
+TypeScript), with its types generated from the gateway's OpenAPI document — the
+live view of a run is a client-side streaming problem, so the alternative was
+writing that half in JavaScript anyway.
 
 ## What it will be
 

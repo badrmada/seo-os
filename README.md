@@ -1,7 +1,10 @@
 # SEO-OS
 
-**An open-source AI agent that grows your organic traffic** — the visitors who
-arrive through search and online conversations, not through ads.
+**The open-source OS for LLM-native SEO.** Grow your brand where people actually
+look — search results, live conversations, the app you already shipped. Articles,
+replies, site audits, or something nobody's built yet: the deliverable is a slot
+you fill, not a feature you wait for. Organic growth, bounded by your imagination
+— not by our roadmap.
 
 > **Not a docs person?** Understood, and there will be no quiz. Skip straight to
 > **[the eight examples](#learn-by-example)** — a dev SaaS, a store, a forum, a
@@ -466,9 +469,9 @@ SEO-OS is a monorepo of services. Today there is one, and it's the important one
 | Service | What it is | Status |
 |---|---|---|
 | [`services/seo-agents/`](services/seo-agents/) | **The runtime** — the agent engine, the capability model, the CLI. Everything above lives here. | Shipped, tested, in use |
-| [`services/gateway/`](services/gateway/) | HTTP API, auth, queueing, scheduling and the approval loop | Planned — [next, after deployment](docs/roadmap.md#3-the-gateway-the-api-handler) |
-| [`services/frontend/`](services/frontend/) | A UI over agents, runs and drafts — watch a run happen | Planned — [last, it needs the gateway](docs/roadmap.md#4-the-frontend-watching-an-agent-work) |
-| [`deploy/`](deploy/) | [Docker Compose for one host](deploy/compose/README.md); a Helm chart for a cluster, later | Compose, documented; nothing long-running to deploy until the gateway exists |
+| [`services/gateway/`](services/gateway/) | HTTP API (FastAPI), auth, dispatch, queueing, scheduling and the approval loop | Planned — [step 2](docs/roadmap.md#2-the-gateway-the-api) |
+| [`services/frontend/`](services/frontend/) | A UI over agents, runs and drafts (Next.js) — watch a run happen | Planned — [last, it needs the gateway](docs/roadmap.md#7-the-frontend) |
+| [`deploy/`](deploy/) | [Docker Compose for one host](deploy/compose/README.md); a [Helm chart](helm-charts/seo-os/README.md) that runs a tenant on a cluster | Both shipped; nothing long-running to deploy until the gateway exists |
 
 The runtime deliberately has no queue, no scheduler, no approval workflow and no
 publishing. Those belong to the layer above it — and what it gives that layer is a
@@ -498,7 +501,7 @@ Everything is indexed at **[docs/](docs/)**. The short version:
 | [docs/extending.md](services/seo-agents/docs/extending.md) | Writing your own provider, signal, sink, state store or pipeline stage — including a discovery source that's itself an agent. |
 | [docs/cli.md](services/seo-agents/docs/cli.md) | Every command, and how to add one. |
 | [docs/output-schema.md](services/seo-agents/docs/output-schema.md) | The exact JSON a run returns, success and failure — the contract to build a UI on. |
-| [docs/roadmap.md](docs/roadmap.md) | What's built across the whole repo, and what's next — CI/CD, deployment, the gateway, the frontend, in that order. |
+| [docs/roadmap.md](docs/roadmap.md) | What's **not** built yet, in order: an MCP server so an LLM can drive it, the gateway, dispatch, multi-tenancy, observability, the chart, the frontend. |
 
 ## Contributing
 

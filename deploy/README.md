@@ -11,7 +11,7 @@ Two places, one shape:
 > is readable from outside the process producing it — plus the agent as a
 > *one-shot* container, run on demand; the chart renders a Secret and a Job and
 > nothing else. The thing that turns a run into something you request over HTTP
-> is the gateway, [step 3 of the roadmap](../docs/roadmap.md#3-the-gateway-the-api-handler),
+> is the gateway, [step 2 of the roadmap](../docs/roadmap.md#2-the-gateway-the-api),
 > and it is what will bring the first Deployment with it.
 
 ## Where the images come from
