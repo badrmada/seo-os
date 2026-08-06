@@ -1,0 +1,21 @@
+apiVersion: v2
+name: seo-os
+description: One SEO-OS run as a Kubernetes Job — a tenant folder delivered as a Secret, the result in the pod's logs.
+type: application
+
+# The chart's own version. Bumped when the templates change, independently of
+# the runtime image below.
+version: 0.1.0
+
+# The default image tag (values.yaml's `image.tag` overrides it). `latest` is a
+# moving target by definition — pin `sha-<commit>` anywhere you care what ran.
+# See deploy/README.md#where-the-images-come-from.
+appVersion: "latest"
+
+keywords:
+  - seo
+  - agent
+  - job
+home: https://github.com/badrmada/seo-os
+sources:
+  - https://github.com/badrmada/seo-os
