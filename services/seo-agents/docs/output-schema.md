@@ -22,7 +22,7 @@ always there, just possibly empty.
 | Key | Type | Notes |
 |---|---|---|
 | `run_id` | `string` | Always present, even on failure (generated before anything else runs). |
-| `agent_type` | `string` | Constant `"seo_content"`. |
+| `agent_type` | `string` | Which pipeline ran — `"seo_content"` unless the tenant declared others under `pipelines` (see [configuration.md](configuration.md#a-different-deliverable-agent-types-and-pipelines)). |
 | `phase` | `"done"` \| `"failed"` | The only two terminal values `run()` returns. |
 | `input` | `object` | Echoes what you sent in, after defaults are applied — see `agent/managers/run_manager.py`'s `_build_agent_input`. |
 | `output` | `object` \| `null` | `null` iff `phase == "failed"`; otherwise the shape below. |
@@ -32,10 +32,17 @@ always there, just possibly empty.
 
 ## `output` (only when `phase == "done"`)
 
-The shape depends on `output.kind`, which is exactly the effective `channel`
-for this run — the caller's `input.channel`, or whatever `choose_channel`
-decided (see
-[architecture.md](architecture.md#discovery-the-agent-finding-its-own-work)):
+The shape depends on `output.kind`. For the built-in `seo_content` agent that
+is exactly the effective `channel` for this run — the caller's `input.channel`,
+or whatever `choose_channel` decided (see
+[architecture.md](architecture.md#discovery-the-agent-finding-its-own-work)).
+
+**A tenant-declared pipeline writes its own `kind`** (`"site_audit"`, a link
+report, a brief) with whatever `metadata` that deliverable needs. That is the one
+extension point in this document: a new deliverable is a new `kind`, never a new
+top-level field, so a caller reading `run_id`/`phase`/`output`/`error` works
+unchanged whichever agent produced the result. `discovery` is still present and
+still exactly the shape below — empty, for a pipeline with no discover stage.
 
 ```jsonc
 {

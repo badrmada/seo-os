@@ -7,7 +7,7 @@ python src/main.py --help
 | Command | What it does |
 |---|---|
 | `run` | Run the agent once. The only command that does any work — every other one inspects or validates. |
-| `check-data` | Validate the config and input, and check every configured tool builds. No LLM call. |
+| `check-data` | Validate the config and input, resolve the pipeline, and check every configured tool builds. No LLM call. |
 | `show-graph` | Print the pipeline this config produces. |
 | `list-tools` | Every pluggable interface and the providers it accepts, with yours marked. |
 | `list-specialists` | What *this* tenant has wired: discovery sources, data providers, output sinks. |
@@ -69,11 +69,20 @@ service-account file or an unimportable custom class shows up. It never drafts.
 ┃ check             ┃ status ┃ detail                                   ┃
 ┡━━━━━━━━━━━━━━━━━━━╇━━━━━━━━╇━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━┩
 │ tenant config     │   ok   │ loaded; prompt and data templates render │
+│ templates         │   ok   │ prompt_templates.site_article <-         │
+│                   │        │ site_article.j2                          │
 │ input             │   ok   │ valid; channel: decided by discovery     │
 │ discovery sources │   ok   │ 3 built                                  │
 │ output sinks      │  FAIL  │ ValueError: webhook requires options.url │
 └───────────────────┴────────┴──────────────────────────────────────────┘
 ```
+
+The `templates` row names every template value that came from a file in
+`templates/` (see
+[configuration.md](configuration.md#keeping-a-template-in-its-own-file)) — a
+template edited in the wrong file renders perfectly and says the wrong thing,
+which nothing else surfaces. A missing or out-of-folder template file fails the
+config load itself, one row above.
 
 It exits non-zero if any check fails, so it works in CI.
 
@@ -81,6 +90,8 @@ It exits non-zero if any check fails, so it works in CI.
 entirely on your config, so it needs no API key and builds no tools.
 
 ```
+Pipeline — seo_content, 6 stages
+
   START
    → discover_source × 3    one branch per source (trends, forums, reddit), run concurrently
    → discover_join          merges every branch's opportunities
@@ -93,6 +104,20 @@ entirely on your config, so it needs no API key and builds no tools.
 ```
 
 `--format mermaid` prints a diagram you can paste into docs.
+
+**`--agent/-a`** picks which pipeline, for tenants that declare more than one
+under `pipelines` (see
+[configuration.md](configuration.md#a-different-deliverable-agent-types-and-pipelines)).
+It works on `run`, `check-data` and `show-graph`, and defaults to the tenant's
+own `agent_type`:
+
+```bash
+python src/main.py show-graph --tenant acme --agent site_audit
+python src/main.py run --tenant acme --agent site_audit
+```
+
+An agent type the config has no pipeline for is an error before anything runs,
+not a run that quietly produced the wrong deliverable.
 
 ## Exit codes
 

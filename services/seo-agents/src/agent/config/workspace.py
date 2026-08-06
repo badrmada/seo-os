@@ -4,7 +4,7 @@
     ├── acme/                     the tenant name — the only thing a run needs
     │   ├── tenant.json           config
     │   ├── plugins/              your own classes
-    │   ├── templates/            your own templates (reserved; not read yet)
+    │   ├── templates/            your own templates, as {"file": "x.j2"}
     │   ├── data/                 analytics.json, traffic.json, credentials
     │   └── output/               where results land by default
     └── globex/…

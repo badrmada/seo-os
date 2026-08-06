@@ -20,7 +20,10 @@ from agent.managers import ToolsManager
 from agent.managers.output_manager import OutputManager
 from agent.validators.input_validator import InputValidator
 
+from agent.graph.pipeline import spec_for
+
 from ..context import (
+    AGENT_OPTION,
     INPUT_OPTION,
     TENANT_OPTION,
     USERDATA_OPTION,
@@ -33,6 +36,7 @@ def check_data(
     tenant: str = TENANT_OPTION,
     userdata: str = USERDATA_OPTION,
     input_file: str = INPUT_OPTION,
+    agent: str = AGENT_OPTION,
     skip_input: bool = typer.Option(
         False, "--skip-input", help="Check the tenant config and tools only.",
     ),
@@ -43,8 +47,14 @@ def check_data(
         ("tenant config", True, "loaded; prompt and data templates render"),
     ]
 
-    if not skip_input:
-        checks.append(_check_input(config, input_file, workspace))
+    checks.append(_check_templates(config))
+    # Resolving the spec is what imports a config-declared stage's class, so an
+    # unimportable one shows up here rather than at the start of a real run.
+    pipeline = _check("pipeline", lambda: _describe_pipeline(config, agent))
+    checks.append(pipeline)
+
+    if not skip_input and pipeline[1]:
+        checks.append(_check_input(config, input_file, workspace, spec_for(config, agent or "")))
 
     manager = ToolsManager(config)
     checks.append(_check("llm", lambda: manager.build_llm()))
@@ -93,16 +103,44 @@ def _check(name: str, build) -> tuple[str, bool, str]:
     return (name, True, result if isinstance(result, str) else type(result).__name__)
 
 
-def _check_input(config, input_file: str, workspace) -> tuple[str, bool, str]:
+def _describe_pipeline(config, agent: str) -> str:
+    spec = spec_for(config, agent or "")
+    return f"{spec.agent_type}: {' -> '.join(stage.name for stage in spec.stages)}"
+
+
+def _check_templates(config) -> tuple[str, bool, str]:
+    """Which template values came from a file, and which file.
+
+    Loading already succeeded by the time this runs — a missing or uncontained
+    template file fails the config load itself, before any of these checks. So
+    this row never fails; it answers the other half of "will this config work",
+    which is *which* text a prompt is actually coming from. A template edited in
+    the wrong file renders perfectly and says the wrong thing, and that is not
+    visible anywhere else.
+    """
+    sources = getattr(config, "template_sources", [])
+    if not sources:
+        return ("templates", True, "none from files; every template is inline")
+    detail = "\n".join(f"{entry['slot']} <- {entry['file']}" for entry in sources)
+    return ("templates", True, detail)
+
+
+def _check_input(config, input_file: str, workspace, spec) -> tuple[str, bool, str]:
     run_input = load_input(input_file, workspace)
     try:
         InputValidator().validate(run_input, config)
     except Exception as exc:  # noqa: BLE001 - a bad input is exactly what this reports
         return ("input", False, str(exc))
+    if not spec.channel_aware:
+        # This pipeline isn't writing an article or a reply, so reporting a channel
+        # for it would be reporting something the run will never have.
+        return ("input", True, f"valid; agent: {spec.agent_type}, no channel")
     channel = run_input.get("channel") or (
         "decided by discovery" if config.discovery_sources else config.default_channel
     )
-    return ("input", True, f"valid; channel: {channel}")
+    # `Channel` is a `(str, Enum)`, whose f-string form is "Channel.SITE_ARTICLE"
+    # rather than the value a config or an input actually writes.
+    return ("input", True, f"valid; channel: {getattr(channel, 'value', channel)}")
 
 
 class _NoLLM:

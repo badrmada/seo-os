@@ -5,18 +5,25 @@ and removed from this file. What follows is only what is left to build.
 
 ## START HERE
 
-**Next task: Step G (stage and pipeline registration).** Step F shipped, and so
+**Next task: Step I (state persistence).** Steps F, J and G have shipped, and so
 did the search-performance rename (unplanned — see below); nothing is
-half-finished and the tree is green.
+half-finished and the tree is green. Step I is the last one on the list.
+
+**J was taken before G on purpose**, and it paid off: G's deliverable is a tenant
+declaring their own stages, which means a tenant writing their own prompts, and
+until J those were single escaped JSON lines. `examples/08-custom-pipeline/`'s
+audit report is a `.j2` file for exactly that reason — the reverse order would
+have shipped it in the form J exists to remove.
 
 ```bash
 cd services/seo-agents
 pip install -r requirements.txt                   # includes pytest, ddgs and mcp
-pytest                                            # 357 passing
+pytest                                            # 402 passing
 python src/main.py list-tenants                   # the workspace
 python src/main.py check-data --tenant echooers   # the real tenant, no API calls
 python src/main.py run --userdata examples --tenant 06-mcp-discovery  # MCP, offline
-python src/main.py preview-prompt --userdata examples --tenant 07-signal-inputs  # signals, offline
+python src/main.py preview-prompt --userdata examples --tenant 07-signal-inputs  # signals + a template file, offline
+python src/main.py run --userdata examples --tenant 08-custom-pipeline  # a site audit, not a draft, offline
 ```
 
 ### Remaining steps, in order
@@ -26,10 +33,10 @@ python src/main.py preview-prompt --userdata examples --tenant 07-signal-inputs 
 | ~~D~~ | ~~`SearchClient` (pluggable grounding)~~ | **Done** — see docs/roadmap.md. DuckDuckGo is the default; the resolution order is search → the model's own grounding → ungrounded. |
 | ~~E~~ | ~~Built-in `provider: "mcp"` discovery source~~ | **Done** — see docs/roadmap.md. Official `mcp` SDK, stdio + streamable HTTP, mapped by `items_template`. |
 | ~~F~~ | ~~Signal inputs as a named list~~ | **Done** — see docs/roadmap.md. `signal_sources`, collected concurrently, reaching the prompt as `signals` keyed by name. A crawler or a sitemap reader is a signal like any other. |
-| **G** | **Stage and pipeline registration** | Next. What a tenant-specific stage needs — and, with `"custom"`, what makes a site audit a tenant's build rather than a step here. |
+| ~~G~~ | ~~Stage and pipeline registration~~ | **Done** — see docs/roadmap.md. `config.pipelines` + `--agent`; `examples/08-custom-pipeline/` is the site audit that proves the bar. |
 | ~~H~~ | ~~`seo_audit` agent type~~ | **Dropped** — the `"custom"` mechanism plus G covers it. See below. |
-| I | State persistence | Becomes load-bearing the moment a queue exists. |
-| J | Template values: inline or from a file | Independent of G and I; the smallest of the three and doable any time. |
+| ~~J~~ | ~~Template values: inline or from a file~~ | **Done, ahead of G** — see docs/roadmap.md. `{"file": "x.j2"}` anywhere a template string is accepted. Taken first because G's whole point is a tenant authoring their own stages and prompts. |
+| **I** | **State persistence** | Next, and last. Becomes load-bearing the moment a queue exists. |
 
 Letters are order-of-work, nothing more — they are not renumbered when a step is
 dropped, since docs and commits already refer to them.
@@ -38,12 +45,13 @@ dropped, since docs and commits already refer to them.
 
 A built-in `seo_audit` agent type would have been this repo taking a position on
 what an audit *is* — which findings matter, how they're ranked, what a crawler
-does. That's the position a tenant should hold, and after F and G they can:
+does. That's the position a tenant should hold, and after F and G they can —
+`examples/08-custom-pipeline/` is one, built entirely in a tenant folder:
 
 - **Its inputs are signals.** A crawler and a sitemap reader are
   `signal_sources` entries with a `"custom"` class, exactly like a rank tracker.
   Nothing about them needs a new provider kind or a new `Tools` field.
-- **Its shape is a pipeline.** Once G lands, a tenant declares their own stages
+- **Its shape is a pipeline.** G shipped this: a tenant declares their own stages
   and their own spec — including one that ends in a verification stage of their
   own rather than `draft`/`self_qa`.
 - **Its output already fits.** `AgentState.agent_type` and the frozen result
@@ -58,11 +66,14 @@ rather than lost:
   crawler shipped or documented by this project — including an example — obeys
   `robots.txt`, rate-limits, caps pages/depth/total time, sends an identifying
   user agent, and never follows off-site links. A default that could hammer a
-  site is not an acceptable default. This belongs in `docs/extending.md` next to
-  the signal walkthrough, whether or not anyone builds the audit.
+  site is not an acceptable default. **Now in `docs/extending.md` ("If your stage
+  crawls, bound it"), and the reason `examples/08-custom-pipeline/` ships a
+  fixture rather than a working crawler.**
 - **Findings must be evidence-backed** — each carrying the URLs and rows it came
   from, the same principle that makes a grounded link trustworthy. An audit that
-  asserts problems it cannot point at is worse than no audit.
+  asserts problems it cannot point at is worse than no audit. **Also now in
+  `docs/extending.md`, and demonstrated by example 08's `VerifyStage`, which drops
+  any finding pointing at a URL the crawl never saw.**
 
 If a real use case later shows that every tenant writes the same audit, that is
 the moment to reconsider — with their code as the specification.
@@ -86,7 +97,8 @@ which a remaining step is judged too narrow:
    **This repo does not need to ship the second deliverable to be true to it** —
    it needs the seams that let a tenant produce one, which is Step G plus the
    `"custom"` mechanism, and a result schema that already takes a new `kind`.
-   Judge G by whether an audit could be built on it without touching `src/`.
+   **Step G did this** — `config.pipelines` and `--agent`, with
+   `examples/08-custom-pipeline/` as the audit built on it and no `src/` change.
 
 ### Invariants the remaining steps must not break
 
@@ -116,7 +128,19 @@ which a remaining step is judged too narrow:
   input field that became config). Renames are reported first, since advice about
   an options object that no longer exists is worse than none.
 - **`AgentState` and the returned JSON hold** — `docs/output-schema.md`. A new
-  deliverable uses a new `kind`, not a new top-level field.
+  deliverable uses a new `kind`, not a new top-level field. A new *working* key on
+  `AgentState` must be popped in `AgentRunner._run` alongside `working`, or
+  LangGraph materializing it makes it an accidental top-level result field —
+  which is exactly how `discover_results` leaked for two steps.
+- **A stage is `(tools, config[, options])` and returns only the keys it
+  changes**, whether it ships here or comes from a tenant's `plugins/`. A new
+  built-in stage joins `pipeline.py::BUILTIN_STAGES`; a new *mode* owes a
+  requirement checkable without knowing which stage it is applied to.
+- **A new template option is named `*_template`.** That suffix is what
+  `agent/config/template_files.py` keys off to accept `{"file": "x.j2"}`, so an
+  option named anything else silently supports only inline strings. A config dict
+  whose *keys* are a tenant's or a vendor's vocabulary (not this config's
+  structure) belongs in that module's `_OPAQUE_MAPS`.
 - **A new kind of input is a `signal_sources` entry**, not a new `Tools` field and
   not a new top-level config field. `working.signals` keys stay a function of the
   config rather than of the run, so a prompt template can rely on them.
@@ -339,35 +363,58 @@ is in `docs/roadmap.md`, `docs/architecture.md` and `docs/configuration.md`.
 
 ---
 
-## Step G — Stage and pipeline registration
+## ~~Step G — Stage and pipeline registration~~ — shipped
 
-`_STAGE_FACTORIES` in `agent/graph/pipeline.py` is a fixed dict of six stages,
-and `_default_spec` is the only spec there is. Both have to open up, and with H
-dropped this is now the step that carries the whole "the deliverable is not
-always a draft" framing: **the test of this step is whether a tenant could build
-a site audit on it without touching `src/`.**
+Kept only for the decisions a later step needs to know about; the full write-up is
+in `docs/roadmap.md`, `docs/architecture.md` and `docs/configuration.md`.
 
-- **Config-declared stages**: `{"name", "class", "mode", "after"}`, resolved
-  through `load_custom`.
-- **A spec per agent type**, not one global default: `agent_type -> PipelineSpec`,
-  with `"seo_content"` producing exactly today's three shapes.
-- **Generalize the mode/stage-name coupling.** `build_graph` raises unless
-  `parallel_by_source` is literally `"discover"` and `concurrent_from_start` is
-  literally `"analyze_context"`. Those checks must key off a stage's declared
-  requirements, not its name, before any registered stage can use those modes.
-- Preserve the existing `discover → choose_channel → analyze → draft → self_qa`
-  flow and all three current graph shapes for default configs.
-- **A tenant-declared agent type must be selectable at run time**, since that is
-  what makes a second deliverable reachable at all: `--agent <name>` on the CLI,
-  the same field on the service request, landing on `AgentState.agent_type` — the
-  seam that field was added for ("constant `seo_content`; a seam for when other
-  agent types exist").
-- **A custom stage writes `output` with its own `kind`**, not a new top-level
-  field — the result plane stays frozen (`docs/output-schema.md`). Worth an
-  example: a stage returning `{"kind": "site_audit", …}` proves the schema takes
-  a non-draft deliverable, which is the claim H was going to test.
-- **Explicitly not doing:** a capability-inference engine that derives graph shape
-  from tool metadata. Revisit only with a real use case.
+- **The bar was met, and `examples/08-custom-pipeline/` is the proof** — a site
+  audit whose three stages, report template and fixtures live entirely in the
+  tenant folder, producing `kind: "site_audit"` with no change to `src/`. If a
+  later step makes that example need a repo change to keep working, the step is
+  wrong, not the example.
+- **A stage's constructor is `(tools, config)`, or `(tools, config, options)`.**
+  Deliberately *not* the provider contract — a stage is part of the pipeline, not
+  something behind a Protocol. `ChooseChannelStage` and `SelfQaStage` grew an
+  unused `tools` argument to make that one shape: a registry that remembers which
+  stages want tools is a registry a tenant's stage cannot join.
+  `plugin_loader.load_custom_class()` exists for this — resolution without
+  instantiation — and anything else that constructs a tenant class differently
+  should use it rather than growing a third form of `load_custom`.
+- **A mode is gated on a declared requirement, never on a stage's name.**
+  `parallel_by_source` requires the class to declare `fanout_over` (a Tools
+  mapping) / `fanout_branch` / `fanout_join`; `concurrent_from_start` requires a
+  following stage to join into. **A new mode owes a requirement that is checkable
+  without knowing which stage it is.** The fan-out branch payload
+  (`{"source_name", "context"}`) is the contract a branch class gets — changing it
+  breaks every tenant fan-out stage, not just `discover`.
+- **List order is the chain; there is no `after:` field.** It was in the original
+  sketch and was dropped: this graph is a chain with two declared exceptions, so a
+  field whose only legal values restate the list order is a second way to say one
+  thing. An arbitrary DAG is a different feature and nothing has asked for one.
+- **Structure is validated at config load; classes are resolved when the pipeline
+  is built.** Importing a plugin executes a tenant's Python, and a server loading
+  a config per request must not run the code of pipelines that request isn't
+  using — the same line `load_dict`'s `validate` flag draws for I/O.
+  `pipeline.py::validate_pipeline` is the pure half, called by the loader for
+  *every* declared pipeline. Step I's provider selection owes the same split if it
+  can load tenant code.
+- **`channel` is `seo_content` vocabulary, not the framework's.**
+  `PipelineSpec.channel_aware` is computed from the stages present, not from the
+  agent type, so a tenant pipeline reusing `draft` still resolves a channel and an
+  audit doesn't get a meaningless `"site_article"` written into its input and
+  handed to every signal.
+- **`agent_type` is a request field, not an `AgentInput` field** — it selects
+  *which agent*, where the input describes *the job*. An unknown one is a
+  `RunRequestError` from `AgentService` (nothing was attempted), and
+  `AgentRunner._failed` now reports the configured agent type rather than the
+  constant `"seo_content"`.
+- **`discover_results` no longer leaks into the result.** LangGraph materializes
+  every declared `AgentState` channel, so an `Annotated` key with a reducer is
+  present as `[]` even in a graph with no fan-out node — it had been an
+  undocumented top-level field in every run's JSON. **Any new `AgentState` working
+  key must be popped in `_run` alongside `working`**, or it becomes part of the
+  result plane by accident.
 
 ---
 
@@ -455,94 +502,40 @@ last-write-wins, single process.
 
 ---
 
-## Step J — Template values: inline or from a file
+## ~~Step J — Template values: inline or from a file~~ — shipped
 
-**The problem.** Every template in this system is a JSON string, so a real one is
-a single line with escaped newlines and escaped quotes. `userdata/echooers/`'s
-`highlights_template` is one 300-character line; `examples/07-signal-inputs/`'s
-`prompt_templates.site_article` is worse. They are unreadable, undiffable, and
-un-editable in anything that understands Jinja2 — and prompt wording is the thing
-a tenant edits most.
+Kept only for the decisions a later step needs to know about; the full write-up is
+in `docs/roadmap.md` and `docs/configuration.md`.
 
-The workspace already has the answer half-built: `templates/` is a documented
-tenant folder (`agent/config/workspace.py`, "reserved; not read yet") and
-`list-tenants` already counts what's in it. This step makes it real.
+- **Template slots are found by naming convention, not by a list.** A
+  `{"file": ...}` object is honored at any key ending in `_template`, plus every
+  entry in `prompt_templates`. The alternative — enumerating today's nine options —
+  would mean every future template option silently not supporting files until
+  someone remembered to add it. **A step adding a template option must name it
+  `*_template`**, and gets file support for free by doing so.
+- **Everything else is denied, loudly.** A `{"file": ...}` object anywhere that
+  isn't a template slot is rejected by path at load time, rather than reaching a
+  provider as a dict where a string was expected. This is what makes the allow-list
+  safe: a template option that doesn't follow the convention fails with a message
+  saying so, instead of quietly reading nothing.
+- **`arguments`, `api_headers`, `env` and `headers` are opaque maps** and are not
+  walked at all — their keys are an MCP tool's parameter names, HTTP header names
+  and environment variable names, so one of them being `file` is ordinary. Anything
+  later that adds a config dict whose *keys* come from a tenant or a vendor owes an
+  entry in `_OPAQUE_MAPS`; the symptom of forgetting is a spurious rejection, which
+  is the failure mode this design chose on purpose.
+- **Resolution happens on the raw dict, before `AgentConfig(**data)`.** That
+  ordering is the whole reason `prompts.validate_template`, `TemplateValidator`
+  and every provider needed no change: by the time a config object exists, every
+  template is a string again. **A later step must not move template reading later**
+  — validation would then need a second code path for file-loaded templates.
+- **Containment is checked after resolving, not textually.** `..` and absolute
+  paths are rejected on the string, but a symlink out of `templates/` only shows up
+  once resolved. Step I's file-backed store writes into a tenant folder and owes
+  the same treatment.
+- **`config.template_sources` is loader-owned**, listed in
+  `loader.py::LOADER_OWNED_FIELDS` so a config naming it fails as an unknown field.
+  Any future field the loader writes rather than reads belongs there too — without
+  it, `fields(AgentConfig)` makes every such field silently settable from JSON.
 
-**Decided: an object, `{"file": "..."}`, accepted anywhere a template string is.**
-
-```jsonc
-{
-  "prompt_templates": {
-    "site_article": { "file": "site_article.j2" }
-  },
-  "analytics_options": {
-    "summary_template":    { "file": "analytics_summary.j2" },
-    "highlights_template": { "file": "analytics_highlights.json.j2" }
-  }
-}
-```
-
-A plain string keeps working and means exactly what it does today. The two forms
-are the *only* two.
-
-Why the object rather than the two obvious alternatives:
-
-- **Not a sigil** (`"@templates/x.j2"`, `"file:x.j2"`). Every sigil is a value a
-  template could legitimately start with, so it needs an escape hatch, and the
-  escape hatch is the bug — a tenant whose summary genuinely starts with `@` gets
-  a confusing file-not-found instead of their text. `isinstance(value, str)`
-  versus `dict` has no ambiguity to resolve.
-- **Not a sibling field** (`summary_template_file`). Templates appear in at least
-  nine places today (`prompt_templates.<channel>`, the analytics/traffic/signal
-  `*_template` options, the discovery source's `prompt_template`/
-  `query_prompt_template`/`items_template`, MCP `arguments` values). Doubling
-  each one doubles the config surface and the docs, and every new template option
-  after this would have to remember to add its twin.
-
-**One rule, one resolver.** *Anywhere* a template string is accepted, so is
-`{"file": …}`. A helper in `agent/config/` resolves it; nothing else learns about
-it. If a new provider adds a template option, it gets this for free — which is
-the whole reason to do it uniformly rather than per-option.
-
-**Resolution and containment:**
-
-- Relative to the tenant's `templates/` folder (`TenantWorkspace.templates_dir`),
-  and nowhere else. Not `config_base_dir`, not the CWD, not an absolute path.
-- **Reject `..`, absolute paths, and symlinks escaping the folder** — the same
-  containment `validate_name` gives a tenant name and `plugin_loader` gives a
-  plugin, and for the same reason: in a server this value arrives from a request
-  or a database row, so "read any file the process can read" is the failure mode
-  to design out, not to discover.
-- A config with no workspace (built in code, as tests do) has no `templates/`
-  folder, so `{"file": …}` is a clear error there rather than a CWD-relative read.
-- Missing or unreadable file → a config error naming the path and listing what
-  *is* in the folder, the treatment `plugin_loader` already gives a missing
-  plugin. "No such file" alone sends someone looking in the wrong directory.
-
-**Read at config-load time, not per render.** By the time `AgentConfig` exists,
-every template is a string again. This matters for three reasons:
-
-1. `prompts.validate_template` and `TemplateValidator` keep working untouched —
-   save-time validation still catches a bad template, including one loaded from a
-   file, with no new code path.
-2. A run makes no filesystem call per prompt, and a server resolving a tenant
-   config per request pays the read once.
-3. **`AgentConfig` stays plain data** — no paths to re-resolve, no file handles.
-   Step I's "state must stay JSON-serializable" has the same shape, and a config
-   holding a lazy file reference would quietly break anyone caching one.
-
-The tradeoff is honest and worth stating in the docs: editing a template file
-does not affect a config already loaded. For the CLI that is invisible (one run,
-one load); for a long-lived server it means the same cache invalidation any
-config change already needs.
-
-**Also:** `check-data` should report the templates it loaded and from where —
-that command exists to answer "will this config work", and "which file is this
-prompt actually coming from" is now part of that question. `list-tenants`'
-existing `templates` column stops being decorative.
-
-**Explicitly not doing:** template inheritance or `{% include %}` across files
-(Jinja2 can, but it needs a loader with its own containment rules — revisit if
-anyone actually wants it), a template registry shared between tenants, and any
-change to what the templates *render against*. This step is about where the text
-comes from, nothing else.
+---

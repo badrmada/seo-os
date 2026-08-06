@@ -73,6 +73,12 @@ class RunRequest:
     input: dict = field(default_factory=dict)
 
     # --- per-run overrides ---
+    # Which pipeline to run — "" uses the tenant config's own `agent_type`. This is
+    # a request field rather than an AgentInput one because it selects *which
+    # agent*, not what to write about: the input describes the job, this picks who
+    # does it. An agent type the config has no pipeline for is a RunRequestError,
+    # not a failed run — nothing was attempted.
+    agent_type: str = ""
     verbose: int | None = None      # None = use the config's own setting
     verbose_format: str = ""        # "" = use the config's own setting
     quiet: bool = False             # force verbose off, whatever the config says
@@ -139,6 +145,8 @@ class AgentService:
         that's a different thing and a channel maps it differently.
         """
         config = self._resolve_config(request)
+        if request.agent_type:
+            self._select_agent_type(config, request.agent_type)
         if request.output_sinks is not None:
             # A one-off destination for this run, replacing whatever the tenant
             # configured. Applied to the loaded copy, never written back.
@@ -191,6 +199,23 @@ class AgentService:
             return workspace.load_config()
         except Exception as exc:  # noqa: BLE001 - any load failure is a request error
             raise RunRequestError(f"could not load {workspace.config_path}: {exc}") from exc
+
+    def _select_agent_type(self, config, agent_type: str) -> None:
+        """Apply a per-run `--agent`, on the loaded copy and never written back.
+
+        An agent type the config has no pipeline for is raised as a
+        RunRequestError rather than left to fail the run, for the same reason an
+        unknown tenant is: nothing was attempted, and a channel needs to tell "your
+        request was wrong" apart from "the run failed".
+        """
+        from .graph.pipeline import agent_types
+
+        available = agent_types(config)
+        if agent_type not in available:
+            raise RunRequestError(
+                f"unknown agent type {agent_type!r} (available: {', '.join(available)})"
+            )
+        config.agent_type = agent_type
 
     def _build_reporter(self, request: RunRequest, config):
         """Verbosity precedence, in one place: `quiet` wins over everything, then

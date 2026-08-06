@@ -1,0 +1,35 @@
+{
+  "site_url": "https://sproutly.example.com",
+  "llm_provider": "mock",
+  "traffic_provider": "none",
+  "analytics_provider": "mock",
+  "brand_description": "Sproutly sells indoor gardening kits and publishes guides for people growing food in small apartments.",
+  "agent_goal": "Fix what is holding the existing pages back in search, before writing anything new.",
+  "agent_type": "site_audit",
+  "pipelines": {
+    "site_audit": {
+      "stages": [
+        {
+          "name": "crawl",
+          "class": "audit:CrawlStage",
+          "options": {
+            "pages_path": "data/crawl.json"
+          }
+        },
+        {
+          "name": "findings",
+          "class": "audit:FindingsStage"
+        },
+        {
+          "name": "verify",
+          "class": "audit:VerifyStage",
+          "options": {
+            "report_template": {
+              "file": "audit_report.j2"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

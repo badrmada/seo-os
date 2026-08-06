@@ -6,6 +6,7 @@ from .. import prompts
 from ..schemas.signal import BUILTIN_SIGNAL_NAMES
 from ..validators.template_validator import TemplateValidator
 from .agent_config import AgentConfig
+from .template_files import resolve_template_files
 
 # Settings that used to sit at the top level of a config and now belong to the
 # provider that actually uses them (see AgentConfig's "Provider-owned settings").
@@ -46,6 +47,11 @@ RENAMED_FIELDS = {
     "gsc_options": "search_performance_options",
 }
 
+# AgentConfig fields the loader writes and a config file may not set. They report
+# what loading did rather than asking it for anything, so a tenant naming one is a
+# mistake worth failing on — same as any other unknown field.
+LOADER_OWNED_FIELDS = frozenset({"template_sources"})
+
 
 
 def _signal_names(config: AgentConfig) -> tuple:
@@ -61,6 +67,43 @@ def _signal_names(config: AgentConfig) -> tuple:
         entry["name"] for entry in config.signal_sources
         if entry.get("name") and entry["name"] not in BUILTIN_SIGNAL_NAMES
     )
+
+
+def _validate_pipelines(config: AgentConfig, source: str) -> None:
+    """`agent_type` must name a pipeline that exists, and every declared pipeline
+    must be structurally sound.
+
+    Both are checked here, at save time, because the alternative is a typo'd agent
+    type silently falling back to `seo_content` — "my audit ran and produced an
+    article" is the worst possible answer to a misspelling — and a broken stage
+    list in a pipeline nobody selected today failing on the day someone does.
+
+    What is deliberately *not* checked here is whether each stage's `class` can be
+    imported: that executes the tenant's Python, and a server loading a config per
+    request must not run the code of pipelines this request isn't using. It
+    happens when the pipeline is built — at the start of a run, and in
+    `check-data`. Same line `load_dict`'s `validate` flag already draws.
+
+    Imported inside the function: agent.graph imports agent.config, so a
+    module-level import here closes that cycle (see src/tests/test_imports.py).
+    """
+    from ..graph.pipeline import DEFAULT_AGENT_TYPE, agent_types, validate_pipeline
+
+    if not config.agent_type:
+        raise ValueError(f'agent_type in {source} may not be empty (default: "{DEFAULT_AGENT_TYPE}")')
+    available = agent_types(config)
+    if config.agent_type not in available:
+        raise ValueError(
+            f"agent_type {config.agent_type!r} in {source} has no pipeline "
+            f"(available: {', '.join(available)}). Declare its stages under "
+            '"pipelines", or use one of those. See docs/configuration.md.'
+        )
+
+    for name, declaration in (config.pipelines or {}).items():
+        try:
+            validate_pipeline(name, declaration)
+        except ValueError as exc:
+            raise ValueError(f"{exc} (in {source})") from exc
 
 
 class AgentConfigLoader:
@@ -98,6 +141,12 @@ class AgentConfigLoader:
     ) -> AgentConfig:
         """Load from an already-parsed config.
 
+        Any template value written as `{"file": "name.j2"}` is read from the
+        tenant's `templates/` folder first (agent/config/template_files.py), so
+        everything after this point — including the validation below — sees the
+        same plain string it would have seen inline. A config with no `base_dir`
+        has no such folder, and says so rather than reading relative to the CWD.
+
         `prompt_templates` is special-cased: the config may override just one or
         two channels, and each overridden template is rendered against a sample
         context right here, so a broken Jinja2 template (bad syntax, a variable
@@ -113,7 +162,7 @@ class AgentConfigLoader:
         CLI's save-time-ish path, preserving existing behavior) and off here.
         Call `validate_data_templates()` explicitly when you want it.
         """
-        known = {f.name for f in fields(AgentConfig)}
+        known = {f.name for f in fields(AgentConfig)} - LOADER_OWNED_FIELDS
         unknown = set(data) - known
         if unknown:
             # Renames are reported before relocations: a config carrying both
@@ -141,10 +190,14 @@ class AgentConfigLoader:
                 )
             raise ValueError(f"Unknown AgentConfig field(s) in {source}: {sorted(unknown)}")
 
-        data = dict(data)
+        # Templates first, so everything below — the prompt_templates validation
+        # here, TemplateValidator, every provider at run time — sees a plain string
+        # and never learns that a template can come from a file.
+        data, template_sources = resolve_template_files(data, base_dir=base_dir, source=source)
         template_overrides = data.pop("prompt_templates", None)
         data.setdefault("config_base_dir", base_dir)
         config = AgentConfig(**data)
+        config.template_sources = template_sources
 
         if template_overrides:
             if not isinstance(template_overrides, dict):
@@ -160,6 +213,8 @@ class AgentConfigLoader:
                     raise ValueError(f"Invalid prompt_templates.{channel} in {source}: {exc}") from exc
                 merged_templates[channel] = template_str
             config.prompt_templates = merged_templates
+
+        _validate_pipelines(config, source)
 
         if validate:
             self.validate_data_templates(config, source)

@@ -18,7 +18,12 @@ class ChooseChannelStage:
     discovery_sources is configured.
     """
 
-    def __init__(self, config) -> None:
+    def __init__(self, tools, config) -> None:
+        # `tools` is unused here — this stage decides from what discover() already
+        # found rather than calling anything. It takes it anyway because every
+        # stage is constructed the same way (see agent/graph/pipeline.py's
+        # build_stage): a registry that has to remember which stages want tools is
+        # a registry a tenant's own stage can't join.
         self.config = config
 
     async def run(self, state: AgentState) -> dict:

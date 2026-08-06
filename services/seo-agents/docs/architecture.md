@@ -116,8 +116,8 @@ agent.
 The interesting part is how the graph gets built.
 [`agent/graph/pipeline.py`](../src/agent/graph/pipeline.py)'s `build_graph()`
 does **not** hardcode a list of steps. Instead it reads a small **spec** — a
-plain list of step names — and wires up exactly those steps. Today there's one
-spec, and it's built from your config:
+plain list of step names — and wires up exactly those steps. The built-in
+`seo_content` spec is built from your config:
 
 ```python
 def _default_spec(config) -> PipelineSpec:
@@ -149,6 +149,40 @@ run one after another, but a step can ask for a different shape through its
   wrong — wiring each predecessor separately — would let `analyze` fire as soon
   as *either* branch finished, which could corrupt the shared state. The single
   list form is what guarantees it waits for both.)
+
+### More than one pipeline: agent types
+
+`seo_content` is *a* spec, not *the* spec. `config.pipelines` maps a name to a
+list of stages, each of which may be one of your own classes from `plugins/`, and
+`--agent <name>` picks one per run:
+
+```jsonc
+"agent_type": "site_audit",
+"pipelines": { "site_audit": { "stages": [
+  {"name": "crawl",    "class": "audit:CrawlStage"},
+  {"name": "findings", "class": "audit:FindingsStage"},
+  {"name": "verify",   "class": "audit:VerifyStage"}
+]}}
+```
+
+This is what makes "the deliverable is not always a draft" something you can act
+on. A site audit, a content brief, a link report: same tools plane, same result
+schema, a different `output.kind` — and nothing in `src/` needs to know your
+agent type exists. Full reference in
+[configuration.md](configuration.md#a-different-deliverable-agent-types-and-pipelines);
+worked example in [`examples/08-custom-pipeline/`](../examples/08-custom-pipeline/).
+
+Two details worth knowing because they were deliberate:
+
+- **A mode is available to any stage that meets its requirement**, not to a stage
+  with a particular name. `build_graph` used to accept `parallel_by_source` only
+  for a stage literally called `discover`; now the requirement is that the class
+  *declares* a fan-out (`fanout_over`/`fanout_branch`/`fanout_join`), so your
+  stage can use it too. `concurrent_from_start`'s requirement is structural —
+  something must follow it to join into.
+- **A pipeline with no channel-aware stage has no `channel`.** `channel` picks
+  which of three things `seo_content` drafts; an audit isn't drafting, so nothing
+  invents a `"site_article"` for it — see `AgentRunner._run`.
 
 ## Calling the agent: the service layer
 

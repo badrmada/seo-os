@@ -33,6 +33,10 @@ INPUT_OPTION = typer.Option(
     None, "--input", "-i",
     help="Run input JSON. Defaults to input.json inside the tenant's own folder.",
 )
+AGENT_OPTION = typer.Option(
+    None, "--agent", "-a",
+    help="Which pipeline to run. Defaults to the tenant's agent_type. See `show-graph`.",
+)
 VERBOSE_OPTION = typer.Option(
     0, "--verbose", "-v", count=True,
     help="Follow the run on stderr: -v for stages and tool calls, -vv to also show payloads.",

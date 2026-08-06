@@ -1,6 +1,6 @@
 # Examples
 
-Seven worked examples for fictional products, from the simplest possible setup to
+Eight worked examples for fictional products, from the simplest possible setup to
 advanced ones that plug in custom code. Each folder is a complete, **runnable**
 configuration you can copy and adapt.
 
@@ -18,7 +18,8 @@ discovery).
 | [04](04-community-homelabhub/) | **HomelabHub** | Community forum | **Discovery**, the agent **choosing the channel itself**, comment disclosure checks. |
 | [05](05-advanced-devboard/) | **DevBoard** | Job board | **Custom Python** analytics + a **custom discovery source**, templated traffic, **two discovery sources** scored together. |
 | [06](06-mcp-discovery/) | **Scribe** | AI writing SaaS | Discovery from an **MCP server** — a custom source that's an MCP client (with a tiny stub server, runs offline). |
-| [07](07-signal-inputs/) | **Sproutly** | Indoor gardening kits | **`signal_sources`** — adding data sources this project has never heard of (a trends export and a rank tracker), templated and custom. |
+| [07](07-signal-inputs/) | **Sproutly** | Indoor gardening kits | **`signal_sources`** — adding data sources this project has never heard of (a trends export and a rank tracker), templated and custom. Its article prompt is a **template file**. |
+| [08](08-custom-pipeline/) | **Sproutly** | Indoor gardening kits | **A different deliverable** — a site audit, built from three tenant-declared stages with `pipelines` + `--agent`. No draft, no channel, `kind: "site_audit"`. |
 
 *(All brands and `example.com` domains are fictional.)*
 
