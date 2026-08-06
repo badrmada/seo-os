@@ -5,7 +5,19 @@
   "analytics_provider": "mock",
 
   "discovery_sources": [
-    { "name": "research_mcp", "provider": "custom", "class": "mcp_discovery:MCPResearchSource" }
+    { "name": "research_mcp", "provider": "custom", "class": "mcp_discovery:MCPResearchSource" },
+    {
+      "name": "trending",
+      "provider": "mcp",
+      "options": {
+        "command": "python3",
+        "cwd": ".",
+        "args": ["server/mock_mcp_server.py"],
+        "tool_name": "trending_topics",
+        "arguments": { "q": "{{ seed_keyword }}", "limit": 5 },
+        "items_template": "[{% for hit in data.hits %}{\"topic\": {{ hit.title | tojson }}, \"signal_strength\": {{ hit.score / 100 }}, \"suggested_channel_hint\": {{ hit.kind | tojson }}, \"reason\": {{ hit.why | tojson }}}{% if not loop.last %},{% endif %}{% endfor %}]"
+      }
+    }
   ],
   "default_channel": "site_article",
 
