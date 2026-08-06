@@ -559,6 +559,7 @@ depend on the provider:
 |---|---|---|
 | `"mock"` | `"fail"` (`bool`, default `false`) | A fixed fixture for testing. `"fail": true` simulates the source erroring. |
 | `"llm"` | `"prompt_template"` (optional), `"max_opportunities"` (default `5`), `"grounded"` (default `true`), plus the search settings below | The AI model finds opportunities. **Grounded by default**: it searches the real web first (see [Web search](#web-search-how-discovery-stays-grounded)) and only keeps links that came back from that search. Set `"grounded": false` to skip all grounding for this source. |
+| `"mcp"` | an `"options"` object — see [MCP servers](#discovery-from-an-mcp-server) below | A tool on an [MCP](https://modelcontextprotocol.io/) server, over stdio or streamable HTTP. |
 | `"custom"` | `"class"` (`"module:ClassName"` — a file in your tenant's `plugins/` folder) | Your own finder — see [extending.md](extending.md). |
 
 A `"llm"` source decides what to search for by asking the model for a few short
@@ -590,6 +591,79 @@ finder:
 
 For how discovery scores opportunities and picks a channel, see
 [architecture.md](architecture.md#discovery-the-agent-finding-its-own-work).
+
+### Discovery from an MCP server
+
+If your research already lives behind an [MCP](https://modelcontextprotocol.io/)
+server, `provider: "mcp"` calls one of its tools and turns the answer into
+opportunities. You don't write any code for this — no client, no transport, no
+`asyncio` bridge.
+
+```jsonc
+{
+  "discovery_sources": [
+    {
+      "name": "research",
+      "provider": "mcp",
+      "options": {
+        "command": "npx",
+        "args": ["-y", "@acme/research-mcp"],
+        "tool_name": "search_opportunities"
+      }
+    }
+  ]
+}
+```
+
+| Option | Default | Notes |
+|---|---|---|
+| `"tool_name"` | — | **Required.** The tool on the server to call. |
+| `"transport"` | `"stdio"` | `"stdio"` launches the server as a subprocess; `"http"` connects to one somebody else hosts (MCP's streamable HTTP). |
+| `"command"` | — | **Required for `"stdio"`.** The program to launch, e.g. `"npx"`. |
+| `"args"` | `[]` | Its arguments. |
+| `"env"` | `{}` | Extra environment variables for the subprocess — usually the server's API key. Merged onto the normal environment, so `PATH` and friends survive. |
+| `"cwd"` | `""` | Working directory, resolved against your tenant folder. |
+| `"url"` | — | **Required for `"http"`.** The server's endpoint. |
+| `"headers"` | `{}` | Sent with every HTTP request, e.g. `{"Authorization": "Bearer ..."}`. |
+| `"arguments"` | see below | The arguments to call the tool with. |
+| `"items_template"` | `""` | Jinja2, to map a server whose answer uses its own field names. |
+| `"max_opportunities"` | `5` | Cap on how many of the server's results are used. |
+| `"timeout_seconds"` | `60` | Bounds the whole exchange. A server that accepts the call and never answers fails the source, not the run. |
+
+**Arguments.** With no `"arguments"` set, the tool is called with a single
+`query` — your `input.seed_keyword`, or your `brand_description` when the run has
+no keyword (which is the usual case: discovery is exactly when nobody has said
+what to look for). To match a different schema, set them yourself; every string
+value is a Jinja2 template with `seed_keyword`, `context_text`,
+`brand_description`, `agent_goal` and `max_opportunities` available:
+
+```jsonc
+"arguments": { "q": "{{ seed_keyword }}", "limit": 10, "freshness": "week" }
+```
+
+Non-string values (the `10` above) are passed through untouched, so a server
+whose schema says `limit` is a number receives a number.
+
+**Mapping the answer.** If the tool already answers with `topic` /
+`signal_strength` / `intent` / `reason` fields — either as a bare JSON array, or
+as an object with a `results`, `items`, or `opportunities` list — it works with
+no template at all. Otherwise `"items_template"` renders the server's payload
+(available as `data`) into a **JSON array string**, the same contract as
+`analytics_options.highlights_template`:
+
+```jsonc
+"items_template": "[{% for hit in data.hits %}{\"topic\": {{ hit.title | tojson }}, \"signal_strength\": {{ hit.score / 100 }}, \"reason\": {{ hit.why | tojson }}}{% if not loop.last %},{% endif %}{% endfor %}]"
+```
+
+A server that answers in prose rather than JSON is an error, not zero
+opportunities — "found nothing" and "answered in English" mean different things.
+
+**When to use `"custom"` instead.** `"mcp"` is one tool call with one mapping. If
+you need several calls, to pick the tool at runtime, or to do real work between
+calls, write a class — see [extending.md](extending.md#using-an-mcp-server-as-a-tool).
+
+Every opportunity records the server and tool it came from in its `raw` block, so
+you can always trace one back to what claimed it.
 
 ---
 

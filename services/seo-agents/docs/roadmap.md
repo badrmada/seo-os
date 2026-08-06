@@ -256,6 +256,29 @@ about status and direction.
   rejects an old field and names its new location, so a stale config says exactly
   what to move. The repo's own tenant and all six examples are migrated.
 
+- **MCP servers as a built-in discovery source.** `provider: "mcp"` connects to
+  an MCP server — stdio or streamable HTTP — calls one of its tools, and turns
+  the answer into opportunities. No class, no client, no transport code, no
+  `asyncio` bridge. What stays configuration is the only part that was ever
+  specific to a server: `tool_name`, `arguments` (Jinja2-rendered against the
+  run), and `items_template` for a server answering in its own vocabulary. It is
+  built on the official `mcp` SDK rather than hand-rolled JSON-RPC, which is a
+  real dependency but buys protocol-version negotiation, structured tool output,
+  result-schema validation and the HTTP transport — all things a hand-written
+  client gets subtly wrong.
+
+  Bounded and traceable like every other outbound call: `timeout_seconds` covers
+  the whole exchange, so a server that accepts a connection and never answers
+  costs one source rather than the run; a failure degrades into
+  `discovery.tool_errors` naming the actual cause; and every opportunity records
+  the server and tool it came from in `raw`.
+
+  `provider: "custom"` remains for what the built-in deliberately isn't —
+  several tool calls, choosing the tool at runtime, work in between, or an MCP
+  server behind the analytics/traffic/search interfaces.
+  [`examples/06-mcp-discovery/`](../examples/06-mcp-discovery/) now runs both
+  side by side, offline.
+
 ## Next
 
 In order. Two framings shape the list, and both are things the code only partly
@@ -269,17 +292,14 @@ lives up to today:
   grow a site; telling someone what to fix on the site they already have is
   another.
 
-1. **A built-in `provider: "mcp"` discovery source.** MCP already works as a
-   `"custom"` class ([`examples/06-mcp-discovery/`](../examples/06-mcp-discovery/)),
-   but every user writes the same stdio boilerplate.
-2. **Signal inputs as a named list.** `Tools` has three fixed slots — `gsc`,
+1. **Signal inputs as a named list.** `Tools` has three fixed slots — `gsc`,
    `traffic`, `analytics` — so swapping Cloudflare for Plausible works while
    *adding* a trends feed does not. Signals get the shape `discovery_sources`
    already has: a named list, any number, any provider. The three built-in slots
    stay as views onto it, so no config breaks.
-3. **Stage and pipeline registration.** Config-declared stages, and a pipeline
+2. **Stage and pipeline registration.** Config-declared stages, and a pipeline
    spec per agent type rather than one global default.
-4. **A `seo_audit` agent type.** Crawl the site, read the sitemap, cross-
+3. **A `seo_audit` agent type.** Crawl the site, read the sitemap, cross-
    reference the configured signals, and return prioritized recommendations —
    thin or duplicate pages, weak metadata, broken internal links, orphan pages,
    pages ranking 11–20 that deserve work rather than a new article. A separate
@@ -288,7 +308,7 @@ lives up to today:
    came from; the crawler is bounded by default (robots.txt, rate limits, page
    and depth caps) because it is the one tool here that can hurt someone else's
    server.
-5. **State persistence.** `InMemoryStateStore` promoted to a selectable provider
+4. **State persistence.** `InMemoryStateStore` promoted to a selectable provider
    — file/JSONL first, since it needs no infrastructure and survives the process.
 
 ## Explicitly out of scope for this agent

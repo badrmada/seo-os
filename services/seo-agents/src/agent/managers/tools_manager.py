@@ -19,6 +19,7 @@ from tools.clients.analytics_templated import TemplatedAnalyticsClient
 from tools.clients.cloudflare import CloudflareAnalyticsClient
 from tools.clients.google_search_console import GoogleSearchConsoleClient
 from tools.clients.opportunity_llm import LLMOpportunitySource
+from tools.clients.opportunity_mcp import MCPOpportunitySource
 from tools.clients.traffic_templated import TemplatedTrafficClient
 from tools.llm.gemini_client import GeminiClient
 from tools.llm.mocks.mock_client import MockLLMClient
@@ -126,6 +127,28 @@ def _duckduckgo(ctx: ProviderContext) -> DuckDuckGoSearchClient:
     )
 
 
+def _mcp_opportunity_source(ctx: ProviderContext) -> MCPOpportunitySource:
+    # `cwd` is a path option: a stdio server launched from the tenant's own folder
+    # is the normal case, and resolving it against the process's working directory
+    # would make the same config behave differently depending on where the CLI was
+    # invoked from.
+    return MCPOpportunitySource(
+        ctx.extras["name"], ctx.config,
+        transport=ctx.option("transport", "stdio"),
+        command=ctx.option("command", ""),
+        args=ctx.option("args", ()),
+        env=ctx.option("env", {}),
+        cwd=ctx.path_option("cwd") if ctx.option("cwd") else "",
+        url=ctx.option("url", ""),
+        headers=ctx.option("headers", {}),
+        tool_name=ctx.option("tool_name", ""),
+        arguments=ctx.option("arguments", {}),
+        items_template=ctx.option("items_template", ""),
+        max_opportunities=ctx.option("max_opportunities", 5),
+        timeout_seconds=float(ctx.option("timeout_seconds", 60.0)),
+    )
+
+
 def _llm_opportunity_source(ctx: ProviderContext) -> LLMOpportunitySource:
     return LLMOpportunitySource(
         ctx.extras["name"], ctx.extras["llm"], ctx.config,
@@ -186,6 +209,7 @@ _REGISTRY = {
             ctx.extras["name"], fail=ctx.option("fail", False),
         ),
         "llm": _llm_opportunity_source,
+        "mcp": _mcp_opportunity_source,
         # The class path is on the entry, not on a config field — see
         # ProviderContext.custom and build_discovery_sources below.
         "custom": lambda ctx: ctx.custom("class"),

@@ -383,12 +383,36 @@ logic beyond one prompt.
 
 ## Using an MCP server as a tool
 
-Nothing in the `"custom"` contract cares *how* your class produces its result, so
-a class can be an [MCP](https://modelcontextprotocol.io/) client: it connects to
-an MCP server, calls the server's tools, and returns the interface's shape. A
-discovery source is the most natural fit (an MCP server exposing search/research
-tools maps cleanly onto "find opportunities"), but analytics and traffic work the
-same way.
+**For a discovery source, start with the built-in `provider: "mcp"` — no code at
+all.** One tool call, mapped by config, is the overwhelmingly common case, and
+it's documented in
+[configuration.md](configuration.md#discovery-from-an-mcp-server):
+
+```jsonc
+{
+  "discovery_sources": [
+    {
+      "name": "research",
+      "provider": "mcp",
+      "options": {
+        "command": "npx", "args": ["-y", "@acme/research-mcp"],
+        "tool_name": "search_opportunities"
+      }
+    }
+  ]
+}
+```
+
+The rest of this section is for the cases that built-in doesn't cover:
+
+- **several tool calls**, or a call whose arguments depend on what an earlier one
+  returned;
+- **choosing the tool at runtime** from `list_tools()`;
+- **real work between the calls** — filtering, scoring, a model call;
+- **an MCP server behind a different interface** — analytics, traffic, or search
+  rather than discovery. Nothing in the `"custom"` contract cares *how* your
+  class produces its result, so any of them can be an MCP client. Discovery is
+  just the most natural fit.
 
 The official [`mcp` Python SDK](https://github.com/modelcontextprotocol/python-sdk)
 is **async**, and so is this interface's `async def` form — so there's no bridge
@@ -448,7 +472,11 @@ Worth knowing:
   one less moving part now that the interface accepts it.
 - **Connection details and secrets** live in your class (an env var or its own
   file), since you can't add fields to `AgentConfig` without touching the repo.
+  The built-in `"mcp"` provider reads them from `options` instead, which is one
+  of the better reasons to prefer it.
 - **The result is still normalized** — a slightly-off item is dropped, not fatal.
+- **`mcp` is already a dependency**, installed by `requirements.txt` for the
+  built-in provider, so your class can import it without adding anything.
 
 A **complete, runnable** version — including a tiny dependency-free stub MCP
 server so you can see the whole flow offline — is in

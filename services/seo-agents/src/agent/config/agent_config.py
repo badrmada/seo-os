@@ -121,7 +121,7 @@ class AgentConfig:
     analytics_highlights_limit: int = 3
 
     # --- Opportunity discovery (tools/base.py's OpportunitySource Protocol) ---
-    # Each entry: {"name": str, "provider": "mock" | "llm" | "custom", ...}. Read by
+    # Each entry: {"name": str, "provider": "mock" | "llm" | "mcp" | "custom", ...}. Read by
     # agent/managers/tools_manager.py's ToolsManager.build_discovery_sources() into
     # Tools.discovery_sources, called by agent/graph/stages/discover.py's
     # DiscoverStage. A non-empty list also adds discover + choose_channel to the
@@ -134,6 +134,15 @@ class AgentConfig:
     #     "prompt_template" (Jinja2, defaults to a generic product-neutral prompt)
     #     and "max_opportunities" (default 5). This is what Echooers uses instead
     #     of a bespoke Reddit/trends integration.
+    #   - "mcp": one tool call against an MCP server
+    #     (tools/clients/opportunity_mcp.py). options: tool_name (required);
+    #     transport ("stdio" | "http", default "stdio"); command/args/env/cwd for
+    #     stdio, url/headers for http; arguments (Jinja2-rendered string values,
+    #     defaulting to {"query": seed_keyword or brand_description});
+    #     items_template (Jinja2 -> a JSON array, for a server answering in its
+    #     own vocabulary); max_opportunities (5); timeout_seconds (60). This is
+    #     the boilerplate every "custom" MCP client used to repeat — the transport
+    #     and the protocol are built in, only the mapping stays configuration.
     #   - "custom": a tenant-registered class ("class": "module.path:ClassName"),
     #     built the same way analytics_custom_class/traffic_custom_class are —
     #     including the case where the class's discover() itself runs a full LLM

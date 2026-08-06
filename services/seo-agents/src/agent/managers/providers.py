@@ -98,6 +98,7 @@ CATALOG = (
         providers={
             "mock": "offline, deterministic fixtures",
             "llm": "the LLM itself surfaces opportunities, web-search-grounded by default",
+            "mcp": "a tool on an MCP server, over stdio or streamable HTTP",
             "custom": CUSTOM,
         },
     ),
