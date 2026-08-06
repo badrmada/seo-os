@@ -1,7 +1,7 @@
 # SEO-OS
 
-**An open-source AI agent that grows your product's organic traffic** — the
-visitors who arrive through search and online conversations, not through ads.
+**An open-source AI agent that grows your organic traffic** — the visitors who
+arrive through search and online conversations, not through ads.
 
 > **Not a docs person?** Understood, and there will be no quiz. Skip straight to
 > **[the eight examples](#learn-by-example)** — a dev SaaS, a store, a forum, a
@@ -11,16 +11,19 @@ visitors who arrive through search and online conversations, not through ads.
 
 Here's the shape of it, in the four steps you'd actually do.
 
-**1. You tell it what you sell and what winning looks like.** Two sentences about
-your product, one about your goal — *"grow qualified signups from developers
-searching for reliability topics"*, not "make content". That goal is a real
-field ([`agent_goal`](services/seo-agents/docs/configuration.md#brand-voice)) and
-it steers every later step, which is why a vague one produces vague drafts.
+**1. You describe your brand and what winning looks like.** Two sentences on what
+it is — a product, a blog, an open-source project, a community, whatever you're
+growing — and one on your goal: *"grow qualified signups from developers
+searching for reliability topics"*, or *"get more of the right people
+contributing"*, not "make content". Both are real fields
+([`brand_description` and `agent_goal`](services/seo-agents/docs/configuration.md#brand-voice)),
+and the goal steers every later step, which is why a vague one produces vague
+drafts.
 
 **2. It goes looking for
 [opportunities](services/seo-agents/docs/configuration.md#opportunity-discovery)** —
-places where your product is a genuine answer to something people are already
-dealing with:
+places where what you've built is a genuine answer to something people are
+already dealing with:
 
 - **a conversation happening right now** where the problem being discussed is the
   one you solve — and where a real reply is welcome, not spam;
@@ -44,8 +47,8 @@ already pay for can feed a run as a
 rank tracker, your backlink tool, support tickets, your product catalog, your own
 dashboard. A signal is anything you'd want a writer to glance at before starting,
 and adding one is config, not a fork. That's the difference between an article
-about your topic and an article that answers the question 41 customers asked last
-month, links the product that's actually in stock, and improves the page already
+about your topic and an article that answers the question 41 people asked last
+month, links the thing that's actually in stock, and improves the page already
 sitting at position 12.
 
 **4. It produces the right thing, and you approve it.** Usually that's one of
@@ -162,7 +165,7 @@ explanation:
 
 | Word | Means |
 |---|---|
-| **[Agent](docs/concepts.md#4-an-agent-is-a-folder)** | One configured worker: your product's description, its voice, its goal, its tools. You can run several. |
+| **[Agent](docs/concepts.md#4-an-agent-is-a-folder)** | One configured worker: your brand's description, its voice, its goal, its tools. You can run several. |
 | **[Tenant](docs/concepts.md#4-an-agent-is-a-folder)** | An agent's folder on disk — its config, data, code and output. "Tenant" is what the CLI calls it, because one process safely serves many. |
 | **[Capability](docs/concepts.md#1-a-capability-is-a-job-an-interface-and-a-set-of-providers)** | A job an agent can do: write text, search the web, read your rankings, discover opportunities. Nine of them. |
 | **[Provider](docs/concepts.md#1-a-capability-is-a-job-an-interface-and-a-set-of-providers)** | Which implementation does that job — Gemini or your own model, Cloudflare or your own numbers. Swappable by editing config. |
@@ -231,7 +234,7 @@ half too:
 
 - **Finds the openings.** It searches the live web (DuckDuckGo by default: no API
   key, no account, nothing to configure), has a model read the results, and
-  surfaces the discussions, questions and searches where your product is a real
+  surfaces the discussions, questions and searches where you're a real
   answer — scored, so you see which is worth acting on first. A link it
   hands you is one search actually returned; a URL a model invented is thrown away
   rather than passed off as real.
@@ -406,7 +409,7 @@ each shows the exact lines to change to go live.
 | [07](services/seo-agents/examples/07-signal-inputs/) | Sproutly | **`signal_sources`** — a trends export and a rank tracker the project never heard of. |
 | [08](services/seo-agents/examples/08-custom-pipeline/) | Sproutly | **A different deliverable** — a site audit from tenant-declared stages. |
 
-Start at 01, then jump to whichever is closest to your product.
+Start at 01, then jump to whichever is closest to yours.
 
 ## The repository
 
