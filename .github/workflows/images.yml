@@ -1,11 +1,8 @@
-# DISABLED — the build isn't ready to run on every push yet.
-#
-# Re-enable by renaming this file to `images.yml`. It is parked by extension
-# rather than by commenting out its body: GitHub only parses `.yml`/`.yaml` in
-# this folder, whereas a fully-commented workflow file is a YAML document with no
-# `on:` key and shows up as "Invalid workflow file" in the Actions tab.
-#
-# Only `tests.yml` and `docs.yml` run today.
+# Builds the runtime image on every push and PR, and publishes to GHCR from
+# `main` and `v*` tags. `deploy.yml.disabled` — which rolls one of these images
+# out — is still parked, by extension rather than by commenting out its body:
+# GitHub only parses `.yml`/`.yaml` here, whereas a fully-commented workflow is a
+# YAML document with no `on:` key and shows up as "Invalid workflow file".
 
 name: images
 

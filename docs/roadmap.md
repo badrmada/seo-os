@@ -10,7 +10,7 @@ about status and direction.
 | [`services/seo-agents/`](../services/seo-agents/) — the runtime | Shipped, tested, in use |
 | [`services/gateway/`](../services/gateway/) — the HTTP API, queue and approval loop | Planned — [step 3](#3-the-gateway-the-api-handler) |
 | [`services/frontend/`](../services/frontend/) — the UI over agents, runs and drafts | Planned — [step 4](#4-the-frontend-watching-an-agent-work) |
-| Build and deployment | [Step 1](#1-images-built-and-tested-in-ci) partly — tests and docs run in CI, the image build is written and parked; [step 2](#2-deployment-compose-now-a-helm-chart-later) is Compose only |
+| Build and deployment | [Step 1](#1-images-built-and-tested-in-ci) mostly — tests, docs and the image build all run in CI, images publish to GHCR; the Makefile is not written. [Step 2](#2-deployment-compose-now-a-helm-chart-later) is Compose only |
 
 ## Shipped — the runtime
 
@@ -484,37 +484,52 @@ there's somewhere to run it — so deployment comes before it, and a deployable
 image before that. **Shipping an image is therefore first, not because it is the
 most interesting, but because everything else is undeployable without it.**
 
-Only **step 1 is partly done**: `tests.yml` and `docs.yml` run on every push, and
-the image build and deploy workflows are written but parked until the build is
-ready. Everything else below is a plan, deliberately written before any of it is
-implemented.
+Only **step 1 is mostly done**: `tests.yml`, `docs.yml` and `images.yml` all run
+on every push, and a merge to `main` publishes an image to GHCR. What is left of
+it is the Makefile, and the deploy workflow — which stays parked, because there
+is nothing long-running to deploy until step 3. Everything else below is a plan,
+deliberately written before any of it is implemented.
 
 ### 1. Images built and tested in CI
 
-The runtime already has a
-[`Dockerfile`](../services/seo-agents/Dockerfile) that mounts tenants rather than
-baking them in — one image serves every tenant under `/userdata`. What is missing
-is anything that builds it, so "does this still build?" is answered by a person,
-on a laptop, sometimes.
+The runtime's [`Dockerfile`](../services/seo-agents/Dockerfile) mounts tenants
+rather than baking them in — one image serves every tenant under `/userdata` —
+and CI now builds it on every push and publishes it from `main`. "Does this still
+build?" used to be answered by a person, on a laptop, sometimes.
 
 | Workflow | State | Does |
 |---|---|---|
 | [`tests.yml`](../.github/workflows/tests.yml) | **live**, every push and PR | the runtime's `pytest` suite on 3.11, the version the image ships |
 | [`docs.yml`](../.github/workflows/docs.yml) | **live**, every push and PR | [`check_docs.py`](../scripts/check_docs.py) — executes every documented command, resolves every link and anchor |
-| [`images.yml.disabled`](../.github/workflows/images.yml.disabled) | written, **parked** | buildx to GHCR, tags from `metadata-action`, a `--help` smoke test inside the built image |
+| [`images.yml`](../.github/workflows/images.yml) | **live**, every push and PR | buildx to GHCR, tags from `metadata-action`, a `--help` smoke test inside the built image |
 | [`deploy.yml.disabled`](../.github/workflows/deploy.yml.disabled) | written, **parked** | `docker compose pull && up -d` over SSH, manually triggered |
 
-The two parked ones are disabled by file extension rather than by commenting out
-their bodies: GitHub only parses `.yml` here, whereas a fully-commented workflow
-is a YAML document with no `on:` key and shows up as "Invalid workflow file".
-Renaming re-enables them.
+The parked one is disabled by file extension rather than by commenting out its
+body: GitHub only parses `.yml` here, whereas a fully-commented workflow is a
+YAML document with no `on:` key and shows up as "Invalid workflow file". Renaming
+re-enables it — which is what turning the build on amounted to. It stays parked
+because it needs four host secrets (`DEPLOY_HOST`, `DEPLOY_USER`,
+`DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`) that don't exist yet, and because there is
+still no long-running service to roll out — [step 2](#2-deployment-compose-now-a-helm-chart-later)
+is honest about that.
 
-Two decisions already made in the parked build, worth keeping when it is turned
-on. **A pull request builds but never publishes** — a fork opening a PR would
-otherwise be pushing to this project's registry. And **the service list is a
-matrix**, not copied jobs: `gateway` and `frontend` join it by adding a
-`Dockerfile` and one line, which is the whole reason a matrix exists while there
-is one service in it.
+Three decisions in the build, all load-bearing. **A pull request builds but never
+publishes** — a fork opening a PR would otherwise be pushing to this project's
+registry — so a PR proves the build and a merge produces the artifact. **The
+service list is a matrix**, not copied jobs: `gateway` and `frontend` join it by
+adding a `Dockerfile` and one line, which is the whole reason a matrix exists
+while there is one service in it. And **the smoke test runs `--help` inside the
+built image**, which is cheap only because every command here is explicit — a
+bare run prints help and does nothing. It catches the thing the test suite
+structurally cannot: a dependency present in the test environment and missing
+from the image. Those are two different lists.
+
+Published to `ghcr.io/badrmada/seo-os/seo-agents` — GitHub's own registry, so the
+build authenticates with the workflow's `GITHUB_TOKEN` and there is no registry
+credential to manage. `linux/amd64` and `linux/arm64` on `main`; amd64 only on a
+PR, since arm64 under QEMU costs real minutes to prove something the merge proves
+again. See [deploy/README.md](../deploy/README.md#where-the-images-come-from) for
+which tag to pull.
 
 Still to plan: signed images, an SBOM, and a `pip-audit` job.
 
