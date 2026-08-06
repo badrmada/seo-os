@@ -1,11 +1,11 @@
 {
+  "site_url": "https://sproutly.example.com",
   "llm_provider": "mock",
   "analytics_provider": "mock",
-
   "signal_sources": [
     {
-      "name": "gsc",
-      "provider": "mock"
+      "name": "search_performance",
+      "provider": "none"
     },
     {
       "name": "traffic",
@@ -33,15 +33,16 @@
       "class": "rank_tracker:RankTracker",
       "options": {
         "report_path": "data/rankings.json",
-        "striking_distance": [11, 20]
+        "striking_distance": [
+          11,
+          20
+        ]
       }
     }
   ],
-
   "brand_description": "Sproutly sells indoor gardening kits — grow lights, self-watering planters, and starter herb sets — and publishes guides for people growing food in small apartments.",
   "agent_goal": "Bring in people searching for how to grow herbs and vegetables indoors, and turn the guides they land on into kit sales.",
   "default_article_tone": "practical and encouraging",
-
   "prompt_templates": {
     "site_article": "You are a content writer for the following product:\n{{ brand_description }}\n\nGoal: {{ agent_goal }}\nTarget keyword/topic: \"{{ keyword }}\"\nTone: {{ tone }}. Max words: {{ max_words }}.\n{% if traffic_summary %}Site traffic: {{ traffic_summary }}\n{% endif %}\n{% if signals %}\nWhat our data sources say right now:\n{% for name, signal in signals.items() %}\n{% if signal.summary %}- {{ name }}: {{ signal.summary }}\n{% endif %}\n{% endfor %}\n{% endif %}\n{% if signals.keyword_trends %}\nRising queries worth covering ({{ signals.keyword_trends.facts.rising_count }} tracked):\n{% for row in signals.keyword_trends['items'][:3] %}\n- \"{{ row.label }}\" — {{ row.volume }} searches/mo, up {{ row.change_pct }}%\n{% endfor %}\n{% endif %}\n{% if signals.rank_tracker %}\nPages already close to page one — prefer improving one of these over starting from scratch:\n{% for row in signals.rank_tracker['items'] %}\n- \"{{ row.label }}\" at position {{ row.position }} — {{ row.url }}\n{% endfor %}\n{% endif %}\nWrite something that plausibly earns those searches rather than just filling words.\n"
   }

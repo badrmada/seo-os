@@ -36,7 +36,7 @@ these three a thing is part of. They stay separate on purpose.
 
 | Plane | What's in it | Rule |
 |---|---|---|
-| **Tools** | What a step *calls*: the LLM, web search, discovery sources, and every signal input — Search Console, analytics, traffic, plus whatever else the tenant configured. Bundled in `Tools`, built by `ToolsManager`. | A step depends only on the interfaces in [`tools/base.py`](../src/tools/base.py). |
+| **Tools** | What a step *calls*: the LLM, web search, discovery sources, and every signal input — search performance, analytics, traffic, plus whatever else the tenant configured. Bundled in `Tools`, built by `ToolsManager`. | A step depends only on the interfaces in [`tools/base.py`](../src/tools/base.py). |
 | **Run context** | How a run is *observed and delivered*: the verbose reporter, the output sinks, the state store. | Never enters `Tools` and never enters the result state — a step can't see any of it. |
 | **Result** | `AgentState` and the JSON a run returns, documented in [output-schema.md](output-schema.md). | Deliberately frozen: it's the contract a UI or control plane is built on. |
 
@@ -189,7 +189,7 @@ flags into a `RunRequest` and prints the `RunResult`.
 service = AgentService()
 result = await service.aexecute(RunRequest(
     tenant="acme",
-    input={"seed_keyword": "static site seo", "gsc_domain": "sc-domain:example.com"},
+    input={"seed_keyword": "static site seo"},
     collect_events=True,       # events end up on result.events
     on_event=publish,          # ...and/or stream live, for an SSE endpoint
     stdout=None, warn_stream=None,
@@ -316,7 +316,7 @@ implementation of each interface:
 ```python
 @dataclass
 class Tools:
-    gsc: GSCClient                              # keyword / ranking data
+    search_performance: SearchPerformanceClient  # how your pages already rank
     analytics: AppAnalyticsClient               # your product's own analytics
     traffic: SiteTrafficClient                  # your website's traffic
     llm: LLMClient                              # the AI model that writes
@@ -352,7 +352,7 @@ provider's own `options` rather than becoming another top-level config field.
 |---|---|---|
 | `LLMClient` | Turn a prompt into text | `mock`, `gemini`, `custom` |
 | `SearchClient` | Real web results → `{title, url, snippet}` | `duckduckgo`, `none`, `mock`, `custom` |
-| `GSCClient` | Search Console rows (query, position, clicks) | `mock`, `google` |
+| `SearchPerformanceClient` | Ranked query rows (query, position, clicks) | `none`, `google`, `templated`, `mock`, `custom` |
 | `AppAnalyticsClient` | Your analytics → `{summary, highlights}` | `mock`, `templated`, `custom` |
 | `SiteTrafficClient` | Your traffic → `{summary}` | `none`, `mock`, `cloudflare`, `templated`, `custom` |
 | `SignalSource` | Any other input → `{summary, facts, items}` | `mock`, `templated`, `custom` |
@@ -367,7 +367,7 @@ understands its own data, converts raw numbers into the generic shape above.
 
 ## Signal inputs: the open half of the tools plane
 
-Search Console, traffic and analytics are three inputs that get someone to a real
+Search performance, traffic and analytics are three inputs that get someone to a real
 run quickly. They are not the *model* of an input. A trends feed, a rank tracker,
 a keyword API, a competitor watcher, a crawler are the same kind of thing, and a
 system where adding one means editing this repo has the abstraction in the wrong
@@ -400,9 +400,9 @@ Four properties, each deliberate:
 
 The three built-in slots stay as slots because their interfaces genuinely differ
 (`search_analytics` returns ranked query rows; `report` returns linkable
-highlights) and their callers predate this one — generalizing Search Console's
+highlights) and their callers predate this one — generalizing search performance's
 striking-distance keyword picking is a separate job, not this abstraction's. But
-`gsc`, `traffic` and `analytics` are reserved *names* in the list too, so a
+`search_performance`, `traffic` and `analytics` are reserved *names* in the list too, so a
 config can present every input as one block. `<kind>_provider` and `<kind>_options`
 keep working unchanged; nothing needed migrating.
 
@@ -544,7 +544,7 @@ whether there's anything meaningful left to do.
 - **`discover`** wraps each source separately. One source failing contributes
   zero opportunities and one recorded error — it doesn't stop the other sources
   and doesn't fail the step.
-- **`analyze` / `analyze_context`** wrap the Search Console, analytics, and
+- **`analyze` / `analyze_context`** wrap the search-performance, analytics, and
   traffic calls independently. Any of them failing degrades to an empty default
   plus a recorded error. There's always *some* usable topic to draft from, even
   with all three down.
@@ -568,7 +568,7 @@ that something broke. The shared helper is
 
 ```python
 class ToolError(TypedDict):
-    tool: str          # which tool failed — a discovery source name, or "gsc"/"analytics"/"traffic"/"llm"
+    tool: str          # which tool failed — a source name, or "search_performance"/"analytics"/"traffic"/"llm"
     node: str          # which step triggered it
     error_type: str    # the exception's class name
     message: str       # the error message, truncated

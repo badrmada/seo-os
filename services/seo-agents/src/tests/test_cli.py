@@ -15,14 +15,14 @@ from cli.app import COMMAND_NAMES, app
 runner = CliRunner()
 
 TENANT = {
-    "llm_provider": "mock", "gsc_provider": "mock",
+    "llm_provider": "mock", "search_performance_provider": "mock",
     "traffic_provider": "mock", "analytics_provider": "mock",
     "discovery_sources": [
         {"name": "trends", "provider": "mock"},
         {"name": "forums", "provider": "mock"},
     ],
 }
-INPUT = {"seed_keyword": "static site seo", "gsc_domain": "sc-domain:example.com"}
+INPUT = {"seed_keyword": "static site seo"}
 
 
 def make_tenant(root: Path, name: str, config: dict, *, with_input: bool = True) -> Path:

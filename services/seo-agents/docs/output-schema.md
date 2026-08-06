@@ -3,7 +3,7 @@
 `AgentRunner.arun()` — the one method a UI or API layer should call, or `run()`
 if you have no event loop — **always returns the same top-level keys, whether the
 run succeeded or failed**. It never raises past its own boundary: bad input, a
-failing GSC/analytics/traffic/LLM call, a run that overran
+failing search-performance/analytics/traffic/LLM call, a run that overran
 `run_timeout_seconds`, or any other exception is caught inside `arun()` and
 mapped onto the same `"failed"` shape below, instead of propagating as a raw
 traceback. See
@@ -97,7 +97,7 @@ decided (see
   },
   "tool_errors": [
     {
-      "tool": "echooers_ideas",   // discovery_sources registry key, or "gsc"/"analytics"/"traffic"/"llm"
+      "tool": "echooers_ideas",   // a source name, or "search_performance"/"analytics"/"traffic"/"llm"
       "node": "discover",           // which stage triggered it — "discover", "analyze", or "draft"
       "error_type": "RuntimeError",
       "message": "...",              // str(exception), truncated to 500 chars
@@ -117,7 +117,7 @@ For a tenant with `discovery_sources: []` (the default), every run's
 discovery sources had already succeeded before the failure — a failed run
 makes no output claim at all. `usage` is `{"tokens": 0, "cost_usd": 0}`.
 `error` is a human-readable message (`str(exception)`) — things like
-`'input.gsc_domain is required when channel="site_article"'` for a missing
+`'input.context_text is required when channel="engagement_comment"'` for a missing
 required field, `"Unknown AgentInput field(s): ['seed_keywrod']"` for a
 typo'd/unrecognized one (see
 [`agent/validators/input_validator.py`](../src/agent/validators/input_validator.py)
@@ -148,7 +148,6 @@ in a "details" panel, not display verbatim to an end user without review.
     "seed_keyword": "",
     "context_text": "",
     "params": { "max_words": 600, "tone": "friendly and practical" },
-    "gsc_domain": "sc-domain:echooers.com",
     "channel": "site_article"
   },
   "output": {
@@ -183,6 +182,6 @@ in a "details" panel, not display verbatim to an end user without review.
   "output": null,
   "discovery": { "opportunities": [], "channel_decision": null, "tool_errors": [] },
   "usage": { "tokens": 0, "cost_usd": 0 },
-  "error": "input.gsc_domain is required when channel=\"site_article\""
+  "error": "input.context_text is required when channel=\"engagement_comment\""
 }
 ```

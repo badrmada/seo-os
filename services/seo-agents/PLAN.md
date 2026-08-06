@@ -5,13 +5,14 @@ and removed from this file. What follows is only what is left to build.
 
 ## START HERE
 
-**Next task: Step G (stage and pipeline registration).** Step F shipped; nothing
-is half-finished and the tree is green.
+**Next task: Step G (stage and pipeline registration).** Step F shipped, and so
+did the search-performance rename (unplanned — see below); nothing is
+half-finished and the tree is green.
 
 ```bash
 cd services/seo-agents
 pip install -r requirements.txt                   # includes pytest, ddgs and mcp
-pytest                                            # 330 passing
+pytest                                            # 357 passing
 python src/main.py list-tenants                   # the workspace
 python src/main.py check-data --tenant echooers   # the real tenant, no API calls
 python src/main.py run --userdata examples --tenant 06-mcp-discovery  # MCP, offline
@@ -108,7 +109,12 @@ which a remaining step is judged too narrow:
 - **The `"custom"` class contract**: `__init__(self, config)` keeps working, with
   `(self, config, options)` as an opt-in, sync or async either way.
 - **No further breaking config change without the same treatment** Step C got: a
-  named destination per field in `agent/config/loader.py::MOVED_FIELDS`.
+  named destination per field. There are now three such maps and they are not
+  interchangeable — `MOVED_FIELDS` (a setting relocated into a provider's
+  `options`), `RENAMED_FIELDS` (same meaning, new name; the message must *not*
+  say "move it into options") and `input_validator.py::INPUT_MOVED_FIELDS` (an
+  input field that became config). Renames are reported first, since advice about
+  an options object that no longer exists is worse than none.
 - **`AgentState` and the returned JSON hold** — `docs/output-schema.md`. A new
   deliverable uses a new `kind`, not a new top-level field.
 - **A new kind of input is a `signal_sources` entry**, not a new `Tools` field and
@@ -147,11 +153,34 @@ which a remaining step is judged too narrow:
   command lines that reading did not.
 - **Two `.gitignore` files** exist (repo root and `services/seo-agents/`) and
   both need editing when ignore rules change.
-- **`userdata/echooers/` is the real tenant** — real Gemini/GSC/Cloudflare
+- **`userdata/echooers/` is the real tenant** — real Gemini/Search Console/Cloudflare
   credentials, gitignored. `check-data --tenant echooers` validates it without
   spending an API call; `run` spends a real one, so don't run it casually.
 - **A step is not done until its config fields are in `docs/configuration.md`
   and its status is in `docs/roadmap.md`**, with tests alongside.
+- **A mock that stands in for a *decision* is a trap, and this repo has been
+  caught by it once.** `gsc_provider` defaulted to `"mock"`, the mock returned
+  striking-distance rows, and `_pick_keyword` prefers those over the caller's
+  `seed_keyword` — so every unconnected tenant silently drafted about the
+  fixture's keyword while two docs promised otherwise. Every test passed
+  throughout, because the old input validator required `gsc_domain` and the tests
+  that omitted it never reached the client. **A fixture is the right default for a
+  *shape* nothing else provides; it is the wrong default for a decision the
+  tenant can already make better** — that case wants a null provider. And a mock
+  must be product-neutral: that one shipped one real product's queries and a live
+  URL on its domain, so unrelated examples drafted against someone else's
+  keywords.
+- **A kind named after a vendor eventually blocks someone.** `gsc` was the last
+  one, and the only kind with no `templated`/`custom` escape hatch. Name the kind
+  after the question it answers; put the vendor's own identifiers in that
+  provider's `options`. The give-away that it was wrong: `input.gsc_domain` was
+  reaching every signal as `context.site_url` while holding
+  `"sc-domain:example.com"`, which is not a URL.
+- **Judgement derived from a provider's data belongs outside the provider.**
+  Striking-distance classification and scoring lived inside the Google client, so
+  a second rank source would have had to reimplement them — in Jinja2, for the
+  templated one — and would have disagreed. They now live in
+  `tools/clients/search_performance_rows.py`; a provider supplies raw numbers.
 
 ---
 
@@ -160,7 +189,8 @@ which a remaining step is judged too narrow:
 The rule that keeps the remaining steps non-invasive.
 
 1. **Tools plane** — what stages *call*: the LLM, search, discovery sources, and
-   every signal input (GSC, analytics and traffic in their own fields; everything
+   every signal input (search performance, analytics and traffic in their own
+   fields; everything
    else in `Tools.signals`, from `config.signal_sources`). Lives in `Tools`
    (`agent/graph/tools.py`), built by `ToolsManager`. Stages depend only on the
    Protocols in `tools/base.py`.
@@ -262,6 +292,8 @@ Kept only for the decisions a later step needs to know about; the full write-up
 is in `docs/roadmap.md`, `docs/architecture.md` and `docs/configuration.md`.
 
 - **The three built-in slots stayed slots, and the *names* became reserved.**
+  (Written at the time; `gsc` has since been renamed `search_performance` — see
+  docs/roadmap.md. The reasoning below is unchanged, only the name.)
   `Tools.gsc/.traffic/.analytics` are still real dataclass fields with their own
   Protocols; `Tools.signals` holds everything else. The plan said "views onto the
   signal dict", and that was wrong in one specific way worth remembering: the

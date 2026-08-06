@@ -1,6 +1,6 @@
 """`preview-prompt` — the exact prompt a draft would send, without sending it.
 
-Runs the real AnalyzeStage (so the context is real GSC/analytics/traffic data if
+Runs the real AnalyzeStage (so the context is real search-performance/analytics/traffic data if
 those are configured, not fabricated) but never calls the LLM — see
 AgentRunner.preview_prompt.
 """

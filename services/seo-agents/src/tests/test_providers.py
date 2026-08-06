@@ -120,11 +120,11 @@ def test_a_provider_falls_back_to_its_own_default_when_an_option_is_absent():
 def test_options_carry_settings_the_config_knows_nothing_about(tmp_path):
     """A provider's settings are its own — the generic config has no field for
     them, which is what stops every new provider knob from becoming one."""
-    config = AgentConfig(gsc_provider="google", gsc_options={"timeout_seconds": 5})
+    config = AgentConfig(search_performance_provider="google", search_performance_options={"timeout_seconds": 5})
     # Building the real client needs credentials; the option reaching the
     # constructor is what's under test, so a missing key file is the expected end.
     with pytest.raises(Exception) as exc:
-        ToolsManager(config).build_gsc()
+        ToolsManager(config).build_search_performance()
     assert "timeout" not in str(exc.value).lower()
 
 

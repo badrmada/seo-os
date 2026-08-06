@@ -2,9 +2,9 @@ from dataclasses import dataclass, field
 
 from tools.base import (
     AppAnalyticsClient,
-    GSCClient,
     OpportunitySource,
     SearchClient,
+    SearchPerformanceClient,
     SignalSource,
     SiteTrafficClient,
 )
@@ -24,7 +24,7 @@ class Tools:
     # generic SignalSource and differ from it — see tools/base.py's SignalSource.
     # Which provider fills each one is selectable either by <kind>_provider or by a
     # reserved-name entry in config.signal_sources; either way it arrives here.
-    gsc: GSCClient
+    search_performance: SearchPerformanceClient
     analytics: AppAnalyticsClient
     traffic: SiteTrafficClient
     llm: LLMClient   # model-agnostic: whichever concrete client ToolsManager built

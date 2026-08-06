@@ -22,7 +22,6 @@ the brand voice.
 ```json
 {
   "channel": "site_article",
-  "gsc_domain": "sc-domain:acme.example.com",
   "seed_keyword": "getting started with acme",
   "params": { "max_words": 700, "tone": "friendly and clear" }
 }
@@ -39,15 +38,19 @@ The `output.content` is the drafted article; `output.metadata.qa_notes` is the
 self-review. The exact fields are documented in
 [docs/output-schema.md](../../docs/output-schema.md).
 
-## Heads up: the offline keyword
+## Heads up: the offline draft
 
-The drafted title comes back as *"The Complete Guide to Anonymous Social Media
-App"* — not about Acme. That's expected: with `gsc_provider` on mock, the agent
-reads a **fixed sample keyword** from the built-in fake Search Console, and the
-**mock AI** writes generic filler around it. Both become real as soon as you set
-`gsc_provider: "google"` and `llm_provider: "gemini"` (see any of the other
-examples for how). The point of this example is the *flow and the output shape*,
-not the words.
+The drafted title comes back as *"The Complete Guide to Getting Started With
+Acme"* — your seed keyword, wrapped in generic filler by the **mock AI**. That's
+expected: the words become real as soon as you set `llm_provider: "gemini"` (see
+any of the other examples for how). The point of this example is the *flow and
+the output shape*, not the prose.
+
+The keyword is yours because `search_performance_provider` defaults to `"none"`
+— no rank data, so the agent uses the `seed_keyword` you gave it. Connect a rank
+source (`"google"`, or `"templated"` over any export) and the agent will instead
+target a real striking-distance keyword it found, which is the whole point of
+connecting one.
 
 ## Next
 

@@ -17,17 +17,14 @@ class AgentInput(TypedDict, total=False):
                              # agent/graph/stages/choose_channel.py); otherwise
                              # (the default) -> config.default_channel, same as
                              # every run before discovery existed.
-    gsc_domain: str           # required for site_article/external_article; the identifier
-                               # AnalyzeStage passes straight to GSCClient.search_analytics(). Its
-                               # required shape depends on which gsc_provider is configured (a
-                               # Google Search Console *property* identifier for gsc_provider=
-                               # "google" — either "sc-domain:example.com" or a URL-prefix
-                               # property like "https://example.com/" — see
-                               # agent/validators/input_validator.py, which validates the shape
-                               # only when gsc_provider="google", since that requirement is
-                               # Google's, not a generic one). May be omitted when channel is
-                               # left for ChooseChannelStage to decide — AnalyzeStage then skips
-                               # GSC and falls back to a seed_keyword/highlight/opportunity topic.
+    site_url: str             # Optional, and normally set once in tenant.json as
+                               # config.site_url rather than per run. Given here it
+                               # overrides that for this run only — the case where a
+                               # caller drives several sites through one config.
+                               # Vendor-neutral: a Search Console *property*
+                               # identifier is not this, it is
+                               # search_performance_options.gsc_domain (see
+                               # tools/base.py's SearchPerformanceClient).
     seed_keyword: str          # optional fallback keyword/topic for site_article/external_article;
                                 # AnalyzeStage uses it only if no striking-distance query is found
     context_text: str           # required for engagement_comment: the post/thread/question
@@ -125,9 +122,9 @@ class AgentState(TypedDict, total=False):
                              #                 AnalyzeContextStage ran concurrently with discovery,
                              #                 else collected here
                              #                 directly; for site_article/external_article also
-                             #                 gsc_rows, chosen_keyword, chosen_keyword_row;
+                             #                 search_performance_rows, chosen_keyword, chosen_keyword_row;
                              #                 tool_errors gains one entry per client
-                             #                 (gsc/analytics/traffic) that failed
+                             #                 (search_performance/analytics/traffic) that failed
                              #   DraftStage  -> on success: draft (the parsed LLM JSON — shape
                              #                 depends on channel, see agent/graph/stages/draft.py).
                              #                 on failure: no draft key at all; tool_errors gains a

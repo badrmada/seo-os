@@ -1,6 +1,7 @@
 {
   "channel": "site_article",
-  "gsc_domain": "sc-domain:devboard.example.com",
   "seed_keyword": "software engineer salary negotiation",
-  "params": { "max_words": 1000 }
+  "params": {
+    "max_words": 1000
+  }
 }

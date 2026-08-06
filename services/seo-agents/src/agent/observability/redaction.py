@@ -21,7 +21,7 @@ REDACTED = "***redacted***"
 # boundaries first keeps the check strict without weakening it: "gemini_api_key",
 # "X-Api-Key", and "authorization" all still trip it.
 #
-# Covers today's fields (gemini_api_key, cloudflare_api_token, gsc_key_file, the
+# Covers today's fields (llm_options.api_key, traffic_options.api_token, a key_file, the
 # auth entries inside traffic_api_headers/analytics_api_headers) and the shapes
 # Step 8's state-store connection details will arrive in (dsn, credentialed URLs).
 _SECRET_SEGMENTS = frozenset({

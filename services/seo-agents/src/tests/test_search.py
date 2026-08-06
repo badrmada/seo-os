@@ -260,7 +260,7 @@ def test_a_hand_built_tools_bundle_stays_offline():
     own clients; the default there must not reach the network."""
     from agent.graph.tools import Tools
 
-    tools = Tools(gsc=None, analytics=None, traffic=None, llm=None)
+    tools = Tools(search_performance=None, analytics=None, traffic=None, llm=None)
 
     assert isinstance(tools.search, NullSearchClient)
 

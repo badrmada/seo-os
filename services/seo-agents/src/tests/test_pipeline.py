@@ -12,14 +12,14 @@ from agent.graph.stages.discover import DiscoverJoinStage, DiscoverSourceStage, 
 from agent.graph.tools import Tools
 from tools.llm.mocks.mock_client import MockLLMClient
 from tools.mocks.analytics_mock import MockAppAnalyticsClient
-from tools.mocks.gsc_mock import MockGoogleSearchConsoleClient
+from tools.mocks.search_performance_null import NullSearchPerformanceClient
 from tools.mocks.opportunity_mock import MockOpportunitySource
 from tools.mocks.traffic_mock import MockTrafficClient
 
 
 def _base_tools(discovery_sources=None) -> Tools:
     return Tools(
-        gsc=MockGoogleSearchConsoleClient(),
+        search_performance=NullSearchPerformanceClient(),
         analytics=MockAppAnalyticsClient(),
         traffic=MockTrafficClient(),
         llm=MockLLMClient(),
@@ -178,7 +178,7 @@ def test_build_graph_parallel_matches_sequential_merge_contract():
 
     result = asyncio.run(graph.ainvoke(
         {
-            "input": {"seed_keyword": "widgets", "gsc_domain": "sc-domain:example.com"},
+            "input": {"seed_keyword": "widgets"},
             "working": {},
         }
     ))
@@ -205,7 +205,7 @@ def test_build_graph_analyze_context_joins_correctly_with_one_source():
 
     result = asyncio.run(graph.ainvoke(
         {
-            "input": {"seed_keyword": "widgets", "gsc_domain": "sc-domain:example.com"},
+            "input": {"seed_keyword": "widgets"},
             "working": {},
         }
     ))
@@ -227,7 +227,7 @@ def test_build_graph_analyze_context_joins_correctly_with_parallel_sources():
 
     result = asyncio.run(graph.ainvoke(
         {
-            "input": {"seed_keyword": "widgets", "gsc_domain": "sc-domain:example.com"},
+            "input": {"seed_keyword": "widgets"},
             "working": {},
         }
     ))

@@ -49,12 +49,13 @@ def check_data(
     manager = ToolsManager(config)
     checks.append(_check("llm", lambda: manager.build_llm()))
     checks.append(_check("search", manager.build_search))
-    checks.append(_check("gsc", manager.build_gsc))
+    checks.append(_check("search performance", manager.build_search_performance))
     checks.append(_check("traffic", manager.build_traffic))
     checks.append(_check("analytics", manager.build_analytics))
     if config.signal_sources:
         # The three rows above already cover a signal_sources entry using a
-        # reserved name (build_gsc/build_traffic/build_analytics read it); this row
+        # reserved name (build_search_performance/build_traffic/build_analytics
+        # read it); this row
         # is the rest, and the one place a duplicate or unnamed entry surfaces.
         checks.append(_check(
             "signal sources", lambda: f"{len(manager.build_signal_sources())} built",

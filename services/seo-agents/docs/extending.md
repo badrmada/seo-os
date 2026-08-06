@@ -126,8 +126,9 @@ The `context` dict passed to `discover()` carries what the run already knows —
 `context.get("seed_keyword")` and `context.get("context_text")` — so your finder
 can steer toward the caller's topic when there is one.
 
-(There's no `"custom"` option for `llm_provider` or `gsc_provider` today — those
-two already ship with one real vendor client each. To add another, see
+(Every provider kind has a `"custom"` slot, including the LLM and search
+performance — bringing your own model or your own rank source never means
+forking. To add a genuinely new *kind*, see
 [Adding a new provider *kind*](#adding-a-new-provider-kind-not-just-a-new-instance)
 below.)
 
@@ -570,10 +571,9 @@ the SDK does underneath); prefer the official `mcp` SDK above for real work.
 ## Adding a new provider *kind* (not just a new instance)
 
 Everything above adds a new **instance** of an interface that already exists
-(the LLM, analytics, traffic, search, a discovery source) — no repo changes.
-Adding a genuinely new *kind* of pluggable thing — a seventh interface, or a new
-Search Console vendor (the one kind with no `"custom"` slot today) — does mean
-touching this repo:
+(the LLM, analytics, traffic, search, search performance, a signal, a discovery
+source) — no repo changes. Adding a genuinely new *kind* of pluggable thing — an
+eighth interface — does mean touching this repo:
 
 1. Add the interface to [`tools/base.py`](../src/tools/base.py).
 2. Add a field for it to

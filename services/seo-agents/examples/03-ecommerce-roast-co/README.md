@@ -89,7 +89,7 @@ offline](../README.md#whats-real-offline-and-what-isnt).) The point is that
 
 ## Go live
 
-Same swaps as the other examples (`llm_provider: "gemini"`, `gsc_provider:
+Same swaps as the other examples (`llm_provider: "gemini"`, `search_performance_provider:
 "google"`). If your store analytics is behind an API rather than a file:
 
 ```jsonc

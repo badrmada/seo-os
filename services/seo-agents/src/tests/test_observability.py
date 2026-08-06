@@ -16,14 +16,14 @@ from agent.observability import NullReporter, build_reporter, observe_tools
 from agent.observability.redaction import looks_secret, preview, redact
 from tools.llm.mocks.mock_client import MockLLMClient
 from tools.mocks.analytics_mock import MockAppAnalyticsClient
-from tools.mocks.gsc_mock import MockGoogleSearchConsoleClient
+from tools.mocks.search_performance_null import NullSearchPerformanceClient
 from tools.mocks.opportunity_mock import MockOpportunitySource
 from tools.mocks.traffic_mock import MockTrafficClient
 
 
 def _tools(discovery_sources=None) -> Tools:
     return Tools(
-        gsc=MockGoogleSearchConsoleClient(),
+        search_performance=NullSearchPerformanceClient(),
         analytics=MockAppAnalyticsClient(),
         traffic=MockTrafficClient(),
         llm=MockLLMClient(),
@@ -33,7 +33,7 @@ def _tools(discovery_sources=None) -> Tools:
 
 def _run(config, reporter, tools=None) -> dict:
     return AgentRunner(config, tools=tools or _tools(), reporter=reporter).run(
-        {"seed_keyword": "static site seo", "gsc_domain": "sc-domain:example.com"}
+        {"seed_keyword": "static site seo"}
     )
 
 
@@ -45,7 +45,7 @@ def _events(stream) -> list[dict]:
 
 @pytest.mark.parametrize(
     "name",
-    ["gemini_api_key", "cloudflare_api_token", "gsc_key_file", "X-Api-Key",
+    ["gemini_api_key", "cloudflare_api_token", "key_file", "X-Api-Key",
      "Authorization", "password", "dsn", "sessionSecret"],
 )
 def test_secret_field_names_are_recognized(name):

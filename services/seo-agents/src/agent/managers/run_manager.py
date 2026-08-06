@@ -30,7 +30,7 @@ def _build_agent_input(input_data: dict, channel: str = None) -> AgentInput:
         "seed_keyword": input_data.get("seed_keyword", ""),
         "context_text": input_data.get("context_text", ""),
         "params": input_data.get("params", {}),
-        "gsc_domain": input_data.get("gsc_domain", ""),
+        "site_url": input_data.get("site_url", ""),
     }
     # channel is omitted (not defaulted) when it's left for ChooseChannelStage to
     # decide inside the graph (see agent/graph/stages/choose_channel.py) — every
@@ -97,7 +97,7 @@ class AgentRunner:
         """Always returns the same top-level shape (see agent/schemas/io.py's
         AgentState) — this is the run() boundary a caller/UI depends on, so nothing
         past this point is allowed to raise. Bad input, a graph-node exception that
-        wasn't already caught internally (e.g. an LLM or GSC call outside
+        wasn't already caught internally (e.g. an LLM or rank-data call outside
         DiscoverStage's own degrade-don't-abort handling), a run that overran
         config.run_timeout_seconds, or anything else that goes wrong lands as
         {"phase": "failed", "error": str(exc), ...} instead of propagating — never
@@ -209,7 +209,8 @@ class AgentRunner:
 
     async def apreview_prompt(self, input_data: dict) -> dict:
         """Dry run: builds the exact prompt DraftStage would send to the LLM — runs the
-        real AnalyzeStage (so it's real GSC/analytics/traffic data if configured, not
+        real AnalyzeStage (so it's real search-performance/analytics/traffic data if
+        configured, not
         fabricated) but never calls the LLM. Lets you review what a tenant's template
         actually renders to before spending a real API call.
 

@@ -128,7 +128,7 @@ Site traffic: 51200 visitors and 133400 pageviews in the last 28 days, mostly or
 
 ## Go live
 
-Swap `llm_provider`/`gsc_provider` for real vendors as in the other examples. Your
+Swap `llm_provider`/`search_performance_provider` for real vendors as in the other examples. Your
 two custom classes don't change — point them at your real database or API instead
 of the sample files. You could also add a grounded `llm` discovery source next to
 your custom one; they'd be scored together exactly as shown above.

@@ -109,13 +109,22 @@ class ObservedSearchClient(_Observed):
             return results
 
 
-class ObservedGSCClient(_Observed):
-    async def search_analytics(self, site_url: str, days: int = 28, row_limit: int = 500):
+class ObservedSearchPerformanceClient(_Observed):
+    """SearchPerformanceClient proxy. How many rows came back is the number that
+    explains the chosen keyword: zero means the run fell through to the seed
+    keyword, an analytics highlight, or a discovered opportunity instead (see
+    agent/graph/stages/analyze.py's _pick_keyword), which is a different decision
+    than it looks like from the result alone."""
+
+    async def search_analytics(self, days: int = 28, row_limit: int = 500):
         with self._call("search_analytics", days=days) as call:
-            rows = await acall(
-                self._inner.search_analytics, site_url=site_url, days=days, row_limit=row_limit
-            )
+            rows = await acall(self._inner.search_analytics, days=days, row_limit=row_limit)
             call["rows"] = len(rows or ())
+            if self._reporter.level >= _DETAIL and rows:
+                call["striking_distance"] = sum(
+                    1 for row in rows
+                    if isinstance(row, dict) and row.get("opportunity") == "striking_distance"
+                )
             return rows
 
 
@@ -198,7 +207,9 @@ def observe_tools(tools, reporter):
         return tools
     return replace(
         tools,
-        gsc=ObservedGSCClient(tools.gsc, reporter, "gsc"),
+        search_performance=ObservedSearchPerformanceClient(
+            tools.search_performance, reporter, "search_performance",
+        ),
         analytics=ObservedAnalyticsClient(tools.analytics, reporter, "analytics"),
         traffic=ObservedTrafficClient(tools.traffic, reporter, "traffic"),
         llm=ObservedLLMClient(tools.llm, reporter, "llm"),

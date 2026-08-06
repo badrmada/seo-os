@@ -38,7 +38,7 @@ from .tools import Tools
 # analyze_context is a direct child of START, run concurrently with the
 # discover -> choose_channel chain rather than after it: the analytics/traffic
 # calls it makes don't depend on channel or discovered opportunities (unlike the
-# GSC/keyword-picking part of analyze), so there's no reason to wait for
+# search-performance/keyword-picking part of analyze), so there's no reason to wait for
 # discovery to finish first. It joins back in at "analyze", which needs both
 # choose_channel's channel decision and analyze_context's data before it can
 # finish the channel-dependent part — see stages/analyze.py's

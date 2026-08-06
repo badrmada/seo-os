@@ -5,7 +5,7 @@ advanced ones that plug in custom code. Each folder is a complete, **runnable**
 configuration you can copy and adapt.
 
 Every example runs **fully offline with no API keys** — it uses the built-in
-"mock" providers for the AI model and Search Console, and reads any data from
+"mock" provider for the AI model, connects no rank source, and reads any data from
 small local files. Each README then shows the exact lines to change to **go
 live** with real tools (Gemini, Google Search Console, Cloudflare, grounded
 discovery).
@@ -59,17 +59,24 @@ Two handy variations:
 
 ## What's real offline, and what isn't
 
-Because the examples use mock providers, it helps to know which parts of the
-output reflect *your* configuration and which are placeholders:
+Because the examples use the **mock AI model**, it helps to know which parts of
+the output reflect *your* configuration and which are placeholders:
 
 | Fully yours, offline | Placeholder offline (real once you go live) |
 |---|---|
-| Brand voice, goal | The article body / comment text (the **mock AI** writes generic filler) |
-| Analytics summary + highlights (from your data + templates) | The target keyword (the **mock Search Console** returns a fixed sample keyword) |
+| Brand voice, goal | The article body / comment text — the **mock AI** writes generic filler around a real topic |
+| The target keyword — your `seed_keyword`, since these examples connect no rank source | |
+| Analytics summary + highlights (from your data + templates) | |
 | Traffic summary (from your data + template) | |
 | Which channel discovery picks, and why | |
 | Prompt wording (your templates) | |
 | Self-review notes | |
+
+Only the **body text** is fake. That's a change worth knowing about if you saw an
+earlier version: the target keyword used to come from a canned Search Console
+fixture and override whatever you asked for. Now
+`search_performance_provider` defaults to `"none"`, so your own `seed_keyword`
+drives the run until you connect a real rank source.
 
 So the **rendered prompt** (`preview-prompt`) is the best thing to look at
 offline — it's built entirely from your config and data. The full run still

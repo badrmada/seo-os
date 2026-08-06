@@ -74,7 +74,7 @@ class SignalSource(Protocol):
     server are the same kind of thing, and adding one must be config, not a fork
     of this repo. So the three keep their own hand-shaped Protocols — their
     methods and their callers in agent/graph/stages/analyze.py long predate this
-    one, and generalizing GSC's striking-distance keyword picking is a different
+    one, and generalizing search performance's striking-distance keyword picking is a different
     job — while everything else arrives through the single method below and
     reaches the prompt keyed by its configured name.
 
@@ -198,12 +198,55 @@ class SearchClient(Protocol):
         ...
 
 
-class GSCClient(Protocol):
-    """Search Console-style data: which queries/pages are close to ranking (inward signal)."""
+class SearchPerformanceClient(Protocol):
+    """How this site already performs in search: which queries it appears for,
+    where they rank, and which are close enough to page one to be worth work
+    (inward signal).
 
-    def search_analytics(
-        self, site_url: str, days: int = 28, row_limit: int = 500
-    ) -> list[dict]: ...
+    **Not a Google interface**, despite Search Console being the obvious source.
+    Bing Webmaster Tools, a rank tracker's export, an agency's CSV and Search
+    Console all answer the same question, so the *kind* is named after the
+    question. Which vendor answers it is `search_performance_provider`, and that
+    vendor's own identifiers live in `search_performance_options` — Google's
+    property id (`sc-domain:example.com`) is Google's business, not a field every
+    tenant carries.
+
+    **The client already knows which site it is about**, which is why there is no
+    `site_url` argument. The general answer lives on `AgentConfig.site_url` and
+    every provider is handed the config; the vendor-specific one, when it differs
+    (Google's property identifier is not a URL), is that provider's own option.
+    Passing a site through the call would have forced one spelling on all of them.
+
+    Implementations:
+      - tools/mocks/search_performance_null.py's NullSearchPerformanceClient —
+        provider="none": the default. No rows at all, so the run picks its topic
+        from the seed keyword, then analytics highlights, then discovery (see
+        agent/graph/stages/analyze.py's _pick_keyword).
+      - tools/mocks/search_performance_mock.py's MockSearchPerformanceClient —
+        provider="mock": canned, product-neutral rows for offline runs and tests.
+      - tools/clients/google_search_console.py's GoogleSearchConsoleClient —
+        provider="google": the real Search Console API.
+      - tools/clients/search_performance_templated.py's
+        TemplatedSearchPerformanceClient — provider="templated": a tenant's own
+        rank data (file or API) mapped by one Jinja2 template.
+      - AgentConfig's search_performance_provider="custom" — a tenant's own class,
+        through agent/managers/plugin_loader.py's load_custom.
+    """
+
+    def search_analytics(self, days: int = 28, row_limit: int = 500) -> list[dict]:
+        """Returns rows of `{query, clicks, impressions, ctr, position}` plus the
+        derived decision signals `{opportunity, trend, intent, top_page, score,
+        reason}`, highest-scoring first.
+
+        A provider does not compute those derived fields itself —
+        tools/clients/search_performance_rows.py's `enrich_rows` does, so every
+        source classifies "striking distance" identically. A provider supplies the
+        four raw numbers it has and calls that.
+
+        An empty list is a valid answer (no data, or this tool is a no-op) and the
+        run falls back through _pick_keyword's chain rather than failing.
+        """
+        ...
 
 
 class AppAnalyticsClient(Protocol):

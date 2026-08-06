@@ -22,7 +22,7 @@ from tools.clients.opportunity_llm import LLMOpportunitySource
 from tools.llm.base import LLMResponse
 from tools.llm.mocks.mock_client import MockLLMClient
 from tools.mocks.analytics_mock import MockAppAnalyticsClient
-from tools.mocks.gsc_mock import MockGoogleSearchConsoleClient
+from tools.mocks.search_performance_null import NullSearchPerformanceClient
 from tools.mocks.traffic_mock import MockTrafficClient
 
 
@@ -107,7 +107,7 @@ def _discover(source, context: dict = None) -> list[dict]:
     double.
     """
     tools = Tools(
-        gsc=MockGoogleSearchConsoleClient(), analytics=MockAppAnalyticsClient(),
+        search_performance=NullSearchPerformanceClient(), analytics=MockAppAnalyticsClient(),
         traffic=MockTrafficClient(), llm=MockLLMClient(),
         discovery_sources={source.name: source},
     )
