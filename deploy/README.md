@@ -20,20 +20,30 @@ means:
 
 ## Where the images come from
 
-Nowhere yet, automatically:
-[`images.yml.disabled`](../.github/workflows/images.yml.disabled) is written but
-parked — the build isn't ready to run on every push. Only `tests.yml` and
-`docs.yml` are live. Until it is enabled, build locally:
+[`images.yml`](../.github/workflows/images.yml), on every push to `main` and
+every `v*` tag, as
+`ghcr.io/badrmada/seo-os/seo-agents:{latest,v1.2.0,sha-<commit>}`. Prefer the
+`sha-` tag anywhere you care what is running; `latest` is a moving target by
+definition.
+
+A pull request builds the image and never publishes it — a fork's PR would
+otherwise be pushing to this project's registry — so a PR proves the build and a
+merge produces the artifact. What `main` publishes is `linux/amd64` and
+`linux/arm64`; a PR only proves amd64, because arm64 under QEMU costs real time
+to prove something a merge will prove again.
+
+The package is **public**, so nothing below needs a `docker login`. (GHCR creates
+a package private on its first push regardless of the repository's visibility —
+if a pull ever 404s for an anonymous client, that setting is the first thing to
+check, under the repo's Packages settings.)
+
+Building locally is still one command, and is what the Compose file falls back to
+if you'd rather not pull:
 
 ```bash
 docker build -t seo-agents:local services/seo-agents
 docker run --rm seo-agents:local --help
 ```
-
-When it *is* enabled it publishes to GHCR on `main` and on a `v*` tag, as
-`ghcr.io/badrmada/seo-os/seo-agents:{latest,v1.2.0,sha-<commit>}`. Prefer the
-`sha-` tag anywhere you care what is running; `latest` is a moving target by
-definition.
 
 ## One host: Docker Compose
 
