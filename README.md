@@ -3,8 +3,17 @@
 **An open-source AI agent that grows your product's organic traffic** — the
 visitors who arrive through search and online conversations, not through ads.
 
-You describe your product once. From then on, the agent goes looking for the
-moments where your product is a genuine answer to something people are already
+Here's the shape of it, in the four steps you'd actually do.
+
+**1. You tell it what you sell and what winning looks like.** Two sentences about
+your product, one about your goal — *"grow qualified signups from developers
+searching for reliability topics"*, not "make content". That goal is a real
+field ([`agent_goal`](services/seo-agents/docs/configuration.md#brand-voice)) and
+it steers every later step, which is why a vague one produces vague drafts.
+
+**2. It goes looking for
+[opportunities](services/seo-agents/docs/configuration.md#opportunity-discovery)** —
+places where your product is a genuine answer to something people are already
 dealing with:
 
 - **a conversation happening right now** where the problem being discussed is the
@@ -13,14 +22,51 @@ dealing with:
 - **a page you already have** that sits just off page one and needs one good
   article or improvement to get there.
 
-It then writes the thing — the article, or the reply — in your voice, checks its
-own work, and hands it to you with its reasoning attached. **Nothing is published
-automatically.** A human approves every word.
+It finds these by searching the live web, so an opportunity comes with a real
+link, not a plausible-looking one. And *where* it looks is pluggable: the
+built-in finder (a model reading real search results), **any
+[MCP](https://modelcontextprotocol.io/) server** you already run — over stdio or
+streamable HTTP, so a Reddit search, an internal ticket tool or a niche data API
+becomes an opportunity source for
+[the cost of naming its command and tool](services/seo-agents/docs/configuration.md#discovery-from-an-mcp-server),
+no client code at all — or your own research agent, hidden behind the same
+interface.
+
+**3. It writes with what you know, not just what it found.** Everything you
+already pay for can feed a run as a
+**[signal](services/seo-agents/docs/configuration.md#what-a-signal-is)** — your
+rank tracker, your backlink tool, support tickets, your product catalog, your own
+dashboard. A signal is anything you'd want a writer to glance at before starting,
+and adding one is config, not a fork. That's the difference between an article
+about your topic and an article that answers the question 41 customers asked last
+month, links the product that's actually in stock, and improves the page already
+sitting at position 12.
+
+**4. It produces the right thing, and you approve it.** Usually that's one of
+three [channels](services/seo-agents/README.md#key-concepts) — an SEO article for
+your site, an article for somewhere else, or a genuine reply in an existing
+thread — chosen for the opportunity rather than fixed in advance. But the
+deliverable itself is a
+[capability](docs/concepts.md#1-a-capability-is-a-job-an-interface-and-a-set-of-providers)
+like any other: plug in a different [skill](docs/concepts.md#5-skills-the-deliverable-isnt-always-a-draft)
+and the same runtime returns a site audit, a content brief, or a link report
+instead. Whatever it makes, it checks its own work and hands it over with its
+reasoning attached. **Nothing is published automatically.** A human approves
+every word.
 
 It's a Swiss-army knife, not an appliance: every part of it — the AI model, the
 web search, your analytics, where the result lands, even what it produces — is a
 piece you choose and can replace. That's the "OS" in the name, and
 [the section below](#why-os-and-not-just-a-tool) is what it buys you.
+
+Underneath, a run is a **[LangGraph pipeline built from your
+config](#the-core-a-langgraph-pipeline-assembled-from-config)** — specialists as
+nodes, branches that run concurrently, and a graph shape that changes with what
+you turned on rather than with an `if` buried in the code.
+
+New to the vocabulary? [**The eight words you need**](#the-eight-words-you-need)
+is below, and [docs/concepts.md](docs/concepts.md) teaches the whole model in one
+sitting.
 
 ## What a run actually gives you
 
@@ -103,7 +149,7 @@ An empty `tenant.json` means "use the built-in fake for everything." You get a
 complete run — analyze, draft, self-review — and the full result printed, so you
 can see exactly what you'd be wiring into before you wire anything.
 
-## The seven words you need
+## The eight words you need
 
 You'll meet these on the first page of any doc here. Each links to the full
 explanation:
@@ -114,7 +160,8 @@ explanation:
 | **[Tenant](docs/concepts.md#4-an-agent-is-a-folder)** | An agent's folder on disk — its config, data, code and output. "Tenant" is what the CLI calls it, because one process safely serves many. |
 | **[Capability](docs/concepts.md#1-a-capability-is-a-job-an-interface-and-a-set-of-providers)** | A job an agent can do: write text, search the web, read your rankings, discover opportunities. Nine of them. |
 | **[Provider](docs/concepts.md#1-a-capability-is-a-job-an-interface-and-a-set-of-providers)** | Which implementation does that job — Gemini or your own model, Cloudflare or your own numbers. Swappable by editing config. |
-| **[Signal](docs/recipes.md#1-backlinks-ahrefs-majestic-moz-anything)** | Any data source feeding a run: a backlink API, a rank tracker, your own dashboard. A list of any length. |
+| **[Signal](services/seo-agents/docs/configuration.md#what-a-signal-is)** | Anything the agent should know before it writes: a backlink API, a rank tracker, support tickets, your own dashboard. A list of any length — context, never a decision. |
+| **[Opportunity](services/seo-agents/docs/configuration.md#opportunity-discovery)** | One thing worth acting on that the agent found: a topic, a thread, a near-page-one page — with a strength score, an intent, and the reason it was picked. |
 | **[Specialist](docs/concepts.md#3-a-run-and-why-you-decide-whats-in-it)** | One step of a run — discover, choose, analyze, draft, review. A team, not one giant prompt. |
 | **[Skill](docs/concepts.md#5-skills-the-deliverable-isnt-always-a-draft)** | A packaged deliverable you drop into an agent's folder, for when you want something other than an article. |
 
@@ -201,6 +248,55 @@ flowchart LR
 
 Discovery being off doesn't make those stages no-ops — they aren't in your
 pipeline at all. The graph is built from your config.
+
+## The core: a LangGraph pipeline assembled from config
+
+The runtime is built on [LangGraph](https://github.com/langchain-ai/langgraph).
+Every specialist is a node — a plain Python object with
+`async def run(state) -> dict` that returns **only the keys it changed**, which
+LangGraph merges into the shared run state before the next node sees it. No
+framework magic, no chain-of-prompts: the graph is the agent.
+
+What makes it dynamic is that
+[`build_graph()`](services/seo-agents/src/agent/graph/pipeline.py) hardcodes no
+wiring. It reads a **spec** — a list of stages, each with a `mode` — and builds
+exactly that graph. Your config produces the spec, so the same runtime yields
+three different shapes without a branch anywhere in the stage code:
+
+```
+no discovery      START → analyze → draft → self_qa → END
+1 source          START → discover → choose_channel ─┐
+                  START → analyze_context ───────────┴→ analyze → draft → self_qa → END
+2+ sources        START → Send(discover_source) × N → discover_join → choose_channel ─┐
+                  START → analyze_context ─────────────────────────────────────────── ┴→ …
+```
+
+Three properties fall out of that, and they're the reason it's a graph rather
+than a script:
+
+- **Real concurrency, not sequential politeness.** `analyze_context` hangs
+  directly off `START` and runs *beside* discovery, because your analytics don't
+  depend on which channel wins. `analyze` is wired to a **list** of predecessors
+  — a LangGraph AND-join — so it waits for both branches. Multiple discovery
+  sources fan out with `Send` and merge at a join node. Every
+  [signal](services/seo-agents/docs/configuration.md#what-a-signal-is) is
+  collected concurrently too: ten of them cost about one round trip.
+- **Degrade, don't abort.** A tool that fails contributes an empty value and a
+  `tool_errors` entry; the run finishes and tells you what broke. One dead API is
+  a weaker draft, not a dead run.
+- **The pipeline is yours to redefine.** `pipelines` in `tenant.json` maps a name
+  to a list of stages — including your own classes from `plugins/` — and
+  `--agent <name>` picks one. That's how the deliverable stops being a draft and
+  becomes a [site audit or a brief](docs/concepts.md#5-skills-the-deliverable-isnt-always-a-draft)
+  on the same runtime. Run `show-graph` to print the graph any config produces
+  before you run it.
+
+Run state is snapshotted after each node to
+[wherever you point it](services/seo-agents/docs/configuration.md#where-the-runs-state-is-kept-state_provider)
+(memory, a file, Redis), so a UI or worker can watch a run in flight — this is
+deliberately *not* LangGraph's `checkpointer=`, and
+[architecture.md](services/seo-agents/docs/architecture.md#how-the-pipeline-is-assembled)
+explains why, along with the full assembly rules.
 
 ## How far it bends: four levels
 
