@@ -8,7 +8,7 @@ The runtime builds and executes agents that grow a product's organic traffic —
 the visitors who find you through search and online conversations, not through
 ads.
 
-You point an agent at your product and your data. It looks around, finds an
+You point an agent at your brand and your data. It looks around, finds an
 opportunity worth acting on — a keyword you could rank for, a discussion you
 could join, a topic worth writing about — decides what kind of content fits
 best, and writes the draft. A human reviews it before anything goes live.
@@ -51,7 +51,7 @@ anything real.
   goal, and whatever real analytics and traffic data you've connected.
 - **Reviews its own work** — before handing the draft back, it runs quick
   automated checks: word count, whether the target keyword is present, how
-  readable it is, whether it mentions your product without disclosing the
+  readable it is, whether it mentions your brand without disclosing the
   connection, how many links it packs in. These are attached to the draft as
   notes, never a silent block.
 - **Explains itself** — every run tells you *what* it found and *why* it chose
@@ -201,14 +201,14 @@ Every job is two lines: **which provider**, and **that provider's own options**.
     { "name": "echooers_ideas", "provider": "llm", "max_opportunities": 5 }
   ],
 
-  // --- Your brand voice and goal (this is where your product is described) ---
+  // --- Your brand voice and goal (this is where your brand is described) ---
   "brand_description": "An anonymous social platform, similar in spirit to Twitter/Reddit but with no login or signup: people post, vote, share, and comment freely without tracking or an identity attached, so they never have to fear reputation damage or backlash for what they say.",
   "agent_goal": "Increase qualified traffic to the platform — attract new visitors via search and genuine community discovery, not just serve people already there.",
 
   "default_article_tone": "informative",
   "default_comment_tone": "genuine and conversational",
 
-  // --- Words that count as mentioning your product (used by the self-review) ---
+  // --- Words that count as mentioning your brand (used by the self-review) ---
   "qa_brand_mention_keywords": [
     "our product", "our platform", "our app", "our service",
     "the platform", "the app", "the product", "the service",
@@ -260,7 +260,7 @@ exact example line by line.
 > **Prompt templates** (`prompt_templates`, further down the example) are the
 > literal instructions sent to the AI model when it writes. They decide **what
 > the agent does with what it knows** — the persona, the angle, what counts as a
-> good draft for your product. You never have to write one; leave the field out
+> good draft for your brand. You never have to write one; leave the field out
 > and a generic default is used.
 >
 > Both are Jinja2, and they chain: your JSON → a data template → a fact like
