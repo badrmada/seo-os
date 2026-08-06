@@ -32,7 +32,7 @@ keys.
 | How do I run this on a server, with state that survives? | [deploy/compose/README.md](../deploy/compose/README.md) |
 | What commands are there? | [cli.md](../services/seo-agents/docs/cli.md) |
 | Why is it built this way? | [architecture.md](../services/seo-agents/docs/architecture.md) |
-| What's built, what's next? | [roadmap.md](roadmap.md) |
+| What's next, and in what order? | [roadmap.md](roadmap.md) |
 | Where does my contribution go? | [CONTRIBUTING.md](../CONTRIBUTING.md) |
 
 ## About these docs
@@ -55,5 +55,5 @@ Two conventions worth knowing as a reader:
   distinction is written down rather than left to be assumed, because "every
   command is checked" would otherwise be a claim this repo no longer meets.
 
-What is built and what is coming — for the runtime and for the services around it
-— is [roadmap.md](roadmap.md).
+What is coming — for the runtime and for the services around it — is
+[roadmap.md](roadmap.md), which holds only what isn't built yet.
