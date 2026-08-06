@@ -13,7 +13,10 @@ class SelfQaStage:
     because "good" means something different for an article vs a reply.
     """
 
-    def __init__(self, config) -> None:
+    def __init__(self, tools, config) -> None:
+        # Unused: these are heuristic checks on the draft, with no second LLM call.
+        # Taken anyway so every stage has one constructor shape — see
+        # ChooseChannelStage for why that matters once stages are config-declared.
         self.config = config
 
     async def run(self, state: AgentState) -> dict:

@@ -51,6 +51,23 @@ def load_custom(class_path: str, field_name: str, config, options: dict = None):
     argument, and the user shown a confusing second failure instead of their real
     one.
     """
+    cls = load_custom_class(class_path, field_name, config)
+    if options is not None and accepts_extra_arg(cls, required=1):
+        return cls(config, options)
+    return cls(config)
+
+
+def load_custom_class(class_path: str, field_name: str, config) -> type:
+    """Resolve `"module:ClassName"` to the class, without instantiating it.
+
+    Split out from load_custom because not everything a tenant registers is built
+    the same way: a *stage* is constructed with `(tools, config)` rather than
+    `(config)` — it is part of the pipeline, not a provider behind a Protocol —
+    and build_graph reads class attributes off it (see agent/graph/pipeline.py's
+    fan-out declaration) before deciding how to wire it. What all of them share is
+    this resolution: the same per-tenant plugin package, the same containment, and
+    the same "no plugin X in <folder> (available: ...)" message.
+    """
     if not class_path:
         raise ValueError(f'provider="custom" requires {field_name} to be set')
     module_path, _, class_name = class_path.partition(":")
@@ -59,15 +76,11 @@ def load_custom(class_path: str, field_name: str, config, options: dict = None):
 
     module = _import_plugin_module(module_path, field_name, config)
     try:
-        cls = getattr(module, class_name)
+        return getattr(module, class_name)
     except AttributeError:
         raise ValueError(
             f"{field_name}: {module_path!r} has no class {class_name!r}"
         ) from None
-
-    if options is not None and _accepts_options(cls):
-        return cls(config, options)
-    return cls(config)
 
 
 def _import_plugin_module(module_path: str, field_name: str, config):
@@ -128,8 +141,10 @@ def _plugin_package(plugins_dir: Path) -> str:
     return name
 
 
-def _accepts_options(cls) -> bool:
-    """True if cls's constructor takes a second positional argument beyond config."""
+def accepts_extra_arg(cls, *, required: int = 1, base: int = 1) -> bool:
+    """True if cls's constructor takes `required` positional arguments beyond the
+    ones it always gets — one `options` dict past `config` for a provider, or past
+    `(tools, config)` for a pipeline stage."""
     try:
         parameters = list(inspect.signature(cls).parameters.values())
     except (TypeError, ValueError):  # a C-implemented or otherwise unintrospectable class
@@ -138,6 +153,6 @@ def _accepts_options(cls) -> bool:
         parameter for parameter in parameters
         if parameter.kind in (parameter.POSITIONAL_ONLY, parameter.POSITIONAL_OR_KEYWORD)
     ]
-    if len(positional) >= 2:
+    if len(positional) >= base + required:
         return True
     return any(parameter.kind is parameter.VAR_POSITIONAL for parameter in parameters)

@@ -4,7 +4,7 @@ import uuid
 from state.memory_store import InMemoryStateStore
 
 from .. import prompts
-from ..graph.pipeline import build_graph
+from ..graph.pipeline import build_graph, spec_for
 from ..graph.stages import AnalyzeStage
 from ..graph.tools import Tools
 from ..observability import NullReporter, build_reporter, observe_tools
@@ -144,7 +144,11 @@ class AgentRunner:
         run deadline expiring."""
         failed_state = {
             "run_id": run_id,
-            "agent_type": "seo_content",
+            # The configured agent type, not a constant: a failure report that
+            # names the wrong agent is worse than one that names none, and this
+            # path is reached by exactly the failures a caller most needs to
+            # attribute — including "that agent type doesn't exist".
+            "agent_type": getattr(self.config, "agent_type", "") or "seo_content",
             "phase": "failed",
             "input": dict(input_data),
             "output": None,
@@ -160,20 +164,32 @@ class AgentRunner:
     async def _run(self, input_data: dict, run_id: str, state_store: InMemoryStateStore = None) -> dict:
         self._input_validator.validate(input_data, self.config)
 
+        # Which pipeline this run is. Resolved before anything else because it
+        # decides the rest: an unknown agent type raises here and arrives as the
+        # documented phase="failed" shape rather than half a run.
+        spec = spec_for(self.config)
+
         # Explicit input.channel is always honored as-is. Omitted + discovery
         # configured means it's genuinely undecided until ChooseChannelStage runs
         # inside the graph; omitted + no discovery configured keeps today's
         # behavior (resolve to config.default_channel up front).
-        channel = input_data.get("channel") or (
-            None if self.config.discovery_sources else self.config.default_channel
-        )
+        #
+        # A pipeline with none of the channel-aware stages in it isn't writing
+        # anything, so it has no channel and none is invented — otherwise a site
+        # audit's input would carry "site_article", and every signal that reads the
+        # run's input would be told this audit is drafting an article.
+        channel = None
+        if spec.channel_aware:
+            channel = input_data.get("channel") or (
+                None if self.config.discovery_sources else self.config.default_channel
+            )
 
         tools = self._resolve_tools(input_data)
-        graph = build_graph(tools, self.config, reporter=self.reporter)
+        graph = build_graph(tools, self.config, spec=spec, reporter=self.reporter)
 
         initial_state: AgentState = {
             "run_id": run_id,
-            "agent_type": "seo_content",
+            "agent_type": spec.agent_type,
             "phase": "queued",
             "input": _build_agent_input(input_data, channel),
             "working": {},
@@ -195,6 +211,20 @@ class AgentRunner:
             final_state = dict(await graph.ainvoke(initial_state))
 
         working = final_state.pop("working", {})
+        # Internal to the parallel_by_source fan-out (stages/discover.py) and never
+        # part of the documented result — but LangGraph materializes every declared
+        # channel, so an Annotated field with a reducer is present as [] even in a
+        # graph that has no fan-out node in it. It has been leaking into the
+        # returned JSON as an undocumented top-level key; a stage-scoped working key
+        # does not belong in the result plane (docs/output-schema.md), whichever
+        # pipeline ran.
+        final_state.pop("discover_results", None)
+        # Always present, whatever the pipeline was: the result shape is frozen
+        # (docs/output-schema.md), so a pipeline with no discover stage reports an
+        # empty discovery block rather than omitting the key. A caller parsing a
+        # result never has to branch on which agent produced it — and `tool_errors`
+        # in particular is where *any* stage's degraded call is recorded, including
+        # a tenant's own.
         final_state["discovery"] = {
             "opportunities": working.get("opportunities", []),
             "channel_decision": working.get("channel_decision"),

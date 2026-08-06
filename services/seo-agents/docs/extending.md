@@ -568,6 +568,93 @@ server so you can see the whole flow offline — is in
 hand-rolled JSON-RPC-over-stdio client (so it runs on any Python and shows what
 the SDK does underneath); prefer the official `mcp` SDK above for real work.
 
+## Walkthrough: a pipeline stage of your own
+
+Everything above plugs a new **input** into the pipeline that already exists.
+This changes the pipeline — and with it, what a run produces.
+
+Declare the stages in `tenant.json`; each `class` is a file in `plugins/`:
+
+```jsonc
+{
+  "agent_type": "site_audit",
+  "pipelines": {
+    "site_audit": {
+      "stages": [
+        { "name": "crawl",    "class": "audit:CrawlStage",
+          "options": { "pages_path": "data/crawl.json" } },
+        { "name": "findings", "class": "audit:FindingsStage" },
+        { "name": "verify",   "class": "audit:VerifyStage" }
+      ]
+    }
+  }
+}
+```
+
+```python
+# plugins/audit.py
+class FindingsStage:
+    def __init__(self, tools, config):     # or (tools, config, options)
+        self.config = config
+
+    async def run(self, state):            # a plain `def` works too
+        pages = state["working"]["pages"]
+        working = dict(state["working"])
+        working["findings"] = [
+            {"issue": "missing meta description", "severity": "high",
+             "urls": [p["url"] for p in pages if not p.get("meta_description")]}
+        ]
+        return {"phase": "findings", "working": working}
+```
+
+```bash
+python src/main.py show-graph --tenant acme     # the pipeline you declared
+python src/main.py run --tenant acme --agent site_audit
+```
+
+Four things worth knowing:
+
+- **`(tools, config)`, plus `options` if you ask for it.** The same signature
+  inspection every `"custom"` provider gets. `tools` is the same bundle the
+  built-in stages call.
+- **Return only the keys you change.** They're merged into the running state
+  before the next stage sees it. List order is the chain.
+- **The last stage writes `output`, with its own `kind`.** A new deliverable is a
+  new `kind`, never a new top-level field — see
+  [output-schema.md](output-schema.md).
+- **Mix in built-in stages by name.** A stage entry with no `class` and a name
+  like `analyze` or `draft` uses the built-in one.
+
+Full reference:
+[configuration.md](configuration.md#a-different-deliverable-agent-types-and-pipelines).
+A complete, runnable audit — stages, template and fixtures all inside the tenant
+folder — is [`examples/08-custom-pipeline/`](../examples/08-custom-pipeline/).
+
+### If your stage crawls, bound it
+
+A crawler is the one tool in this system that can hurt **someone else's** server,
+and a stage or signal that fetches pages is the likeliest place for one to
+appear. Any crawler you build here should:
+
+- obey `robots.txt`,
+- rate-limit itself, and cap pages, depth, and total run time,
+- send an identifying user agent with a way to contact you,
+- never follow off-site links.
+
+A default that could hammer a site is not an acceptable default. This is a real
+constraint, not boilerplate — it is the reason
+[`examples/08-custom-pipeline/`](../examples/08-custom-pipeline/) ships a fixture
+rather than a working crawler.
+
+And whatever your stage reports, **make it evidence-backed**: a finding should
+carry the URLs and rows it came from, the same principle that makes a grounded
+discovery link trustworthy. An audit that asserts problems it cannot point at is
+worse than no audit.
+
+A crawl is often better expressed as a `signal_sources` entry than as a stage —
+then it is an *input* any pipeline can read, rather than something one pipeline
+owns.
+
 ## Adding a new provider *kind* (not just a new instance)
 
 Everything above adds a new **instance** of an interface that already exists

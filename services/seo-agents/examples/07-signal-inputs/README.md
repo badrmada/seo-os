@@ -25,9 +25,20 @@ data/keyword_trends.json    # rising queries (for the templated signal)
 data/rankings.json          # tracked keyword positions (for the custom signal)
 data/traffic.json           # visitor numbers (for the templated traffic feed)
 plugins/rank_tracker.py     # RankTracker — a custom SignalSource
+templates/site_article.j2   # the article prompt, as a readable file
 tenant.json
 input.json
 ```
+
+The prompt lives in `templates/` rather than on one escaped line inside
+`tenant.json`, which is what `{"file": ...}` is for:
+
+```jsonc
+"prompt_templates": { "site_article": { "file": "site_article.j2" } }
+```
+
+Any template value can be written that way — see
+[configuration.md](../../docs/configuration.md#keeping-a-template-in-its-own-file).
 
 ## Everything the agent reads, in one list
 

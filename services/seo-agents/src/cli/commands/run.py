@@ -16,6 +16,7 @@ import typer
 from agent.service import AgentService, RunRequest, RunRequestError
 
 from ..context import (
+    AGENT_OPTION,
     INPUT_OPTION,
     QUIET_OPTION,
     TENANT_OPTION,
@@ -32,6 +33,7 @@ def run(
     tenant: str = TENANT_OPTION,
     userdata: str = USERDATA_OPTION,
     input_file: str = INPUT_OPTION,
+    agent: str = AGENT_OPTION,
     output: str = typer.Option(
         None, "--output", "-o",
         help="Write the result JSON to this file instead of the configured output sinks.",
@@ -51,6 +53,7 @@ def run(
     request = RunRequest(
         config=config,
         input=run_input,
+        agent_type=agent or "",
         verbose=verbose,
         verbose_format=verbose_format,
         quiet=quiet,

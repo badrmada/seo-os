@@ -23,7 +23,14 @@ class DiscoverStage:
     Two or more sources instead use the "parallel_by_source" mode (see
     agent/graph/pipeline.py's _default_spec): DiscoverSourceStage/DiscoverJoinStage
     below run the same per-source logic concurrently via LangGraph's Send.
+
+    The three `fanout_*` attributes assigned at the bottom of this module are how
+    that mode is *declared* rather than assumed: build_graph used to hardcode
+    `stage.name == "discover"`, which meant no other stage — including a tenant's
+    own — could ever fan out. Anything that declares the same three things can.
     """
+
+    fanout_over = "discovery_sources"  # the Tools mapping to run one branch per
 
     def __init__(self, tools: Tools, config) -> None:
         self.tools = tools
@@ -62,6 +69,12 @@ class DiscoverStage:
         working["tool_errors"] = tool_errors
         return {"phase": "discover", "working": working}
 
+    # Assigned below, once the two classes exist — see the note at the bottom of
+    # this module. Declared here so the fan-out contract is visible on the stage
+    # that opts into it rather than only at the point of assignment.
+    fanout_branch = None
+    fanout_join = None
+
 
 class DiscoverSourceStage:
     """One branch of the "parallel_by_source" fan-out (see agent/graph/pipeline.py
@@ -72,7 +85,7 @@ class DiscoverSourceStage:
     DiscoverJoinStage) instead of directly into working.
     """
 
-    def __init__(self, tools: Tools) -> None:
+    def __init__(self, tools: Tools, config=None) -> None:
         self.tools = tools
 
     async def run(self, state: dict) -> dict:
@@ -105,6 +118,9 @@ class DiscoverJoinStage:
     sequential path — same opportunities/tool_errors contract either way.
     """
 
+    def __init__(self, tools: Tools = None, config=None) -> None:
+        pass
+
     async def run(self, state: AgentState) -> dict:
         working = dict(state.get("working", {}))
         opportunities = list(working.get("opportunities", []))
@@ -117,3 +133,11 @@ class DiscoverJoinStage:
         working["opportunities"] = opportunities
         working["tool_errors"] = tool_errors
         return {"phase": "discover", "working": working}
+
+
+# The fan-out declaration agent/graph/pipeline.py reads for mode
+# "parallel_by_source". Assigned after the fact only because all three classes
+# live in one module and DiscoverStage is the one worth reading first; a tenant's
+# own stage declares the same three attributes inline in its class body.
+DiscoverStage.fanout_branch = DiscoverSourceStage
+DiscoverStage.fanout_join = DiscoverJoinStage

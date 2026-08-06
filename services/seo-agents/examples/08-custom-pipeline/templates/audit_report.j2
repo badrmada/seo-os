@@ -1,0 +1,17 @@
+# Site audit — {{ site_url }}
+
+{{ pages|length }} pages crawled. Goal: {{ agent_goal }}
+
+{% if not findings %}
+No issues found.
+{% else %}
+{% for finding in findings %}
+## {{ loop.index }}. {{ finding.issue }} ({{ finding.severity }})
+
+{{ finding.evidence }}:
+
+{% for url in finding.urls %}
+- {{ url }}
+{% endfor %}
+{% endfor %}
+{% endif %}

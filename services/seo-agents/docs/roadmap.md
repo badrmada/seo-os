@@ -354,38 +354,91 @@ about status and direction.
   rejects `gsc_provider`/`gsc_options` and names the replacement, and the input
   validator rejects `gsc_domain` and names both of its new homes.
 
+- **A template can live in its own file.** Anywhere a template string is accepted,
+  so is `{"file": "site_article.j2"}`, read from the tenant's already-reserved
+  `templates/` folder. Every template in this system is a JSON string, so a real
+  one was a single line with escaped newlines and escaped quotes — unreadable,
+  undiffable, and un-editable in anything that understands Jinja2, which is a bad
+  place to leave the thing tenants edit most.
+
+  **One rule, not nine.** A `{"file": ...}` object is honored at any option whose
+  name ends in `_template` plus every entry in `prompt_templates`, rather than at
+  a hand-maintained list of today's options — so a provider that gains a template
+  option later gets this without touching
+  [`agent/config/template_files.py`](../src/agent/config/template_files.py). The
+  rejected alternatives are recorded there: a sigil (`"@x.j2"`) needs an escape
+  hatch for a template that legitimately starts with `@`, and a
+  `*_template_file` twin per option doubles a config surface that already has
+  nine template slots.
+
+  **Read at config-load time, not per render**, which is what keeps it invisible
+  to everything else: `prompts.validate_template` and `TemplateValidator` catch a
+  broken file-loaded template through the exact same code path as an inline one,
+  a run makes no filesystem call per prompt, and `AgentConfig` stays plain data
+  rather than holding a lazy file reference. Editing a template file doesn't
+  affect an already-loaded config — invisible for the CLI, and the same cache
+  invalidation any config change already needs for a server.
+
+  Containment is the same boundary `plugins/` and a tenant name get, for the same
+  reason — in a server this value arrives from a request: `..`, absolute paths and
+  symlinks leaving the folder are rejected, and a missing file names the path
+  *and lists what is in the folder*. `check-data` grew a `templates` row naming
+  every file a template came from, since "which file is this prompt actually
+  coming from" is part of "will this config work" — a template edited in the
+  wrong file renders perfectly and says the wrong thing.
+
+- **Stage and pipeline registration — the deliverable is not always a draft.**
+  `config.pipelines` maps an agent type to a list of stages, each of which may be
+  a tenant's own class from `plugins/`; `--agent <name>` (and
+  `RunRequest.agent_type`) selects one per run, landing on `AgentState.agent_type`
+  — the seam that field was added for. `_STAGE_FACTORIES` was a fixed dict of six
+  and `_default_spec` was the only spec there was; "seo_content" is now one agent
+  type among however many a tenant declares, producing exactly its previous three
+  shapes.
+
+  **The bar was concrete and is met:
+  [`examples/08-custom-pipeline/`](../examples/08-custom-pipeline/) is a site
+  audit — crawl, findings, verify — whose stages, template and fixtures all live
+  in the tenant folder, producing `kind: "site_audit"` in the frozen result
+  schema with nothing in `src/` knowing it exists.** That is why the built-in
+  `seo_audit` agent was dropped: which findings matter and what a crawler does are
+  a tenant's position to hold.
+
+  **A mode is now available to any stage that meets its requirement, not to a
+  stage with the right name.** `build_graph` used to raise unless
+  `parallel_by_source` was literally `"discover"` and `concurrent_from_start` was
+  literally `"analyze_context"`, which meant no registered stage could ever use
+  either. The requirements are real ones now: a fan-out stage's *class* declares
+  `fanout_over`/`fanout_branch`/`fanout_join`, and a concurrent stage must be
+  followed by something to join into — which build_graph now enforces, where
+  before a dangling branch would have run and silently lost its writes into the
+  same superstep as END.
+
+  **A pipeline with no channel-aware stage has no channel.** `channel` was
+  resolved before the graph and written into every run's input; an audit isn't
+  drafting one of three things, so nothing invents a `"site_article"` for it —
+  which also stops every signal being told this audit is writing an article.
+  Structural validation of a declared pipeline happens at config load; resolving
+  its classes deliberately does not, because importing a plugin runs a tenant's
+  Python and a server loading a config per request must not run the code of
+  pipelines it isn't using. `check-data` grew a `pipeline` row that resolves
+  every stage, so that isn't left to a real run to discover.
+
+  Also fixed here, found by the audit example: `discover_results` — an internal
+  key of the fan-out — had been leaking into the returned JSON as an
+  undocumented top-level field on *every* run, because LangGraph materializes
+  every declared channel whether or not a graph uses it.
+
 ## Next
 
-In order. One framing shapes what's left, and it's something the code still only
-partly lives up to:
+In order.
 
-- **The deliverable is not always a draft.** Writing an article is one way to
-  grow a site; telling someone what to fix on the site they already have is
-  another. The way to be true to that is *not* to ship a second agent here — it's
-  to open the seams so a tenant builds one without forking, which is item 1.
+(Both framings this roadmap was steered by have now shipped: *inputs are signals*
+as `signal_sources`, and *the deliverable is not always a draft* as agent types
+and pipelines. What's left is smaller and more mechanical.)
 
-(The other framing — *inputs are signals, and the vendors shipped here are
-defaults, not the model* — shipped above as `signal_sources`. A crawler and a
-sitemap reader are signals like any other.)
-
-1. **Stage and pipeline registration.** Config-declared stages, and a pipeline
-   spec per agent type rather than one global default, selectable with
-   `--agent <name>`. The bar for "done" is concrete: a tenant should be able to
-   build a **site audit** on it — crawler and sitemap as `signal_sources` with
-   their own classes, their own stages, their own verification step, producing
-   `kind: "site_audit"` in the existing result schema — without touching `src/`.
-   A built-in audit agent was on this list and was dropped for exactly that
-   reason: which findings matter and what a crawler does are a tenant's position
-   to hold, not this repo's.
-2. **State persistence.** `InMemoryStateStore` promoted to a selectable provider
+1. **State persistence.** `InMemoryStateStore` promoted to a selectable provider
    — file/JSONL first, since it needs no infrastructure and survives the process.
-3. **Templates from a file.** Anywhere a template string is accepted today, also
-   accept `{"file": "name.j2"}`, read from the tenant's already-reserved
-   `templates/` folder. Prompt wording is the thing tenants edit most, and it
-   currently lives as a single escaped JSON line — unreadable and undiffable.
-   One rule everywhere rather than a `*_template_file` twin per option, resolved
-   at config-load time so save-time validation and the plain-data config are
-   unchanged.
 
 ## Explicitly out of scope for this agent
 

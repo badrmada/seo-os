@@ -599,6 +599,76 @@ name fails right then, with a message naming the problem, not mid-run.
 > `infer_fields(raw_json)` prints every path in your JSON (like
 > `data.totals.signups`) with its type and an example value.
 
+### Keeping a template in its own file
+
+A template written inline is a JSON string, which means one long line with
+escaped newlines and escaped quotes. That's fine for a one-liner and miserable
+for a prompt. **Anywhere a template string is accepted, you can write
+`{"file": "name.j2"}` instead**, and the file is read from your tenant's
+`templates/` folder:
+
+```jsonc
+{
+  "prompt_templates": {
+    "site_article": { "file": "site_article.j2" }
+  },
+  "analytics_options": {
+    "summary_template":    { "file": "analytics_summary.j2" },
+    "highlights_template": { "file": "analytics_highlights.json.j2" }
+  }
+}
+```
+
+```
+userdata/acme/
+├── tenant.json
+└── templates/
+    ├── site_article.j2
+    ├── analytics_summary.j2
+    └── analytics_highlights.json.j2
+```
+
+Now the template is a real file: readable, diffable, and editable in something
+that understands Jinja2 syntax highlighting.
+
+A plain string keeps working and means exactly what it always did. Those are the
+only two forms — there is no `"@file.j2"` prefix and no `summary_template_file`
+twin field, because both of those need an escape hatch for a template that
+legitimately starts with `@`, and the escape hatch is where the bugs live.
+
+**The rules, all four of them:**
+
+1. **It works for every template option**, not a special list: any option whose
+   name ends in `_template`, plus every entry in `prompt_templates`. A provider
+   that gains a template option later gets this for free. Put `{"file": ...}`
+   anywhere else — a `report_path`, an HTTP header — and the config is rejected
+   by name rather than failing strangely later.
+2. **Files live in `templates/`, and nowhere else.** Subfolders are fine
+   (`{"file": "prompts/article.j2"}`); absolute paths, `..`, and symlinks
+   pointing out of the folder are rejected. Your tenant folder is a boundary,
+   the same way `plugins/` is.
+3. **Files are read when the config loads**, not per render — so a template from
+   a file gets the exact same save-time validation an inline one does, and a run
+   makes no extra filesystem calls. The tradeoff: editing a template file does
+   not affect an already-loaded config. For the CLI that's invisible (one run,
+   one load); a long-lived server reloads the config as it would for any other
+   config change.
+4. **A config built in code has no `templates/` folder**, so `{"file": ...}`
+   is a clear error there rather than a read relative to whatever directory the
+   process happens to be in.
+
+`check-data` reports which templates came from which file, which is worth
+checking after any edit — a template changed in the wrong file renders perfectly
+and says the wrong thing:
+
+```console
+$ python src/main.py check-data --tenant acme
+│ templates │ ok │ prompt_templates.site_article <- site_article.j2 │
+```
+
+[`examples/07-signal-inputs/`](../examples/07-signal-inputs/) uses this for its
+article prompt.
+
 ### Example 1 — a SaaS app (analytics from a file)
 
 Your analytics export, saved to a file (`tenant-data/report.json`):
@@ -942,7 +1012,7 @@ userdata/                     the workspace root
 ├── acme/                     the tenant name
 │   ├── tenant.json           this file
 │   ├── plugins/              your own classes  (extending.md)
-│   ├── templates/            reserved for template files
+│   ├── templates/            your .j2 files  (see "Keeping a template in its own file")
 │   ├── data/                 analytics.json, traffic.json, credentials
 │   └── output/               where results land by default
 └── globex/
@@ -1099,11 +1169,149 @@ say), add it here so a reply that name-drops it still gets the disclosure check.
 
 ---
 
+## A different deliverable: agent types and pipelines
+
+| Field | Type | Default |
+|---|---|---|
+| `agent_type` | `string` | `"seo_content"` |
+| `pipelines` | `dict[str, object]` | `{}` |
+
+Everything above this point configures **what the agent reads**. This configures
+**what it does with it**.
+
+The built-in `seo_content` agent writes an article or a reply: `discover →
+choose_channel → analyze → draft → self_qa`, with which of those exist decided by
+your `discovery_sources`. That is one way to grow a site. Telling someone what to
+fix on the site they already have is another, and so is a content brief, a link
+report, or a competitor summary.
+
+**This project deliberately doesn't ship those**, because which findings matter
+and what a crawler does are your position to hold, not ours. It ships the seam:
+
+```jsonc
+{
+  "agent_type": "site_audit",
+  "pipelines": {
+    "site_audit": {
+      "stages": [
+        { "name": "crawl",    "class": "audit:CrawlStage",
+          "options": { "pages_path": "data/crawl.json" } },
+        { "name": "findings", "class": "audit:FindingsStage" },
+        { "name": "verify",   "class": "audit:VerifyStage" }
+      ]
+    }
+  }
+}
+```
+
+```bash
+python src/main.py show-graph --tenant acme            # the pipeline you declared
+python src/main.py run --tenant acme                   # agent_type from the config
+python src/main.py run --tenant acme --agent seo_content   # the built-in one, same config
+```
+
+One tenant can have several, and `--agent` (or `RunRequest.agent_type`) picks one
+per run. `agent_type` is only the default.
+
+### A stage entry
+
+| Key | Required | Meaning |
+|---|---|---|
+| `name` | yes | The node name. Must be unique within the pipeline. |
+| `class` | unless `name` is built-in | `"module:ClassName"` in this tenant's `plugins/` folder. |
+| `mode` | no | `"sequential"` (default), `"concurrent_from_start"`, `"parallel_by_source"`. |
+| `options` | no | This stage's own settings, handed to a class that asks for them. |
+
+**List order is the chain.** There is no `after:` field: this pipeline is a chain
+with two declared exceptions to it (the two non-sequential modes), so a field
+whose only legal values would restate the list order is a second way to say one
+thing.
+
+Leaving out `class` uses the built-in stage of that name — `discover`,
+`choose_channel`, `analyze_context`, `analyze`, `draft`, `self_qa` — so a
+pipeline can mix its own stages with the ones that ship.
+
+### Writing a stage
+
+```python
+class FindingsStage:
+    def __init__(self, tools, config):        # or (tools, config, options)
+        self.config = config
+
+    async def run(self, state):               # a plain `def` works too
+        working = dict(state["working"])
+        working["findings"] = [...]
+        return {"phase": "findings", "working": working}
+```
+
+- **Constructed with `(tools, config)`**, plus a third `options` argument if your
+  constructor asks for one — the same opt-in every `"custom"` provider has.
+  `tools` is the same bundle the built-in stages call (`tools.llm`,
+  `tools.signals`, …).
+- **`run(state)` returns only the keys it changes.** They're merged into the
+  running state before the next stage sees it.
+- **The last stage writes `output`**, with its own `kind`:
+
+```python
+return {"phase": "done", "output": {
+    "kind": "site_audit", "title": "...", "content": "...",
+    "format": "markdown", "metadata": {"findings": [...], "pages_crawled": 128},
+}}
+```
+
+A new deliverable is a **new `kind`, never a new top-level field** — the result
+shape in [output-schema.md](output-schema.md) is frozen, so anything reading
+`run_id`/`phase`/`output`/`error` keeps working whichever agent produced it.
+
+### The two other modes
+
+`"concurrent_from_start"` runs a stage as a direct child of START, alongside
+whatever chain precedes it, joining back in at the **next** stage in the list —
+which is how the built-in `analyze_context` overlaps its analytics calls with
+discovery. Something must follow it, or its branch would dangle.
+
+`"parallel_by_source"` runs one branch per entry of a `Tools` collection and
+merges them, which is how `discover` fans out over several discovery sources. A
+stage may use it if its class declares `fanout_over` (a `Tools` attribute),
+`fanout_branch` and `fanout_join` — see
+[`agent/graph/stages/discover.py`](../src/agent/graph/stages/discover.py).
+
+### What is checked, and when
+
+- **At config load:** that `agent_type` names a pipeline that exists, and that
+  every declared pipeline's stage list is sound (names, duplicates, modes, and
+  that a stage with no `class` names a built-in). A typo fails while you're
+  editing.
+- **When the pipeline is built** — at the start of a run, and in `check-data`:
+  that every `class` imports. Not at config load, because importing a plugin runs
+  your Python, and a server loading configs per request shouldn't run the code of
+  pipelines it isn't using. `check-data` builds every stage precisely so this
+  isn't left to a real run to find.
+
+### No channel unless you're writing something
+
+`channel` (`site_article` / `external_article` / `engagement_comment`) belongs to
+`seo_content` — it picks *which of three things gets drafted*. A pipeline
+containing none of the channel-aware stages (`choose_channel`, `analyze`,
+`draft`, `self_qa`) has no channel, and none is invented for it: `input.channel`
+stays absent rather than quietly becoming `"site_article"`. A pipeline that
+*does* reuse `draft` resolves a channel exactly as before.
+
+Worked end to end, offline, in
+[example 08](../examples/08-custom-pipeline/) — a site audit whose stages,
+templates and fixtures all live in the tenant folder.
+
+---
+
 ## Prompt templates
 
 | Field | Type | Default |
 |---|---|---|
 | `prompt_templates` | `dict[str, str]` | One generic template per channel |
+
+A prompt is the template most worth
+[keeping in its own file](#keeping-a-template-in-its-own-file) —
+`{"file": "site_article.j2"}` instead of one escaped JSON line.
 
 You can override the wording for any of the three channels (`site_article`,
 `external_article`, `engagement_comment`); any you leave out keeps the default.

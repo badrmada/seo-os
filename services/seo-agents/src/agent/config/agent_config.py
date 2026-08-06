@@ -24,6 +24,16 @@ class AgentConfig:
     # its own base directory to AgentConfigLoader.load_dict().
     config_base_dir: str = ""
 
+    # Which templates came from a file, and which file (agent/config/template_files.py).
+    # Written by the loader, never by a tenant — AgentConfigLoader rejects it as an
+    # input field, since it reports what happened rather than asking for anything.
+    # Each entry is {"slot", "file", "path"}, e.g.
+    # {"slot": "prompt_templates.site_article", "file": "site_article.j2",
+    #  "path": ".../acme/templates/site_article.j2"}. Plain data on purpose: a
+    # template file is read in full at load time, so nothing here is a live
+    # reference and a cached or serialized config stays serializable.
+    template_sources: list[dict] = field(default_factory=list)
+
     # --- The site this agent works on ---
     # One general, vendor-neutral answer to "which website is this?", e.g.
     # "https://example.com". Read by any tool that needs to know the site rather
@@ -255,6 +265,42 @@ class AgentConfig:
     output_sinks: list[dict] = field(
         default_factory=lambda: [{"name": "stdout", "provider": "json"}]
     )
+
+    # --- Which agent this tenant runs (agent/graph/pipeline.py) ---
+    # The built-in "seo_content" writes an article or a reply: discover ->
+    # choose_channel -> analyze -> draft -> self_qa, with which of those exist
+    # decided by discovery_sources. `pipelines` adds others, each a named list of
+    # stages, and each stage either a built-in name or a class in this tenant's
+    # plugins/ folder:
+    #
+    #   "agent_type": "site_audit",
+    #   "pipelines": {
+    #     "site_audit": {"stages": [
+    #       {"name": "crawl",    "class": "audit:CrawlStage", "options": {...}},
+    #       {"name": "findings", "class": "audit:FindingsStage"},
+    #       {"name": "verify",   "class": "audit:VerifyStage"}
+    #     ]}
+    #   }
+    #
+    # Each entry: "name" (the node name, unique), optional "class"
+    # ("module:ClassName" — required unless "name" is a built-in stage), optional
+    # "mode" ("sequential" | "concurrent_from_start" | "parallel_by_source"), and
+    # optional "options" handed to a class that asks for a third constructor
+    # argument. List order is the chain.
+    #
+    # Why this rather than a second agent shipped here: writing an article is one
+    # way to grow a site and telling someone what to fix on the one they have is
+    # another, but which findings matter and what a crawler does are a tenant's
+    # position to hold, not this repo's. A stage writes `output` with its own
+    # `kind` ("site_audit", ...), so the result shape in docs/output-schema.md
+    # takes a non-draft deliverable without a new field.
+    #
+    # `agent_type` is this tenant's default; a run overrides it with `--agent
+    # <name>` or RunRequest.agent_type. It reaches the result as
+    # AgentState.agent_type. The loader rejects an agent_type with no pipeline, so
+    # a typo fails at save time rather than running the wrong agent.
+    agent_type: str = "seo_content"
+    pipelines: dict[str, dict] = field(default_factory=dict)
 
     # --- Execution ---
     # An overall bound on one run, in seconds, on top of the per-call timeouts each
