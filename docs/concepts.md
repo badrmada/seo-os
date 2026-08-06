@@ -128,6 +128,20 @@ This level covers more than people expect — most analytics, traffic and rank d
 never needs code.
 → [Templates, explained properly](../services/seo-agents/docs/configuration.md#templates-explained-properly-with-examples)
 
+**A template like this is not a prompt.** Same Jinja2 syntax, different job:
+this one maps *your data* into facts the agent holds. The prompt — the actual
+words sent to the model — is a separate field, `prompt_templates`, one per
+channel, and it decides what the agent *does* with those facts. Both are
+optional, and both have working defaults.
+
+```
+your JSON ──(data template)──▸ a fact the agent holds ──(prompt template)──▸ what the model reads
+```
+
+→ [What a prompt template actually is](../services/seo-agents/docs/configuration.md#what-a-prompt-template-actually-is),
+and `python src/main.py preview-prompt --tenant <name>` to see both ends of that
+chain on your own config.
+
 ### Level 3 — your class
 
 The logic is real code: a database query, a paginated API, a multi-step routine.
@@ -354,6 +368,8 @@ you can actually configure — nothing here is a label without a field behind it
 | **Tools** | What specialists call during a run. | `Tools`, `tools/base.py` |
 | **Signal** | A data source feeding a run — the open-ended kind. | `signal_sources[]` |
 | **Specialist** | One step in the pipeline: discover, choose, analyze, draft, review. | a stage; `list-specialists` |
+| **Data template** | Maps your JSON into the facts a run holds. Never seen by the model. | any `*_template` on a provider |
+| **Prompt template** | The literal text a specialist sends the model. | `prompt_templates.<channel>` |
 | **Skill** | A packaged deliverable in an agent's folder: pipeline + stages + templates. | `pipelines`, `plugins/`, `templates/` |
 | **Sub-agent** | A provider that is itself a multi-step agent. | a `"custom"` class |
 | **MCP** | A Model Context Protocol server used as a source. | `"provider": "mcp"` |

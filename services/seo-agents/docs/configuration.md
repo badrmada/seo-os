@@ -563,9 +563,53 @@ anything — the fastest way to find a bad path or an unimportable class.
 
 ## Templates, explained properly (with examples)
 
-This is the feature that lets you plug in **your own** analytics or traffic
-**without writing any code**, so it's worth getting comfortable with. It's the
-same mechanism for both analytics and traffic.
+Templates are how you adapt this agent to *your* product without writing any
+code. They're all [Jinja2](https://jinja.palletsprojects.com/) — the same "fill
+in the blanks" idea as a mail merge — but they do **two completely different
+jobs**, and knowing which one you're writing is most of the battle.
+
+### Two kinds of template, and what each one is for
+
+| | **Data templates** | **Prompt templates** |
+|---|---|---|
+| Fields | `summary_template`, `highlights_template`, `rows_template`, `facts_template`, `items_template` | `prompt_templates.site_article` / `.external_article` / `.engagement_comment` |
+| Answers | *"Where in my JSON are the numbers that matter?"* | *"What should the model be told to write?"* |
+| Input | **your** raw JSON, as `data` | facts the agent already gathered, as named variables |
+| Output | data — one line of text, or a JSON array/object | **the literal words sent to the AI model** |
+| Who runs it | the analyze step, before any model is called | the draft step, as the model is called |
+| Get it wrong and | the agent has no facts about your product | the agent has facts and writes the wrong thing with them |
+
+They are two halves of one chain. A data template pulls a number out of your
+export; a prompt template decides whether the model ever hears about it:
+
+```mermaid
+flowchart LR
+    RAW["your analytics JSON<br/>totals.signups_30d = 214"]
+    SUM["analytics_summary<br/>'214 new signups in the last 30 days'"]
+    PROMPT["the prompt text<br/>the model actually receives"]
+    RAW -- "summary_template<br/>(a data template)" --> SUM
+    SUM -- "{{ analytics_summary }}<br/>(a prompt template)" --> PROMPT
+```
+
+So: **data templates decide what the agent knows. Prompt templates decide what
+it does with it.** Neither is required — leave both out and you get generic
+defaults that still produce a draft.
+
+There's one more, further down: a **pipeline stage** can take a template of its
+own (example 08's `report_template` renders a site audit into markdown). Same
+syntax, and it's declared by the stage rather than by a provider — see
+[agent types and pipelines](#a-different-deliverable-agent-types-and-pipelines).
+
+This section covers data templates. Prompt templates get their own section:
+[Prompt templates](#prompt-templates).
+
+**The fastest way to understand either one** is to render one and look at it —
+`preview-prompt` builds the real prompt, from your real data, without calling
+the model or spending anything:
+
+```bash
+python src/main.py preview-prompt --tenant acme
+```
 
 ### The idea
 
@@ -1371,22 +1415,194 @@ templates and fixtures all live in the tenant folder.
 |---|---|---|
 | `prompt_templates` | `dict[str, str]` | One generic template per channel |
 
-A prompt is the template most worth
+### What a prompt template actually is
+
+**It is the text the AI model reads.** Not a hint, not a setting that influences
+the wording — the words themselves. When the draft step runs, it takes the
+template for this run's channel, fills in the blanks with everything the earlier
+steps gathered, and sends the result to the model as the whole instruction.
+
+The pipeline makes it concrete. Only one step ever prompts the model for the
+draft:
+
+```mermaid
+flowchart LR
+    DI[discover] --> CH[choose channel]
+    CH --> AN["analyze<br/><i>data templates run here</i>"]
+    AN --> DR["draft<br/><i>prompt template renders,<br/>model is called</i>"]
+    DR --> QA[self-review]
+```
+
+- **discover** finds opportunities. An `"llm"` source prompts the model itself,
+  with its *own* template — `prompt_template` on that source entry, not this
+  field. **choose channel** is scoring code, no model.
+- **analyze** runs your **data** templates and gathers keyword, analytics,
+  traffic and signal facts.
+- **draft** renders `prompt_templates[channel]` with those facts and calls the
+  model. This is the prompt that writes what you ship.
+- **self-review** is pure code — word counts, keyword presence, disclosure
+  checks. No model, no template.
+
+There is no hidden system prompt stacked on top of your wording. The one thing
+the system adds is a single trailing line — *"Return ONLY a JSON object with
+keys: title, meta_description, headings, body, internal_links"*, or its one-key
+equivalent for a reply — appended after your template renders, so the response
+stays parseable however creatively you write. **Never write that instruction
+yourself**; you'd only be duplicating it.
+
+### Every prompt in a run, and which field owns it
+
+A default run makes one model call. With discovery on it makes up to three, and
+each has a template you can override — in a *different* place, which is the part
+worth memorizing:
+
+| The model is asked | Which field | When it runs |
+|---|---|---|
+| *"write the article/reply"* | `prompt_templates.<channel>` | every run |
+| *"what's worth writing about right now?"* | `discovery_sources[].prompt_template` (`"provider": "llm"` only) | when discovery is on |
+| *"what should I search the web for?"* | `discovery_sources[].query_prompt_template` | when discovery is on and you haven't set fixed `search_queries` |
+
+The discovery pair is documented with the rest of its options under
+[Opportunity discovery](#opportunity-discovery); the defaults are in
+[`tools/clients/opportunity_llm.py`](../src/tools/clients/opportunity_llm.py).
+They render against a smaller context — `brand_description`, `agent_goal`,
+`seed_keyword`, `context_text`, `max_opportunities` (plus `max_queries` for the
+query one) — because at that point in the run nothing has been analyzed yet.
+Each gets its own system-appended JSON instruction, same rule as the draft.
+
+Two things are *not* prompts, despite the name: a **data template** (it shapes
+facts) and a stage's **`report_template`** (it renders a finished deliverable
+into markdown after the work is done).
+
+### The specialists are the pipeline steps, not the prompts
+
+Worth being explicit, since "team of specialists" can suggest each one has a
+prompt you tune. The specialists are the steps above — code that gathers,
+decides, drafts, and checks. Two of them talk to a model (discover and draft),
+and the table above is the complete list of prompts you own. The rest are code.
+If you want a *new* specialist with a prompt of its own, that's a pipeline
+stage, not a prompt template — see
+[agent types and pipelines](#a-different-deliverable-agent-types-and-pipelines)
+and [extending.md](extending.md).
+
+### One template per channel
+
+You override any of the three channels; any you leave out keeps its built-in
+default:
+
+```jsonc
+"prompt_templates": {
+  "site_article":       { "file": "site_article.j2" },
+  "external_article":   { "file": "external_article.j2" },
+  "engagement_comment": "You're replying as a real community member. ..."
+}
+```
+
+They are separate because they're different writing jobs — an article for your
+own site, an article for someone else's platform, and a genuine reply in a
+thread someone else started. A run uses exactly one, chosen by `input.json`'s
+`channel` or by discovery.
+
+The prompt is the template most worth
 [keeping in its own file](#keeping-a-template-in-its-own-file) —
-`{"file": "site_article.j2"}` instead of one escaped JSON line.
+`{"file": "site_article.j2"}` beats one escaped JSON line with `\n` in it.
 
-You can override the wording for any of the three channels (`site_article`,
-`external_article`, `engagement_comment`); any you leave out keeps the default.
-These use the same Jinja2 mechanism as the data templates above. Variables you
-can reference include `brand_description`, `agent_goal`, `keyword`, `tone`,
-`max_words`, `context_text`, `analytics_summary`, `traffic_summary`, and
-`highlights` — the built-in defaults in
-[`agent/prompts/templates.py`](../src/agent/prompts/templates.py) are the best
-reference for what's available per channel.
+### What you can reference
 
-You control the wording; the system always appends its own "return exactly this
-JSON" instruction afterward, so the output stays parseable no matter what you
-write. Overrides are validated on config load. See
+Everything below is available to every article template, on every run. Empty is
+normal — a tenant with no analytics tool gets an empty `analytics_summary`, not
+an error — so **guard anything optional with `{% if %}`** rather than dropping a
+stray "Traffic: " into the prompt:
+
+| Variable | What it holds | Where it comes from |
+|---|---|---|
+| `brand_description` | What your product is | `tenant.json` |
+| `agent_goal` | What this agent is trying to achieve | `tenant.json` |
+| `keyword` | The topic/keyword for this run | `input.json`'s `seed_keyword`, your rank data, or discovery |
+| `strategy` | Why *this* keyword was picked | the `reason` on the chosen keyword row — from your rank data or from discovery; empty when nothing gave one |
+| `tone` | This run's tone | `input.json`'s `params.tone`, else `default_article_tone` |
+| `max_words` | Length target | `input.json`'s `params.max_words`, else `default_max_words` |
+| `analytics_summary` | One line about your product's activity | your analytics `summary_template` |
+| `traffic_summary` | One line about site traffic | your traffic `summary_template` |
+| `highlights` | `[{label, url}, …]` — real pages worth linking | your analytics `highlights_template` |
+| `signals` | `{name: {summary, facts, items}}` for every configured input | your `signal_sources` |
+| `platform_name` | Where an external article is headed ("Medium") | `input.json`'s `params.platform_name`; `external_article` only |
+| `channel` | Which channel this run is | the run |
+
+`engagement_comment` is a different job and gets a different, smaller set:
+`context_text` (the post being replied to), `tone`, `brand_description`, and
+`signals`. There is no `keyword` or `max_words` in a reply.
+
+Three notes that save time:
+
+- **`signals` always has an entry for every configured source**, even one that
+  failed or had nothing to say — so `{{ signals.rank_tracker.summary }}` never
+  explodes mid-run. Loop over `signals.items()` to stay generic, or name yours
+  directly; both are checked when the config loads.
+- **A typo is caught at config load, not mid-run.** Templates render with
+  `StrictUndefined` against a sample context, so `{{ brand_descripton }}` fails
+  when you save the config — including signal names, checked against your own
+  `signal_sources`.
+- **Prompt templates never see `data`.** Your raw JSON is a data template's
+  input, not a prompt's. To get a raw number into the prompt, route it through a
+  data template — `facts_template` is the usual way — and read it back as
+  `{{ signals.<name>.facts.<key> }}`.
+
+### Writing one that serves your goal
+
+The defaults in
+[`agent/prompts/templates.py`](../src/agent/prompts/templates.py) are
+product-neutral on purpose, and they're the right starting point: copy the one
+for your channel into `templates/site_article.j2`, then edit. What's worth
+keeping as you do:
+
+1. **State who's writing and for whom.** "You are a senior engineer writing for
+   the PingOwl developer blog" produces different prose than "content writer."
+2. **Pass the goal, not just the topic.** `{{ agent_goal }}` is what keeps a
+   draft aimed at traffic that converts rather than words that fill a page.
+3. **Ground it in real data.** `{{ highlights }}` carries real URLs from your
+   own analytics; asking the model to link them is what turns a draft into
+   internal linking instead of invented references.
+4. **Say what "good" means for you** — depth, code samples, no marketing fluff,
+   short paragraphs. This is the part no default can guess.
+5. **Guard the optional bits** with `{% if %}`, and tell the model it *may* use
+   them rather than must: "reference this if it fits naturally, don't force it."
+6. **Don't ask for JSON, a word count check, or a keyword count.** The JSON
+   instruction is appended for you, and word count/keyword presence/disclosure
+   are checked afterward in code (see
+   [Self-review thresholds](#self-review-thresholds)).
+
+Then render it and read it before spending an API call:
+
+```bash
+python src/main.py preview-prompt --tenant acme
+```
+
+That prints exactly what would be sent, built from your real config and real
+data, with the system's JSON line at the end. Here's example 02's, whole — every
+line traceable to a config field or a data template:
+
+```console
+$ python src/main.py preview-prompt --userdata examples --tenant 02-saas-blog-pingowl
+--- channel: site_article ---
+
+You are a senior engineer writing for the PingOwl developer blog.
+Product: PingOwl is a cron job and uptime monitoring service for developers: ...
+Goal: Grow organic signups from developers searching for monitoring and reliability topics.
+Target keyword/topic: "cron job monitoring"
+Tone: concise and technical. Max words: 900.
+Write for a technical audience: concrete, code-first, no marketing fluff. ...
+Recent product activity you may reference if it fits naturally: 214 new signups in the last 30 days ...
+Popular existing posts to link where relevant (add the link to internal_links):
+- "How to monitor cron jobs the right way (1840 reads)" — https://pingowl.example.com/blog/monitor-cron-jobs
+...
+Return ONLY a JSON object with keys: title, meta_description, headings (array of strings), body (markdown string), internal_links (array of strings). No prose outside the JSON.
+```
+
+The "Product:" and "Goal:" lines are `brand_description` and `agent_goal`. The
+"Recent product activity" line is that tenant's `summary_template` output. The
+bulleted posts are its `highlights_template` output. The last line is the
+system's, and is not in the template. See
 [architecture.md](architecture.md#prompts-the-system-owns-the-frame-you-own-the-wording).
 
 ---

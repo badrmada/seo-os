@@ -215,7 +215,10 @@ Every job is two lines: **which provider**, and **that provider's own options**.
     "anonymous", "no login", "no signup", "no tracking"
   ],
 
-  // --- Optional: override the wording of a specific channel's prompt ---
+  // --- Optional: the actual text sent to the AI model for this channel ---
+  // Leave it out and a generic built-in prompt is used. Set it and these are
+  // the words the model reads, with {{ ... }} filled in from your config and
+  // your data. `preview-prompt` prints the finished text without sending it.
   "prompt_templates": {
     "engagement_comment": "You're replying as a real community member.\nProduct: {{ brand_description }}\nReplying to: \"{{ context_text }}\"\nTone: {{ tone }}. Keep it to 2-3 sentences."
   }
@@ -244,17 +247,34 @@ prints every provider you can choose from. Every field is documented in
 **[docs/configuration.md](docs/configuration.md)**, which walks through this
 exact example line by line.
 
-> **A note on the two templates above.** `summary_template` and
-> `highlights_template` are how you feed the agent your product's
-> own analytics **without writing any code**. Your analytics is just JSON with
-> your own field names (here: `total_ideas`, `top_by_upvotes`, and so on). A
-> template is a short snippet that maps that JSON onto the two things the
-> agent expects: a one-line **summary** and a short list of **highlights**
-> (each a label plus a URL). This is worth understanding well —
+> **A note on templates — there are two kinds, and they do different jobs.**
+>
+> **Data templates** (`summary_template`, `highlights_template`, and their
+> relatives) feed the agent your product's own numbers **without writing any
+> code**. Your analytics is just JSON with your own field names (here:
+> `total_ideas`, `top_by_upvotes`, and so on); a data template is a short
+> snippet that maps that JSON onto the two things the agent expects — a one-line
+> **summary** and a short list of **highlights** (each a label plus a URL).
+> They decide **what the agent knows**.
+>
+> **Prompt templates** (`prompt_templates`, further down the example) are the
+> literal instructions sent to the AI model when it writes. They decide **what
+> the agent does with what it knows** — the persona, the angle, what counts as a
+> good draft for your product. You never have to write one; leave the field out
+> and a generic default is used.
+>
+> Both are Jinja2, and they chain: your JSON → a data template → a fact like
+> `analytics_summary` → your prompt template → the words the model reads. Run
+> `python src/main.py preview-prompt --tenant acme` to see the whole chain
+> resolved on your own config, without calling the model.
+>
 > [docs/configuration.md](docs/configuration.md#templates-explained-properly-with-examples)
-> explains it step by step with ready-to-adapt examples for a SaaS app, an
-> online store, and a website-traffic feed. If your data needs real code instead
-> of a template, see [docs/extending.md](docs/extending.md).
+> covers data templates step by step, with ready-to-adapt examples for a SaaS
+> app, an online store, and a website-traffic feed, and
+> [prompt templates](docs/configuration.md#prompt-templates) covers every
+> variable a prompt can use and how to write one that serves your goal. If your
+> data needs real code instead of a template, see
+> [docs/extending.md](docs/extending.md).
 
 ### 5. Describe each run with `input.json`
 
@@ -328,6 +348,7 @@ Verbose output goes to stderr, so `python src/main.py run --tenant acme -v | jq`
 
 ```bash
 python src/main.py check-data --tenant acme        # validate the config and build every tool, no LLM call
+python src/main.py preview-prompt --tenant acme    # the exact prompt a draft would send, without sending it
 python src/main.py show-graph --tenant acme        # which specialists will actually run
 python src/main.py list-specialists --tenant acme  # what this agent has wired in
 python src/main.py list-tools --all                # every provider available, with yours marked
@@ -337,7 +358,10 @@ python src/main.py --help                          # all of them
 
 `check-data` is the one to reach for after editing a config — it catches a broken
 template, a missing credentials file, or an unimportable custom class before a
-run spends an API call. See [docs/cli.md](docs/cli.md).
+run spends an API call. `preview-prompt` is the one to reach for when you want to
+*understand* the agent: it prints the finished prompt — your brand voice, your
+data, your wording, all resolved — so you can see exactly what the model is
+being asked before it's asked. See [docs/cli.md](docs/cli.md).
 
 ### Learn by example
 

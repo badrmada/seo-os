@@ -631,6 +631,14 @@ class ToolError(TypedDict):
 
 ## Prompts: the system owns the frame, you own the wording
 
+Two steps in a run talk to a model, and each renders a tenant-owned template
+first: `discover` (an `"llm"` source's `prompt_template`, and the query-writing
+`query_prompt_template` before it) and `draft`
+(`prompt_templates[channel]`). Everything else — channel scoring, analyze,
+self-review — is code. The per-field walkthrough, including every variable a
+prompt can reference and where each one comes from, is in
+[configuration.md](configuration.md#prompt-templates).
+
 [`agent/prompts/builder.py`](../src/agent/prompts/builder.py) renders your
 prompt template (or the built-in default from
 [`agent/prompts/templates.py`](../src/agent/prompts/templates.py)) and then

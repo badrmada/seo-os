@@ -30,8 +30,14 @@ tenant.json
 input.json
 ```
 
-The prompt lives in `templates/` rather than on one escaped line inside
-`tenant.json`, which is what `{"file": ...}` is for:
+`templates/site_article.j2` is the **prompt** — the actual text sent to the model
+when it writes, as opposed to the data templates in `tenant.json` that shape
+Sproutly's two feeds into facts. It's what lets this example do the thing that
+matters here: name its own signals in the wording
+(`{{ signals.rank_tracker['items'] }}`) and tell the model to prefer improving a
+page that already ranks over starting a new one. A prompt is a paragraph, so it
+lives in `templates/` rather than on one escaped line inside `tenant.json`, which
+is what `{"file": ...}` is for:
 
 ```jsonc
 "prompt_templates": { "site_article": { "file": "site_article.j2" } }

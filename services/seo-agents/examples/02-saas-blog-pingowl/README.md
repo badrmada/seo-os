@@ -25,6 +25,13 @@ technical, code-first voice, grounded in its real product numbers.
 This is the important part. Your data has **its own field names**; two templates
 map them into what the agent expects.
 
+This example has both kinds of template, and it's worth seeing which is which:
+the two **data templates** below turn PingOwl's analytics JSON into facts, and
+the **prompt template** in `tenant.json` (`prompt_templates.site_article`) is the
+wording sent to the model, with those facts dropped into it. The rendered prompt
+further down shows them meeting. See
+[configuration.md](../../docs/configuration.md#two-kinds-of-template-and-what-each-one-is-for).
+
 **Your data** (`data/analytics.json`, trimmed):
 
 ```json
@@ -63,7 +70,7 @@ straight from your data, and the wording is your custom template:
 You are a senior engineer writing for the PingOwl developer blog.
 Product: PingOwl is a cron job and uptime monitoring service for developers: ...
 Goal: Grow organic signups from developers searching for monitoring and reliability topics.
-Target keyword/topic: "anonymous social media app"
+Target keyword/topic: "cron job monitoring"
 Tone: concise and technical. Max words: 900.
 Write for a technical audience: concrete, code-first, no marketing fluff. ...
 Recent product activity you may reference if it fits naturally: 214 new signups in the last 30 days across 3120 active monitors, 1900000 checks run in the last 24h.
