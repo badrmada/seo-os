@@ -102,6 +102,15 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
+Or skip Python entirely and use the image — `make build` builds it, and
+`ENGINE=docker` on the commands below runs through it instead of the virtualenv.
+Everything in this quickstart works either way, because a tenant is a folder
+either way: the venv reads it from disk, the container reads it through a mount.
+
+`make` on its own lists every target ([Makefile](Makefile)) — `test`, `build`,
+`push`, `run`, `example`, and `version`/`labels` for what a build would carry.
+These are the same commands CI runs, which is the point of them existing here.
+
 ### 2. A tenant is a folder
 
 Everything one configured agent owns lives in its own folder, and a run refers to
@@ -147,6 +156,20 @@ python src/main.py run --tenant acme
 
 That's a complete run against fake data — it prints the full result so you can
 see the exact result schema before connecting anything real.
+
+The same run, through `make` or through the image:
+
+```bash
+make run TENANT=acme                  # the virtualenv above
+make build && make run TENANT=acme ENGINE=docker
+```
+
+`make build` first because `ENGINE=docker` runs a *local* image; without it,
+Docker tries to pull one and the Makefile stops with that advice rather than a
+registry error. The plain `docker run` underneath is
+`docker run --rm -v "$PWD/userdata:/userdata" ghcr.io/badrmada/seo-os/seo-agents:latest run --tenant acme`
+— no `--userdata` flag, because the image sets `SEO_AGENT_USERDATA=/userdata` and
+the mount is the flag.
 
 ### 4. Connect your real tools in `tenant.json`
 

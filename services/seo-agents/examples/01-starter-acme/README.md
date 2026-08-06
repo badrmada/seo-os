@@ -33,6 +33,9 @@ the brand voice.
 python src/main.py run --userdata examples --tenant 01-starter-acme
 ```
 
+Or `make example EXAMPLE=01-starter-acme`, or in Docker with nothing installed —
+the same run three ways is in [Running an example](../README.md#running-an-example).
+
 You get a full result object — `phase`, `input`, `output`, `discovery`, `usage`.
 The `output.content` is the drafted article; `output.metadata.qa_notes` is the
 self-review. The exact fields are documented in

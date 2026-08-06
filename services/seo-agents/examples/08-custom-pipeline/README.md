@@ -91,6 +91,9 @@ python src/main.py check-data --userdata examples --tenant 08-custom-pipeline
 python src/main.py run --userdata examples --tenant 08-custom-pipeline
 ```
 
+Or `make example EXAMPLE=08-custom-pipeline`, or in Docker with nothing installed —
+the same run three ways is in [Running an example](../README.md#running-an-example).
+
 The same config still runs the built-in agent, because a tenant is not limited to
 one deliverable:
 

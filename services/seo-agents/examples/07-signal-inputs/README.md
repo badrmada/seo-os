@@ -142,6 +142,9 @@ python src/main.py preview-prompt --userdata examples --tenant 07-signal-inputs
 python src/main.py run --userdata examples --tenant 07-signal-inputs
 ```
 
+Or `make example EXAMPLE=07-signal-inputs`, or in Docker with nothing installed —
+the same run three ways is in [Running an example](../README.md#running-an-example).
+
 `preview-prompt` is the one to look at — it's built entirely from your config and
 data. Real output (trimmed):
 

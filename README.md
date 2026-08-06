@@ -195,6 +195,17 @@ An empty `tenant.json` means "use the built-in fake for everything." You get a
 complete run — analyze, draft, self-review — and the full result printed, so you
 can see exactly what you'd be wiring into before you wire anything.
 
+**Prefer not to install Python?** Everything after the two `echo` lines works
+through the image instead, because a tenant is a folder either way — the
+virtualenv reads it from disk, the container reads it through a mount:
+
+```bash
+make build && make run TENANT=acme ENGINE=docker
+```
+
+`make` on its own lists every target
+([Makefile](services/seo-agents/Makefile)); these are the same commands CI runs.
+
 ## The eight words you need
 
 You'll meet these on the first page of any doc here. Each links to the full

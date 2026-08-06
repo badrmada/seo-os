@@ -80,11 +80,15 @@ class TrendingSearches:
 
 ## Run it
 
-Your code lives in `code/`, so tell Python where to find it:
+Your code lives in this tenant's `plugins/`, so there is nothing to tell Python:
 
 ```bash
 python src/main.py run --userdata examples --tenant 05-advanced-devboard --input input.auto.json
 ```
+
+Or `make example EXAMPLE=05-advanced-devboard ARGS="--input input.auto.json"`,
+or in Docker with nothing installed — the same run three ways is in
+[Running an example](../README.md#running-an-example).
 
 `analytics_growth` and `trending_finder` are found because they sit in this
 tenant's `plugins/` folder — nothing to install, no `PYTHONPATH`, and it works

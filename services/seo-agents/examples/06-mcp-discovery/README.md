@@ -85,6 +85,9 @@ SDK is already installed; the built-in provider uses it.
 python src/main.py run --userdata examples --tenant 06-mcp-discovery
 ```
 
+Or `make example EXAMPLE=06-mcp-discovery`, or in Docker with nothing installed —
+the same run three ways is in [Running an example](../README.md#running-an-example).
+
 `input.json` has **no channel**, so the agent runs both MCP-backed sources (in
 parallel, as it does whenever 2+ sources are configured) and picks the channel
 from what they return. Real output (trimmed):

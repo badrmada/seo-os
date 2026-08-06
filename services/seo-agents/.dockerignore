@@ -1,0 +1,24 @@
+# The image copies requirements.txt and src/, and nothing else. Everything here
+# would be uploaded to the daemon on every build and then never used — `vir/` is
+# a whole virtualenv, and it alone is most of the context.
+#
+# `userdata/` is the one that isn't only about speed: a tenant folder holds real
+# credentials, and the surest way for them never to reach a layer is for them
+# never to reach the context.
+
+vir/
+.venv/
+venv/
+userdata/
+examples/
+
+__pycache__/
+*.pyc
+.pytest_cache/
+
+docs/
+README.md
+PLAN.md
+Makefile
+Dockerfile
+.dockerignore

@@ -52,23 +52,61 @@ proven rather than claimed.
 
 ## Running an example
 
-First install the project once (see the service [README](../README.md)):
+**Three ways, one run.** They differ in what you need installed, not in what
+happens — every one of them ends in the same `run` command against the same
+folder. All three are run **from `services/seo-agents/`**.
+
+**Python**, the direct form. Install once (see the service
+[README](../README.md#1-install)), then `--userdata examples` makes this folder
+the workspace and `--tenant` names the example inside it:
 
 ```bash
-cd services/seo-agents
 python3.11 -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-```
-
-Then run any example **from `services/seo-agents/`** — `--userdata examples`
-makes this folder the workspace, and `--tenant` names the example folder inside
-it. Each ships its own `tenant.json` and `input.json`:
-
-```bash
 python src/main.py run --userdata examples --tenant 02-saas-blog-pingowl
 ```
 
-Three variations worth knowing:
+**Docker**, with nothing installed but Docker. There is no `--userdata` flag here
+because the image already sets `SEO_AGENT_USERDATA=/userdata`, so mounting this
+folder there *is* the flag:
+
+```bash
+docker run --rm -v "$PWD/examples:/userdata" \
+  ghcr.io/badrmada/seo-os/seo-agents:latest run --tenant 02-saas-blog-pingowl
+```
+
+**Make**, which is the two above with the arguments filled in — the same targets
+CI calls, so there is one definition of "run an example" rather than three:
+
+```bash
+make example EXAMPLE=02-saas-blog-pingowl
+make build && make example EXAMPLE=02-saas-blog-pingowl ENGINE=docker
+```
+
+`ENGINE=docker` runs a *local* image, so `make build` comes first unless you have
+already pulled one; without either, the Makefile stops and names both fixes
+rather than letting Docker fail at the registry.
+
+`make` on its own lists every target. See the
+[Makefile](../Makefile) for `build`, `push`, `test` and `run`.
+
+> **Which of these is checked, and how.** The `python src/main.py …` lines
+> throughout these READMEs are **executed on every push** by
+> [`scripts/check_docs.py`](../../../scripts/check_docs.py) — that is why they can
+> be trusted literally. The `make` and `docker run` forms are **not** run
+> automatically and are verified by hand when they change: running them in CI
+> would mean building an image inside the docs workflow, which is
+> [`images.yml`](../../../.github/workflows/images.yml)'s job. Treat a
+> `python src/main.py` line as tested and the other two as maintained.
+
+Two notes on the Docker form specifically. The mount must be **writable** —
+Python writes `__pycache__` beside a tenant's `plugins/`. And examples that need
+more than a config work unchanged: **06** spawns its MCP server as a subprocess
+inside the container, and **05/07/08** load their plugins from the mounted
+folder, because a tenant is a folder either way.
+
+Three variations worth knowing (shown with `python`; each works the same way in
+the other two forms):
 
 - **Preview the prompt instead of drafting** — exactly what would be sent to the
   model. Offline, this is the clearest way to watch your data flow through your

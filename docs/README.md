@@ -41,11 +41,18 @@ Two conventions worth knowing as a reader:
 - **Nothing claims a capability that doesn't exist.** Where a page shows an
   integration that isn't shipped — a backlink API, a CMS — it says so and shows
   you the config you'd write. Real field names throughout.
-- **Every command has been executed, not proofread.**
-  [`scripts/check_docs.py`](../scripts/check_docs.py) runs every documented
-  command and resolves every link and anchor, in CI on every pull request. It's
-  there because stale commands and renamed headings are invisible to reading —
-  they've been caught six times this way and zero times by review.
+- **Every `python src/main.py` command has been executed, not proofread.**
+  [`scripts/check_docs.py`](../scripts/check_docs.py) runs each one and resolves
+  every link and anchor, in CI on every pull request. It's there because stale
+  commands and renamed headings are invisible to reading — they've been caught
+  six times this way and zero times by review.
+
+  The `make …` and `docker run …` lines are the deliberate exception: they are
+  **checked by hand when they change**, not on every push. Running them
+  automatically would mean building an image inside the docs workflow, which is
+  [`images.yml`](../.github/workflows/images.yml)'s job and not this one. The
+  distinction is written down rather than left to be assumed, because "every
+  command is checked" would otherwise be a claim this repo no longer meets.
 
 What is built and what is coming — for the runtime and for the services around it
 — is [roadmap.md](roadmap.md).
