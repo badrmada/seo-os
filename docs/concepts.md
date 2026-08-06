@@ -40,13 +40,20 @@ it:
 
 Two of those rows carry most of the flexibility:
 
-- **`signal` is the open one.** The three named data capabilities above it exist
-  because they get you to a real run in minutes, not because inputs come in three
-  kinds. A backlink API, a rank tracker, a trends export, a competitor watcher,
-  your internal dashboard — all `signal_sources` entries, a named list of any
-  length, collected concurrently and failing independently. Adding a kind of input
-  this project has never heard of is **config, not a fork**, and that is a
-  deliberate architectural commitment rather than a convenience.
+- **`signal` is the open one.** A signal is anything the agent should know before
+  it writes — if you'd want a human writer to glance at it first, that's a
+  signal. The three named data capabilities above it exist because they get you
+  to a real run in minutes, not because inputs come in three kinds. A backlink
+  API, a rank tracker, a trends export, a competitor watcher, your support
+  tickets, your product catalog, your internal dashboard — all `signal_sources`
+  entries, a named list of any length, collected concurrently and failing
+  independently. Adding a kind of input this project has never heard of is
+  **config, not a fork**, and that is a deliberate architectural commitment
+  rather than a convenience.
+
+  A signal contributes *context*, never a decision: it changes what the writer
+  knows, not which steps run, which keyword wins, or whether a draft passes.
+  → [What a signal is, with use cases](../services/seo-agents/docs/configuration.md#what-a-signal-is)
 - **`discovery` is what makes it an agent rather than a generator.** Without it,
   you say what to write about. With it, the system goes and finds out.
 
@@ -213,8 +220,15 @@ flowchart TD
 | `draft` | One model call, with your brand voice, your goal, and those facts. |
 | `self_qa` | Word count, keyword presence, readability, undisclosed brand mentions, link density — attached as advisory notes. |
 
+That graph is a real one: the runtime runs on
+[LangGraph](https://github.com/langchain-ai/langgraph), each specialist a node
+whose `run(state)` returns only the keys it changed. The dotted "joins" edge
+above is an AND-join — `analyze` waits for both branches — and with two or more
+discovery sources the `discover` node fans out one branch per source and merges
+them.
+
 **Which specialists run is a function of your config, not a fixed graph with
-switches.** A
+switches.** The graph is assembled from a spec your config produces, so a
 tenant with no `discovery_sources` doesn't run `discover` as a no-op — the stage
 isn't in their graph at all. Two or more sources fan out into one branch each and
 merge. `show-graph` prints exactly what your config produces, needs no API key,

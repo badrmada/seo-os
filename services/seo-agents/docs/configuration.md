@@ -442,10 +442,167 @@ needs real code, like a database query — see [extending.md](extending.md).
 
 ## Any other data source (`signal_sources`)
 
-The three sections above are the inputs that get you to a real run quickly. They
-are not the *model* of an input. A trends feed, a rank tracker, a keyword API, a
-competitor watcher, your own internal dashboard — all the same kind of thing, and
-adding one is configuration, not a fork of this project.
+### What a signal is
+
+**A signal is something the agent should know before it writes.** That's the
+whole concept. If you'd want a human writer to glance at it before starting —
+your rank positions, what competitors shipped this week, what customers keep
+asking support, which products are actually in stock — it's a signal.
+
+The three sections above are inputs that happen to have names, because they get
+you to a real run in minutes. They are not the *model* of an input. A trends
+feed, a rank tracker, a keyword API, a competitor watcher, your own internal
+dashboard are the same kind of thing, and adding one is **configuration, not a
+fork of this project**. The runtime has never heard of your vendor and never
+needs to: a signal hands over a sentence of prose and, optionally, some
+structure. Nothing in the pipeline parses it.
+
+Two things follow from that, and they're the ones people get wrong:
+
+- **A signal contributes context, not decisions.** It doesn't pick the keyword,
+  choose the channel, or block a draft. It changes what the writer *knows*, and
+  therefore what it writes. If you want something that decides what's worth
+  acting on, that's a [discovery source](#opportunity-discovery); if you want
+  something that rejects a bad draft, that's
+  [self-review](#self-review-thresholds).
+- **Nothing is hardcoded about *which* signals exist.** No stage names one, and
+  the built-in prompts loop over whatever is configured. Adding your ninth
+  signal touches no code and no existing template.
+
+### Where a signal lands in a run
+
+```mermaid
+flowchart LR
+    CFG["signal_sources[]<br/>your named inputs"] --> AN["analyze<br/>collect() on all of them,<br/>concurrently"]
+    AN --> SIG["signals<br/>{name: {summary, facts, items}}"]
+    SIG --> DR["draft<br/>the prompt the model reads"]
+```
+
+Collected in the **analyze** step, all of them at once, and handed to the
+**draft** step as `signals`, keyed by the name you gave each one. Two
+consequences worth knowing up front:
+
+- **`summary` reaches the model with no work from you.** The built-in prompts
+  print every signal's summary line. `facts` and `items` are *not* printed by
+  default — they're there for [a prompt template you write](#prompt-templates)
+  and for custom stages.
+- **Signals reach the writer, not the finder.** Discovery runs in parallel with
+  analyze, so an `"llm"` discovery source does not see your signals. Steering
+  discovery is what its own `prompt_template` and `search_queries` are for.
+
+### The three parts, and which one to write
+
+```jsonc
+{
+  "summary": "2 tracked keywords sit at positions 11-20.",         // text, into the prompt as-is
+  "facts":   { "tracked": 4, "striking_distance": 2 },              // named values
+  "items":   [ { "label": "indoor herb garden", "position": 12 } ]  // rows
+}
+```
+
+| Part | Write it when | Read it as |
+|---|---|---|
+| `summary` | **Always.** It's the only part that needs no prompt work, and a signal with nothing else is a complete signal. | `{{ signals.rank_tracker.summary }}` |
+| `facts` | Your prompt needs a *number* it can reason with — a count, a percentage, a date. | `{{ signals.rank_tracker.facts.striking_distance }}` |
+| `items` | You have **rows** worth listing — pages, threads, products, queries — usually with a URL the draft should link. | `{% for row in signals.rank_tracker['items'] %}` |
+
+Write the summary as a sentence you'd say to a colleague, not as a data dump.
+It's dropped into the prompt verbatim, so *"2 keywords sit at positions 11-20 —
+improving an existing page usually beats writing a new one"* steers a draft in a
+way `{"pos": [12, 17]}` never will.
+
+### Use cases
+
+Everything here is a `signal_sources` entry, no runtime change. The third column
+is the point — a signal is only worth adding if it changes what comes out:
+
+| You already have | The signal reports | What changes in the draft |
+|---|---|---|
+| A rank tracker (Ahrefs, Semrush, your own) | Which keywords sit at positions 11-20, and their URLs | It improves a page that's nearly ranking instead of starting a cold one — usually the highest-return SEO work there is |
+| A backlink API | Live links, referring domains, what's new | Angles that plausibly earn links, and honest authority claims |
+| A trends or seasonality export | Queries rising *this month* | Timing — it covers the query while it's climbing, not after |
+| A competitor watcher (RSS, a crawler) | What rivals published this week | It differentiates instead of writing the fourth identical post |
+| Support tickets or on-site search (Zendesk, Intercom, Algolia) | The questions customers actually ask, in their words | Articles that answer real questions, in the phrasing people type |
+| A product catalog (e-commerce) | In-stock bestsellers with URLs | It only recommends and links things you can actually sell today |
+| A changelog or docs index | What shipped recently | Posts about the new capability, with accurate detail instead of guesses |
+| Your CMS or sitemap | What you've already published | No accidental duplicate of a post from last year; real internal links |
+| Your own community or app activity | Hottest threads, most-upvoted ideas | Grounded examples of what people are discussing, with links back |
+
+Two shapes show up repeatedly, and the difference matters when you write the
+provider:
+
+- **Site-level** — the same answer whatever this run is about (backlink totals,
+  what competitors published). Just read your source.
+- **Run-level** — an answer *about this run's topic* (where does this keyword
+  rank? do we already have a post on it?). Signals get the run's context for
+  exactly this: `{{ context.seed_keyword }}`, `{{ context.site_url }}`,
+  `{{ context.channel }}`, `{{ context.context_text }}` in a `templated`
+  signal, and the same dict as `collect(context)`'s argument in a `custom` one.
+  Treat every key as optional — `channel` is empty when discovery hasn't picked
+  one yet.
+
+### One use case, start to finish
+
+Take the support-tickets row above. You export what customers asked this month
+to `data/tickets.json` — your field names, nothing standardized:
+
+```json
+{
+  "window_days": 30,
+  "top_questions": [
+    { "question": "how do I stop duplicate alerts when a job retries", "count": 41 },
+    { "question": "can I pause a monitor during a deploy", "count": 33 }
+  ],
+  "totals": { "tickets": 412, "deflected_by_docs": 118 }
+}
+```
+
+One entry in `tenant.json` turns that into a signal. Note the summary carries the
+*judgement* ("prefer answering one of these") — that's the part that changes a
+draft:
+
+```jsonc
+"signal_sources": [
+  {
+    "name": "support_questions",
+    "provider": "templated",
+    "options": {
+      "source": "file",
+      "report_path": "data/tickets.json",
+      "summary_template": "The 3 questions customers asked most in the last {{ data.window_days }} days, in their own words: {% for q in data.top_questions %}\"{{ q.question }}\" ({{ q.count }}x){% if not loop.last %}, {% endif %}{% endfor %}. Prefer answering one of these over a generic topic.",
+      "facts_template": "{\"tickets\": {{ data.totals.tickets }}, \"deflected_by_docs\": {{ data.totals.deflected_by_docs }}}",
+      "items_template": "[{% for q in data.top_questions %}{\"label\": {{ q.question|tojson }}, \"count\": {{ q.count }}}{% if not loop.last %},{% endif %}{% endfor %}]"
+    }
+  }
+]
+```
+
+That's the whole integration — no code, no prompt edit. `preview-prompt` on that
+tenant shows it arriving, because the built-in prompt already loops over every
+configured signal:
+
+```
+What this site's other data sources currently show (use only where genuinely relevant; don't recite them):
+- support_questions: The 3 questions customers asked most in the last 30 days, in their own words:
+  "how do I stop duplicate alerts when a job retries" (41x), "can I pause a monitor during a deploy" (33x).
+  Prefer answering one of these over a generic topic.
+```
+
+`facts` and `items` went along too, unused so far. The day you want the draft to
+lead with the top question by name, you write a
+[prompt template](#prompt-templates) that reaches for them:
+
+```jinja
+Answer this question directly, it came up {{ signals.support_questions['items'][0].count }} times
+last month: "{{ signals.support_questions['items'][0].label }}".
+```
+
+Worked end to end in a runnable form: [example 07](../examples/07-signal-inputs/)
+(a templated trends feed plus a custom rank tracker, offline), and
+[recipes.md](../../../docs/recipes.md#1-backlinks-ahrefs-majestic-moz-anything)
+(a backlink API both ways, and several signals at once).
+
+### The config
 
 `signal_sources` is that open list. Each entry is a named input:
 
@@ -470,32 +627,22 @@ adding one is configuration, not a fork of this project.
 | `"custom"` | whatever your class reads |
 | `"mock"` | `fail` (`bool`, default `false`) — makes this signal raise, to see the degrade path |
 
-Worked end to end in [example 07](../examples/07-signal-inputs/).
+### How each provider produces the three parts
 
-### What a signal produces
-
-Three parts, of which only the first is required:
-
-```jsonc
-{
-  "summary": "2 tracked keywords sit at positions 11-20.",  // text, into the prompt as-is
-  "facts":   { "tracked": 4, "striking_distance": 2 },       // named values
-  "items":   [ { "label": "indoor herb garden", "position": 12 } ]  // rows
-}
-```
-
-For `"templated"`, that's three Jinja2 templates: `summary_template` renders to
-text, `facts_template` to a JSON **object**, `items_template` to a JSON **array**
-(the same rule as `highlights_template` — see
+For `"templated"`, three Jinja2 templates — one per part: `summary_template`
+renders to text, `facts_template` to a JSON **object**, `items_template` to a
+JSON **array** (the same rule as `highlights_template` — see
 [Templates, explained properly](#templates-explained-properly-with-examples)).
-All three render against `{"data": <your raw JSON>, "context": <this run>}`.
+Only `summary_template` is worth writing on day one.
 
-That `context` is the one thing signals have that analytics and traffic don't:
-`{{ context.seed_keyword }}`, `{{ context.site_url }}`, `{{ context.channel }}`,
-`{{ context.context_text }}`. A signal is often *about* what this run is going
-after, not just about the site.
+All three render against `{"data": <your raw JSON>, "context": <this run>}` —
+`data` is your source's own field names, and `context` is the run-level steering
+described above, the one thing signals get that analytics and traffic don't.
 
-For `"custom"`, it's one method — see [extending.md](extending.md#walkthrough-a-signal-input).
+For `"custom"`, it's one method — `collect(context)` returning that same dict.
+See [extending.md](extending.md#walkthrough-a-signal-input), and
+[Templated vs. custom](#templated-vs-custom-which-one) if you're unsure which
+you need.
 
 ### Using signals in a prompt
 
