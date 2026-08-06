@@ -120,6 +120,45 @@ class AgentConfig:
     # provider answers (agent/graph/stages/analyze.py passes it to report()).
     analytics_highlights_limit: int = 3
 
+    # --- Signal inputs (tools/base.py's SignalSource Protocol) ---
+    # Every *input* the agent reads about the site and its market, as one named
+    # list — the generalization the three fixed slots above are not. Each entry:
+    #   {"name": str, "provider": "mock" | "templated" | "custom", "options": {...}}
+    # Read by agent/managers/tools_manager.py's ToolsManager.build_signal_sources()
+    # into Tools.signals, collected concurrently by agent/graph/stages/analyze.py
+    # and reaching the prompt as `signals`, keyed by name — so neither a stage nor
+    # the system's own templates ever have to learn a new signal's name.
+    #   - "mock": deterministic fixture (tools/mocks/signal_mock.py); accepts an
+    #     optional "fail": bool to simulate that signal failing.
+    #   - "templated": the tenant's own JSON (file or API), mapped by Jinja2 —
+    #     source ("file" | "api"), report_path, api_url, api_method, api_headers,
+    #     api_timeout_seconds, then summary_template (renders to text; the only
+    #     required one), facts_template (-> a JSON object) and items_template
+    #     (-> a JSON array). All three render against {"data": <raw JSON>,
+    #     "context": <the run's context>}.
+    #   - "custom": a tenant-registered class ("class": "module.path:ClassName"),
+    #     loaded exactly like every other custom provider.
+    #
+    # **`gsc`, `traffic` and `analytics` are reserved names here.** An entry using
+    # one selects that built-in slot's provider instead of adding a fourth signal,
+    # so the whole set of inputs can be written as one list:
+    #
+    #   "signal_sources": [
+    #     {"name": "gsc",     "provider": "google",     "options": {...}},
+    #     {"name": "traffic", "provider": "cloudflare", "options": {...}},
+    #     {"name": "trends",  "provider": "custom", "class": "trends:Client"}
+    #   ]
+    #
+    # The three `<kind>_provider`/`<kind>_options` fields above keep working
+    # untouched and mean exactly what they always did; an entry here for one of
+    # those names simply wins over them. Their clients keep their own Protocols
+    # (search_analytics/report/traffic_summary) rather than collect() — see
+    # tools/base.py's SignalSource for why the three stay hand-shaped.
+    #
+    # Empty list (the default): no extra signals, no behavior change for an
+    # existing tenant.
+    signal_sources: list[dict] = field(default_factory=list)
+
     # --- Opportunity discovery (tools/base.py's OpportunitySource Protocol) ---
     # Each entry: {"name": str, "provider": "mock" | "llm" | "mcp" | "custom", ...}. Read by
     # agent/managers/tools_manager.py's ToolsManager.build_discovery_sources() into

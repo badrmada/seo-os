@@ -138,6 +138,28 @@ class ObservedTrafficClient(_Observed):
             return result
 
 
+class ObservedSignalSource(_Observed):
+    """SignalSource proxy. Named after the signal_sources registry key, since a run
+    can have any number of signals and they are collected in one concurrent gather
+    — without the name, interleaved events say nothing about which input is slow or
+    which one came back empty.
+
+    The result may legitimately be a bare summary string or None (see
+    agent/schemas/signal.py's normalize_signal), and this proxy runs *before* that
+    normalization, so it must not assume a dict."""
+
+    async def collect(self, context: dict) -> dict:
+        with self._call("collect") as call:
+            result = await acall(self._inner.collect, context)
+            data = result if isinstance(result, dict) else {}
+            call["facts"] = len(data.get("facts") or ())
+            call["items"] = len(data.get("items") or ())
+            if self._reporter.level >= _DETAIL:
+                summary = result if isinstance(result, str) else data.get("summary", "")
+                call["summary"] = preview(summary)
+            return result
+
+
 class ObservedOpportunitySource(_Observed):
     """OpportunitySource proxy. Named after the discovery_sources registry key, so
     with several sources configured (and especially under the parallel_by_source
@@ -184,6 +206,10 @@ def observe_tools(tools, reporter):
         discovery_sources={
             name: ObservedOpportunitySource(source, reporter, name)
             for name, source in tools.discovery_sources.items()
+        },
+        signals={
+            name: ObservedSignalSource(signal, reporter, name)
+            for name, signal in tools.signals.items()
         },
     )
 

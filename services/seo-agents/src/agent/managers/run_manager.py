@@ -229,8 +229,12 @@ class AgentRunner:
         working = state["working"]
         params = input_.get("params", {})
 
+        signals = working.get("signals", {})
+
         if channel == Channel.ENGAGEMENT_COMMENT:
-            prompt = prompts.build_comment_prompt(input_["context_text"], params, self.config)
+            prompt = prompts.build_comment_prompt(
+                input_["context_text"], params, self.config, signals,
+            )
         else:
             source_row = working.get("chosen_keyword_row") or {}
             prompt = prompts.build_article_prompt(
@@ -242,6 +246,7 @@ class AgentRunner:
                 working["traffic_summary"],
                 self.config,
                 strategy=source_row.get("reason", ""),
+                signals=signals,
             )
 
         return {"channel": channel, "prompt": prompt, "context": working}

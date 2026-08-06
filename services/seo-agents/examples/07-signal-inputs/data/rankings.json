@@ -1,0 +1,9 @@
+{
+  "checked_on": "2026-07-28",
+  "tracked": [
+    { "keyword": "indoor herb garden", "position": 12, "previous_position": 17, "url": "https://sproutly.example.com/guides/indoor-herb-garden" },
+    { "keyword": "best grow lights", "position": 8, "previous_position": 8, "url": "https://sproutly.example.com/guides/grow-lights" },
+    { "keyword": "basil not growing", "position": 23, "previous_position": 19, "url": "https://sproutly.example.com/help/basil" },
+    { "keyword": "self watering planter", "position": 14, "previous_position": 26, "url": "https://sproutly.example.com/shop/planters" }
+  ]
+}

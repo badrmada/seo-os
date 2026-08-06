@@ -31,6 +31,19 @@ COMMENT_JSON_INSTRUCTION = (
 # list). All three may be empty for a tenant with no analytics/traffic tool
 # configured — every reference to them below is guarded with {% if %} so that's a
 # no-op, not a missing-field error.
+#
+# `signals` is the same idea taken all the way: every *other* configured input
+# (AgentConfig.signal_sources, tools/base.py's SignalSource), as {name: {summary,
+# facts, items}}. The templates below loop over it by name instead of naming any
+# particular signal, which is what lets a tenant add a trends feed, a rank tracker
+# or a crawler without this file — or any stage — changing.
+#
+# Its keys are exactly the tenant's configured signal names, on every run: a
+# signal that failed or had nothing to report contributes an empty entry rather
+# than disappearing (agent/schemas/signal.py's empty_signal). So a tenant's own
+# template may name its own signal — `{{ signals.rank_tracker.facts.tracked }}` —
+# and sample_context below validates exactly those names at config-save time.
+# Hence the guards below test `signal.summary`, not the dict.
 DEFAULT_TEMPLATES: dict[str, str] = {
     Channel.SITE_ARTICLE: (
         "You are a content writer for the following product:\n"
@@ -47,6 +60,14 @@ DEFAULT_TEMPLATES: dict[str, str] = {
         "don't force it: {{ analytics_summary }}\n{% endif %}"
         "{% if traffic_summary %}You may reference site traffic naturally if relevant, don't "
         "force it: {{ traffic_summary }}\n{% endif %}"
+        "{% set reported = signals.values()|selectattr('summary')|list %}"
+        "{% if reported %}\n"
+        "What this site's other data sources currently show (use only where genuinely "
+        "relevant; don't recite them):\n"
+        "{% for name, signal in signals.items() %}"
+        "{% if signal.summary %}- {{ name }}: {{ signal.summary }}\n{% endif %}"
+        "{% endfor %}"
+        "{% endif %}"
         "{% if highlights %}\n"
         "Recent content worth grounding examples in (real, current — you may paraphrase 1-2 as "
         "concrete examples of what people are discussing; if you do, include their link in "
@@ -73,6 +94,14 @@ DEFAULT_TEMPLATES: dict[str, str] = {
         "don't force it: {{ analytics_summary }}\n{% endif %}"
         "{% if traffic_summary %}You may reference site traffic naturally if relevant, don't "
         "force it: {{ traffic_summary }}\n{% endif %}"
+        "{% set reported = signals.values()|selectattr('summary')|list %}"
+        "{% if reported %}\n"
+        "What this site's other data sources currently show (use only where genuinely "
+        "relevant; don't recite them):\n"
+        "{% for name, signal in signals.items() %}"
+        "{% if signal.summary %}- {{ name }}: {{ signal.summary }}\n{% endif %}"
+        "{% endfor %}"
+        "{% endif %}"
         "{% if highlights %}\n"
         "Recent content worth grounding examples in (real, current — you may paraphrase 1-2 as "
         "concrete examples of what people are discussing; if you do, include their link in "
@@ -109,11 +138,69 @@ SAMPLE_CONTEXTS: dict[str, dict] = {
         "analytics_summary": "Sample recent activity summary.",
         "traffic_summary": "Sample site traffic summary.",
         "highlights": [{"label": "Sample highlight", "url": "https://example.com/1"}],
+        # Filled in per tenant by sample_context() below; empty here so a direct
+        # validate_template() call still renders a template that only loops.
+        "signals": {},
     },
     Channel.ENGAGEMENT_COMMENT: {
         "context_text": "Sample post being replied to.",
         "tone": "genuine and conversational",
         "brand_description": "Sample brand description.",
+        "signals": {},
     },
 }
 SAMPLE_CONTEXTS[Channel.EXTERNAL_ARTICLE] = SAMPLE_CONTEXTS[Channel.SITE_ARTICLE]
+
+class _AnyKey(dict):
+    """A mapping that answers to any key, for validating a template against a
+    signal's `facts`/`items`.
+
+    A signal's *name* is knowable at config-save time (it's in signal_sources) and
+    is checked strictly, so a typo'd name fails there. The keys *inside* facts and
+    items are not: they are the provider's own vocabulary, and this system
+    deliberately never assumes one — the same reason the templated analytics and
+    traffic providers are validated against the tenant's real data instead of a
+    fabricated sample (agent/validators/template_validator.py). There is no real
+    data at prompt-save time, so the choice is between rejecting every template
+    that reads a fact and accepting any key. Accepting is right: the check that
+    matters — syntax, and that the signal exists at all — still happens, and a
+    wrong fact key degrades at run time to an empty value in a prompt rather than
+    to a failed run.
+    """
+
+    def __missing__(self, key):
+        return _ANY_KEY
+
+
+_ANY_KEY = _AnyKey()
+
+# What one signal looks like while validating — all three parts populated, so a
+# template reaching into facts or items validates rather than only one that loops
+# over summaries.
+SAMPLE_SIGNAL = {
+    "summary": "Sample signal summary.",
+    "facts": _AnyKey(change_pct=12.0),
+    "items": [_AnyKey(label="Sample signal row", url="https://example.com/1", value=1)],
+}
+
+
+def sample_context(channel: str, signal_names=()) -> dict:
+    """The context a tenant's template is rendered against at config-save time.
+
+    `signal_names` is that tenant's own configured signal_sources names, which is
+    what makes `{{ signals.rank_tracker.facts.tracked }}` checkable: the name is
+    the tenant's, so no fixed sample could contain it, and without this a template
+    naming its own signal would either fail validation for existing or skip the
+    check entirely. Passing the real names gets both halves right — a typo'd
+    signal name fails at save time, naming a configured one does not.
+
+    This works precisely because working.signals' keys are the configured names on
+    every run, whatever each signal did — see agent/schemas/signal.py's
+    empty_signal.
+    """
+    if channel not in SAMPLE_CONTEXTS:
+        raise ValueError(f"unknown channel {channel!r} for prompt template validation")
+    return {
+        **SAMPLE_CONTEXTS[channel],
+        "signals": {name: dict(SAMPLE_SIGNAL) for name in signal_names},
+    }

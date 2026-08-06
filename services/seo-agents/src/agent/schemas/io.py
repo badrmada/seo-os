@@ -68,7 +68,7 @@ class AgentState(TypedDict, total=False):
     analyze_context: dict    # Only present when config.discovery_sources is non-empty
                              # (see agent/graph/pipeline.py) — AnalyzeContextStage's output
                              # ({analytics_summary, analytics_highlights, traffic_summary,
-                             # tool_errors}), a direct child of START run concurrently with
+                             # signals, tool_errors}), a direct child of START run concurrently with
                              # the discover -> choose_channel chain. Single-writer (only
                              # AnalyzeContextStage sets it), so unlike discover_results this
                              # needs no Annotated merge reducer. AnalyzeStage reads it (once
@@ -115,12 +115,16 @@ class AgentState(TypedDict, total=False):
                              #                 and — only when it picked engagement_comment
                              #                 itself with no input.context_text — context_text
                              #   AnalyzeStage -> analytics_summary, analytics_highlights,
-                             #                 traffic_summary (always, growth context for
-                             #                 DraftStage, each independently falling back to ""/[]
-                             #                 on its own client failure — folded in from
-                             #                 state["analyze_context"] when AnalyzeContextStage
-                             #                 ran concurrently with discovery, else fetched here
-                             #                 directly); for site_article/external_article also
+                             #                 traffic_summary, signals ({name: Signal} for every
+                             #                 configured signal_sources entry that had something
+                             #                 to report — see agent/schemas/signal.py; reaches
+                             #                 the prompt keyed by name) — all four always, as
+                             #                 growth context for DraftStage, each independently
+                             #                 falling back to ""/[]/{} on its own client failure —
+                             #                 folded in from state["analyze_context"] when
+                             #                 AnalyzeContextStage ran concurrently with discovery,
+                             #                 else collected here
+                             #                 directly; for site_article/external_article also
                              #                 gsc_rows, chosen_keyword, chosen_keyword_row;
                              #                 tool_errors gains one entry per client
                              #                 (gsc/analytics/traffic) that failed

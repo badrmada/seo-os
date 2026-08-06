@@ -238,6 +238,7 @@ instead of a day — nothing more. Every one of them can be dropped or replaced:
 | have analytics in your own database | `"analytics_provider": "custom"` + your class |
 | don't want the agent searching the web | `"search_provider": "none"` |
 | have your own search API (Bing, Serper, SearxNG) | `"search_provider": "custom"` + your class |
+| have a data source none of these covers (trends, rank tracking, a competitor watcher) | a `"signal_sources"` entry — a named list, any number of them, no fork |
 
 A `tenant.json` with three lines runs. Everything you leave out keeps a
 sensible, product-neutral default, and `python src/main.py list-tools --all`
@@ -429,15 +430,15 @@ shape, including what a failed run looks like, is in
 | [docs/cli.md](docs/cli.md) | Every command (`run`, `check-data`, `show-graph`, …), and how to add one of your own. |
 | [docs/architecture.md](docs/architecture.md) | How the whole thing is built: the pipeline, the swappable-tool pattern, how discovery scores opportunities, how errors are handled. |
 | [docs/configuration.md](docs/configuration.md) | Every config field, with the full Echooers example explained line by line. |
-| [docs/extending.md](docs/extending.md) | Plugging in your own code — analytics, traffic, or a custom opportunity finder (including one that's its own mini-agent) — without forking. |
+| [docs/extending.md](docs/extending.md) | Plugging in your own code — analytics, traffic, a signal input of your own, or a custom opportunity finder (including one that's its own mini-agent) — without forking. |
 | [docs/output-schema.md](docs/output-schema.md) | The exact JSON a run returns (success and failure), for building a UI on top of it. |
 | [docs/roadmap.md](docs/roadmap.md) | What's built, what's next, and what's deliberately left out. |
-| [examples/](examples/) | Six complete, runnable example configs (SaaS, e-commerce, community, job board, MCP), simple to advanced. |
+| [examples/](examples/) | Seven complete, runnable example configs (SaaS, e-commerce, community, job board, MCP, signal inputs), simple to advanced. |
 
 ## Bring your own tools, no fork required
 
-Every swappable piece — analytics, traffic, opportunity discovery — is defined
-by a small interface (a `Protocol`). To plug in your own:
+Every swappable piece — analytics, traffic, any other data source, opportunity
+discovery — is defined by a small interface (a `Protocol`). To plug in your own:
 
 1. `pip install -r requirements.txt` (plus whatever your own code needs).
 2. Write one Python class with the method that interface expects — `def` or

@@ -5,6 +5,7 @@ from tools.base import (
     GSCClient,
     OpportunitySource,
     SearchClient,
+    SignalSource,
     SiteTrafficClient,
 )
 from tools.llm.base import LLMClient
@@ -18,6 +19,11 @@ class Tools:
     ToolsManager); pass your own Tools(...) to swap in real clients, per-field or all
     at once — every stage only ever depends on the Protocols in tools/base.py."""
 
+    # The three signal inputs with hand-shaped Protocols of their own, kept as
+    # named fields because their methods (and analyze.py's use of them) predate the
+    # generic SignalSource and differ from it — see tools/base.py's SignalSource.
+    # Which provider fills each one is selectable either by <kind>_provider or by a
+    # reserved-name entry in config.signal_sources; either way it arrives here.
     gsc: GSCClient
     analytics: AppAnalyticsClient
     traffic: SiteTrafficClient
@@ -27,6 +33,12 @@ class Tools:
     # when this is non-empty (see agent/graph/pipeline.py). Defaults to empty so
     # existing Tools(...) construction sites are unaffected.
     discovery_sources: dict[str, OpportunitySource] = field(default_factory=dict)
+    # Every *other* signal input, keyed by AgentConfig.signal_sources' "name" —
+    # anything that isn't one of the three named fields above. Collected
+    # concurrently by agent/graph/stages/analyze.py and passed to the prompt keyed
+    # by name, so no stage and no system template ever names a specific signal.
+    # Defaults to empty, so existing Tools(...) construction sites are unaffected.
+    signals: dict[str, SignalSource] = field(default_factory=dict)
     # Real web search, the system's own grounding (tools/base.py's SearchClient).
     # Defaults to the null client rather than the real one so a hand-constructed
     # Tools(...) — every test double, every caller injecting its own clients —

@@ -5,16 +5,17 @@ and removed from this file. What follows is only what is left to build.
 
 ## START HERE
 
-**Next task: Step F (signal inputs as a named list).** Step E shipped; nothing is
-half-finished and the tree is green.
+**Next task: Step G (stage and pipeline registration).** Step F shipped; nothing
+is half-finished and the tree is green.
 
 ```bash
 cd services/seo-agents
 pip install -r requirements.txt                   # includes pytest, ddgs and mcp
-pytest                                            # 279 passing
+pytest                                            # 330 passing
 python src/main.py list-tenants                   # the workspace
 python src/main.py check-data --tenant echooers   # the real tenant, no API calls
 python src/main.py run --userdata examples --tenant 06-mcp-discovery  # MCP, offline
+python src/main.py preview-prompt --userdata examples --tenant 07-signal-inputs  # signals, offline
 ```
 
 ### Remaining steps, in order
@@ -23,28 +24,68 @@ python src/main.py run --userdata examples --tenant 06-mcp-discovery  # MCP, off
 |---|---|---|
 | ~~D~~ | ~~`SearchClient` (pluggable grounding)~~ | **Done** — see docs/roadmap.md. DuckDuckGo is the default; the resolution order is search → the model's own grounding → ungrounded. |
 | ~~E~~ | ~~Built-in `provider: "mcp"` discovery source~~ | **Done** — see docs/roadmap.md. Official `mcp` SDK, stdio + streamable HTTP, mapped by `items_template`. |
-| **F** | **Signal inputs as a named list** | Next. The generalization every new kind of input needs — including the crawler and sitemap Step H runs on. |
-| G | Stage and pipeline registration | Prerequisite for a second agent type; also what a tenant-specific stage needs. |
-| H | `seo_audit` agent type | Sits on F (its signals) and G (its pipeline). |
-| I | State persistence | Last. Becomes load-bearing the moment a queue exists. |
+| ~~F~~ | ~~Signal inputs as a named list~~ | **Done** — see docs/roadmap.md. `signal_sources`, collected concurrently, reaching the prompt as `signals` keyed by name. A crawler or a sitemap reader is a signal like any other. |
+| **G** | **Stage and pipeline registration** | Next. What a tenant-specific stage needs — and, with `"custom"`, what makes a site audit a tenant's build rather than a step here. |
+| ~~H~~ | ~~`seo_audit` agent type~~ | **Dropped** — the `"custom"` mechanism plus G covers it. See below. |
+| I | State persistence | Becomes load-bearing the moment a queue exists. |
+| J | Template values: inline or from a file | Independent of G and I; the smallest of the three and doable any time. |
 
-F and H are new; the old "stage registration" and "state persistence" steps are
-now G and I. Letters are order-of-work, nothing more.
+Letters are order-of-work, nothing more — they are not renumbered when a step is
+dropped, since docs and commits already refer to them.
+
+### Why H was dropped
+
+A built-in `seo_audit` agent type would have been this repo taking a position on
+what an audit *is* — which findings matter, how they're ranked, what a crawler
+does. That's the position a tenant should hold, and after F and G they can:
+
+- **Its inputs are signals.** A crawler and a sitemap reader are
+  `signal_sources` entries with a `"custom"` class, exactly like a rank tracker.
+  Nothing about them needs a new provider kind or a new `Tools` field.
+- **Its shape is a pipeline.** Once G lands, a tenant declares their own stages
+  and their own spec — including one that ends in a verification stage of their
+  own rather than `draft`/`self_qa`.
+- **Its output already fits.** `AgentState.agent_type` and the frozen result
+  schema take a new `kind` (`"site_audit"`) without a new field, which was
+  always the argument for a new kind rather than a fourth channel.
+
+So H was mostly *content* — prompt wording, which findings to look for — wearing
+a step's clothes. Two things from it are worth keeping and are recorded here
+rather than lost:
+
+- **A crawler is the one tool here that can hurt someone else's server.** Any
+  crawler shipped or documented by this project — including an example — obeys
+  `robots.txt`, rate-limits, caps pages/depth/total time, sends an identifying
+  user agent, and never follows off-site links. A default that could hammer a
+  site is not an acceptable default. This belongs in `docs/extending.md` next to
+  the signal walkthrough, whether or not anyone builds the audit.
+- **Findings must be evidence-backed** — each carrying the URLs and rows it came
+  from, the same principle that makes a grounded link trustworthy. An audit that
+  asserts problems it cannot point at is worse than no audit.
+
+If a real use case later shows that every tenant writes the same audit, that is
+the moment to reconsider — with their code as the specification.
 
 ### What this system is, so the remaining steps don't narrow it
 
-Two framings the code partly contradicts today, and that F and H exist to fix.
-They are also the answer to "why is there a plan step for this at all":
+Two framings. Neither is a step any more — F shipped the first, and G plus
+`"custom"` is how a tenant gets the second — but both are the standard against
+which a remaining step is judged too narrow:
 
 1. **Inputs are *signals*, and the vendors we ship are defaults, not the model.**
    Google Search Console, Cloudflare and product analytics are three signals that
    get someone to a real run quickly. A trends feed, a rank tracker, a keyword
    API, a crawler, a competitor watcher, an MCP server are the same kind of
    thing. Nobody is bound to our three, and adding a fourth must be config, not a
-   fork.
+   fork. **Step F did this** — `signal_sources`. A new kind of input goes there;
+   it does not become a fourth slot on `Tools`.
 2. **The deliverable is not always a draft.** Writing an article is one way to
    grow a site; telling someone what to fix on the site they already have is
    another. `agent_goal` is about growth, and the run decides what to produce.
+   **This repo does not need to ship the second deliverable to be true to it** —
+   it needs the seams that let a tenant produce one, which is Step G plus the
+   `"custom"` mechanism, and a result schema that already takes a new `kind`.
+   Judge G by whether an audit could be built on it without touching `src/`.
 
 ### Invariants the remaining steps must not break
 
@@ -70,6 +111,9 @@ They are also the answer to "why is there a plan step for this at all":
   named destination per field in `agent/config/loader.py::MOVED_FIELDS`.
 - **`AgentState` and the returned JSON hold** — `docs/output-schema.md`. A new
   deliverable uses a new `kind`, not a new top-level field.
+- **A new kind of input is a `signal_sources` entry**, not a new `Tools` field and
+  not a new top-level config field. `working.signals` keys stay a function of the
+  config rather than of the run, so a prompt template can rely on them.
 - **The overlap test is the canary.** `test_two_runs_with_different_configs_overlap`
   is the only thing that catches an accidentally-blocking call in the run path —
   every other test passes with runs silently serialized.
@@ -115,10 +159,11 @@ They are also the answer to "why is there a plan step for this at all":
 
 The rule that keeps the remaining steps non-invasive.
 
-1. **Tools plane** — what stages *call*: the LLM and every signal input (GSC,
-   analytics, traffic, discovery sources, and whatever Step F adds). Lives in
-   `Tools` (`agent/graph/tools.py`), built by `ToolsManager`. Stages depend only
-   on the Protocols in `tools/base.py`.
+1. **Tools plane** — what stages *call*: the LLM, search, discovery sources, and
+   every signal input (GSC, analytics and traffic in their own fields; everything
+   else in `Tools.signals`, from `config.signal_sources`). Lives in `Tools`
+   (`agent/graph/tools.py`), built by `ToolsManager`. Stages depend only on the
+   Protocols in `tools/base.py`.
 2. **Run context plane** — how a run is *observed and persisted*: the reporter,
    the output sinks, the state store (Step I). Orchestration concerns, not things
    a stage calls.
@@ -211,67 +256,64 @@ is in `docs/roadmap.md` and `docs/configuration.md`.
 
 ---
 
-## Step F — Signal inputs as a named list
+## ~~Step F — Signal inputs as a named list~~ — shipped
 
-**The problem.** `Tools` has three fixed slots — `gsc`, `traffic`, `analytics` —
-and `AnalyzeStage` reaches for them by name (`self.tools.gsc.search_analytics(…)`).
-So "swap Cloudflare for Plausible" works, but "add a trends feed" does not: there
-is no slot for it, and adding one means editing this repo. That contradicts the
-first framing above, and it is the thing standing between the agent and any new
-kind of input — including the crawler and sitemap Step H needs.
+Kept only for the decisions a later step needs to know about; the full write-up
+is in `docs/roadmap.md`, `docs/architecture.md` and `docs/configuration.md`.
 
-`discovery_sources` is already the right shape. Signals get the same one.
-
-```jsonc
-"signal_sources": [
-  { "name": "gsc",     "provider": "google",     "options": { } },
-  { "name": "traffic", "provider": "cloudflare", "options": { } },
-  { "name": "trends",  "provider": "custom", "class": "trends:Client", "options": { } }
-]
-```
-
-**Decided: the built-in slots stay.** `gsc_provider` / `traffic_provider` /
-`analytics_provider` and their `*_options` keep working and are read as three
-implicit entries named `gsc`/`traffic`/`analytics`. `Tools.gsc/.traffic/
-.analytics` remain as *views* onto the signal dict, so `AnalyzeStage`, every
-existing tenant config, and every tenant's `"custom"` class are untouched. **No
-second breaking config change** — Step C used the one this system gets.
-
-**Contract for a generic signal**, mirroring how deliberately free-form
-`AppAnalyticsClient` and `SiteTrafficClient` already are:
-
-- `collect(self, context: dict) -> dict`, returning
-  `{"summary": str, "facts": dict, "items": list[dict]}` — all optional but
-  `summary`. `summary` is prose the prompt uses as-is; `facts`/`items` are for a
-  stage or a template that knows what it asked for.
-- `context` carries what the run knows so far (seed keyword, site URL, channel),
-  same as `discover(context)`.
-
-Then:
-
-- Signals land in `Tools.signals[name]`, and a generic context bag reaches the
-  prompt keyed by name, so a stage never has to learn a new signal's name.
-- Each signal is independently degrade-don't-abort, like every existing tool
-  call, and is wrapped by the observing proxies for verbose mode.
-- Collection is concurrent (`asyncio.gather`), which is most of what async
-  execution bought and what makes N signals affordable.
-
-**Explicitly not doing:** a capability-inference engine that decides graph shape
-from signal metadata. A signal contributes context; it does not rewire the
-pipeline.
-
-Watch out for: `AnalyzeStage`'s keyword picking is Search-Console-shaped
-(striking distance, positions 5–20). Generalizing *that* is not part of this
-step — a signal that isn't GSC contributes context, and the fallback chain
-already handles GSC being absent.
+- **The three built-in slots stayed slots, and the *names* became reserved.**
+  `Tools.gsc/.traffic/.analytics` are still real dataclass fields with their own
+  Protocols; `Tools.signals` holds everything else. The plan said "views onto the
+  signal dict", and that was wrong in one specific way worth remembering: the
+  three have genuinely different methods (`search_analytics` returns ranked query
+  rows, `report` returns linkable highlights), `dataclasses.replace` in
+  `observe_tools` needs real fields, and seven construction sites pass them by
+  keyword. Unifying them in `Tools` would have bought nothing and broken all of
+  that. What *did* unify is the config: `signal_sources` accepts `gsc`/`traffic`/
+  `analytics` as reserved names routing to those kinds, so a tenant can write
+  every input as one list. `<kind>_provider`/`<kind>_options` are untouched and
+  **nothing needed migrating** — Step C used the one breaking config change this
+  system gets.
+- **`working.signals` has one key per *configured* signal on every run**, whatever
+  happened to that signal — a failure contributes empty values, not a missing key.
+  The first version dropped empty signals so `{% if signals %}` would be precise,
+  which quietly made a prompt template's available variables depend on whether an
+  API answered. Any later step adding a template-visible collection owes the same
+  rule: **the keys are a function of the config, not of the run.**
+- **That rule is what makes save-time validation of a tenant's template
+  possible.** `agent/config/loader.py` passes the tenant's own signal names into
+  `prompts.validate_template`, so `{{ signals.rank_tracker.summary }}` is checked
+  against the config that builds it and a typo'd name fails while someone is
+  editing. The keys *inside* `facts`/`items` are the provider's vocabulary and
+  cannot be known, so `templates.py`'s `_AnyKey` accepts any of them — the same
+  concession the templated analytics/traffic providers make by validating against
+  the tenant's real data instead of a sample.
+- **`AnalyzeContextStage` and `AnalyzeStage` now share one `collect_context()`.**
+  They were two hand-written versions of the same fetch (concurrent vs.
+  sequential), and only one of them would have been generalized — a difference no
+  test would have caught until a tenant configured discovery. A stage that
+  collects the same thing two ways is a bug waiting for a second implementer.
+- **`BUILTIN_SIGNAL_NAMES` lives in `agent/schemas/signal.py`**, a module that
+  imports nothing but `typing`, because three packages need it (`managers/
+  providers.py`, `managers/tools_manager.py`, `config/loader.py`). Any other home
+  makes at least one of them a deferred import to avoid closing a cycle.
+- **`ProviderKind.selected()` had to learn about reserved names**, or `list-tools`
+  reports a tenant using `{"name": "traffic", "provider": "cloudflare"}` as having
+  no traffic provider *and* an uncatalogued signal provider. A config field with
+  two spellings needs every reader updated, not just the builder.
+- **Explicitly not done:** capability inference. A signal contributes context; it
+  does not rewire the pipeline. `AnalyzeStage`'s keyword picking is still
+  Search-Console-shaped (striking distance, positions 5–20), deliberately.
 
 ---
 
 ## Step G — Stage and pipeline registration
 
 `_STAGE_FACTORIES` in `agent/graph/pipeline.py` is a fixed dict of six stages,
-and `_default_spec` is the only spec there is. A second agent type (Step H) needs
-both to open up.
+and `_default_spec` is the only spec there is. Both have to open up, and with H
+dropped this is now the step that carries the whole "the deliverable is not
+always a draft" framing: **the test of this step is whether a tenant could build
+a site audit on it without touching `src/`.**
 
 - **Config-declared stages**: `{"name", "class", "mode", "after"}`, resolved
   through `load_custom`.
@@ -283,30 +325,39 @@ both to open up.
   requirements, not its name, before any registered stage can use those modes.
 - Preserve the existing `discover → choose_channel → analyze → draft → self_qa`
   flow and all three current graph shapes for default configs.
+- **A tenant-declared agent type must be selectable at run time**, since that is
+  what makes a second deliverable reachable at all: `--agent <name>` on the CLI,
+  the same field on the service request, landing on `AgentState.agent_type` — the
+  seam that field was added for ("constant `seo_content`; a seam for when other
+  agent types exist").
+- **A custom stage writes `output` with its own `kind`**, not a new top-level
+  field — the result plane stays frozen (`docs/output-schema.md`). Worth an
+  example: a stage returning `{"kind": "site_audit", …}` proves the schema takes
+  a non-draft deliverable, which is the claim H was going to test.
 - **Explicitly not doing:** a capability-inference engine that derives graph shape
   from tool metadata. Revisit only with a real use case.
 
 ---
 
-## Step H — `seo_audit` agent type
+## ~~Step H — `seo_audit` agent type~~ — dropped
 
-**Decided: a separate agent type, not a fourth channel.** `AgentState.agent_type`
-exists as exactly this seam ("constant `seo_content`; a seam for when other agent
-types exist"). The two agents share `Tools`, `AgentConfig`, `AgentService`, the
-sinks, verbose mode and the output schema; they do not share a pipeline, and
-neither decides on the other's behalf. The tenant picks:
+Covered by the `"custom"` mechanism plus Step G; see "Why H was dropped" at the
+top of this file for the reasoning and for the two constraints kept from it (a
+crawler's default bounds, and evidence-backed findings).
 
-```bash
-python src/main.py run --tenant acme --agent seo_audit
-```
+The sketch is left here only because it is the concrete thing to check Step G
+against — if a tenant cannot build this on G without touching `src/`, G is not
+finished:
 
-**What it produces.** Not a draft — a prioritized list of what to fix on a site
-that already exists: thin or duplicate pages, missing or weak metadata, broken or
-missing internal links, orphan pages, cannibalizing URLs, and pages ranking 11–20
-that deserve work rather than a new article.
-
-**It fits the frozen result shape** — that is the point of picking a new `kind`
-rather than a new field:
+- **Inputs**: a crawler and a sitemap reader as `signal_sources` entries with
+  `"custom"` classes. The crawler fetches, follows internal links, and records
+  status codes, titles, meta descriptions, headings, canonical tags, word counts
+  and the internal link graph; the sitemap reader supplies the declared URL set
+  to compare against what the crawl actually reaches.
+- **Shape**: a tenant-declared pipeline ending in a verification stage of their
+  own — the audit equivalent of `self_qa`, checking every finding references a
+  real crawled URL — instead of `draft`/`self_qa`.
+- **Output**: the frozen result schema with a new `kind`, no new field:
 
 ```jsonc
 {
@@ -323,30 +374,6 @@ rather than a new field:
   }
 }
 ```
-
-**New signals it needs** (Step F, `provider: "crawler"` / `"sitemap"`):
-
-- a **crawler** — fetch, follow internal links, record status codes, titles, meta
-  descriptions, headings, canonical tags, word counts, internal link graph.
-- a **sitemap reader** — the declared URL set, to compare against what the crawl
-  actually reaches (orphans, and URLs in the sitemap that 404).
-
-**A crawler is the one tool here that can hurt someone else's server**, so it is
-bounded by default, not by configuration: obey `robots.txt`, rate-limit, cap
-pages and depth and total time, send an identifying user agent, and never follow
-off-site links. A default that could hammer a site is not an acceptable default.
-
-**Findings must be evidence-backed** — each carries the URLs and the signal rows
-it came from, the same principle that makes a grounded link trustworthy. An audit
-that asserts problems it cannot point at is worse than no audit.
-
-**Also needed:** its own prompt template and its own verification stage (the audit
-equivalent of `self_qa` — every finding must reference at least one real crawled
-URL), plus `input.site_url` and crawl bounds on the input.
-
-**Explicitly not doing:** a full technical-SEO suite. No JS rendering, no
-Lighthouse/Core Web Vitals, no backlink analysis in the first version. Crawl,
-sitemap, and the signals already configured are enough to say something useful.
 
 ---
 
@@ -393,3 +420,97 @@ Four constraints, cheap now and expensive later:
 
 Retention and multi-writer coordination are out of scope: keyed by `run_id`,
 last-write-wins, single process.
+
+---
+
+## Step J — Template values: inline or from a file
+
+**The problem.** Every template in this system is a JSON string, so a real one is
+a single line with escaped newlines and escaped quotes. `userdata/echooers/`'s
+`highlights_template` is one 300-character line; `examples/07-signal-inputs/`'s
+`prompt_templates.site_article` is worse. They are unreadable, undiffable, and
+un-editable in anything that understands Jinja2 — and prompt wording is the thing
+a tenant edits most.
+
+The workspace already has the answer half-built: `templates/` is a documented
+tenant folder (`agent/config/workspace.py`, "reserved; not read yet") and
+`list-tenants` already counts what's in it. This step makes it real.
+
+**Decided: an object, `{"file": "..."}`, accepted anywhere a template string is.**
+
+```jsonc
+{
+  "prompt_templates": {
+    "site_article": { "file": "site_article.j2" }
+  },
+  "analytics_options": {
+    "summary_template":    { "file": "analytics_summary.j2" },
+    "highlights_template": { "file": "analytics_highlights.json.j2" }
+  }
+}
+```
+
+A plain string keeps working and means exactly what it does today. The two forms
+are the *only* two.
+
+Why the object rather than the two obvious alternatives:
+
+- **Not a sigil** (`"@templates/x.j2"`, `"file:x.j2"`). Every sigil is a value a
+  template could legitimately start with, so it needs an escape hatch, and the
+  escape hatch is the bug — a tenant whose summary genuinely starts with `@` gets
+  a confusing file-not-found instead of their text. `isinstance(value, str)`
+  versus `dict` has no ambiguity to resolve.
+- **Not a sibling field** (`summary_template_file`). Templates appear in at least
+  nine places today (`prompt_templates.<channel>`, the analytics/traffic/signal
+  `*_template` options, the discovery source's `prompt_template`/
+  `query_prompt_template`/`items_template`, MCP `arguments` values). Doubling
+  each one doubles the config surface and the docs, and every new template option
+  after this would have to remember to add its twin.
+
+**One rule, one resolver.** *Anywhere* a template string is accepted, so is
+`{"file": …}`. A helper in `agent/config/` resolves it; nothing else learns about
+it. If a new provider adds a template option, it gets this for free — which is
+the whole reason to do it uniformly rather than per-option.
+
+**Resolution and containment:**
+
+- Relative to the tenant's `templates/` folder (`TenantWorkspace.templates_dir`),
+  and nowhere else. Not `config_base_dir`, not the CWD, not an absolute path.
+- **Reject `..`, absolute paths, and symlinks escaping the folder** — the same
+  containment `validate_name` gives a tenant name and `plugin_loader` gives a
+  plugin, and for the same reason: in a server this value arrives from a request
+  or a database row, so "read any file the process can read" is the failure mode
+  to design out, not to discover.
+- A config with no workspace (built in code, as tests do) has no `templates/`
+  folder, so `{"file": …}` is a clear error there rather than a CWD-relative read.
+- Missing or unreadable file → a config error naming the path and listing what
+  *is* in the folder, the treatment `plugin_loader` already gives a missing
+  plugin. "No such file" alone sends someone looking in the wrong directory.
+
+**Read at config-load time, not per render.** By the time `AgentConfig` exists,
+every template is a string again. This matters for three reasons:
+
+1. `prompts.validate_template` and `TemplateValidator` keep working untouched —
+   save-time validation still catches a bad template, including one loaded from a
+   file, with no new code path.
+2. A run makes no filesystem call per prompt, and a server resolving a tenant
+   config per request pays the read once.
+3. **`AgentConfig` stays plain data** — no paths to re-resolve, no file handles.
+   Step I's "state must stay JSON-serializable" has the same shape, and a config
+   holding a lazy file reference would quietly break anyone caching one.
+
+The tradeoff is honest and worth stating in the docs: editing a template file
+does not affect a config already loaded. For the CLI that is invisible (one run,
+one load); for a long-lived server it means the same cache invalidation any
+config change already needs.
+
+**Also:** `check-data` should report the templates it loaded and from where —
+that command exists to answer "will this config work", and "which file is this
+prompt actually coming from" is now part of that question. `list-tenants`'
+existing `templates` column stops being decorative.
+
+**Explicitly not doing:** template inheritance or `{% include %}` across files
+(Jinja2 can, but it needs a loader with its own containment rules — revisit if
+anyone actually wants it), a template registry shared between tenants, and any
+change to what the templates *render against*. This step is about where the text
+comes from, nothing else.

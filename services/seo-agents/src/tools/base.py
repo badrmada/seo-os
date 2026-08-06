@@ -62,6 +62,65 @@ class OpportunitySource(Protocol):
         ...
 
 
+class SignalSource(Protocol):
+    """One named entry in AgentConfig.signal_sources — an *input* the agent reads
+    about the site and its market, contributed as context rather than as a
+    decision.
+
+    Why this exists as an open list rather than more fixed slots: Search Console,
+    site traffic and product analytics (the three below) are three signals that
+    get someone to a real run quickly, not the model of what a signal is. A trends
+    feed, a rank tracker, a keyword API, a crawler, a competitor watcher, an MCP
+    server are the same kind of thing, and adding one must be config, not a fork
+    of this repo. So the three keep their own hand-shaped Protocols — their
+    methods and their callers in agent/graph/stages/analyze.py long predate this
+    one, and generalizing GSC's striking-distance keyword picking is a different
+    job — while everything else arrives through the single method below and
+    reaches the prompt keyed by its configured name.
+
+    **A signal contributes context; it does not rewire the pipeline.** There is
+    deliberately no capability inference here: nothing about a signal changes
+    which stages run or in what shape (agent/graph/pipeline.py).
+
+    Implementations:
+      - tools/mocks/signal_mock.py's MockSignalSource — provider="mock": offline,
+        deterministic, for a run with no real signal wired up yet.
+      - tools/clients/signal_templated.py's TemplatedSignalSource —
+        provider="templated": the tenant's own JSON (a file or a live API) mapped
+        into the shape below by Jinja2 templates, no code required. The same
+        mechanism as the templated analytics/traffic providers.
+      - AgentConfig's signal_sources provider="custom" — a tenant's own class
+        (through agent/managers/plugin_loader.py's load_custom), for a signal that
+        genuinely needs code.
+    """
+
+    def collect(self, context: dict) -> dict:
+        """Returns:
+        {
+            "summary": str,          # free text about what this signal knows,
+                                      # provider-authored; "" if there's nothing to
+                                      # report. Dropped into the prompt as-is —
+                                      # the system never parses it.
+            "facts": dict,           # optional. Provider-specific named values.
+            "items": list[dict],     # optional. Provider-specific rows,
+                                      # most-relevant first.
+        }
+        All three are optional but `summary`; returning just a summary string, or
+        None for "nothing to report", is accepted too — see
+        agent/schemas/signal.py's normalize_signal, which every result passes
+        through before anything else sees it.
+
+        `context` carries what the run knows so far — seed_keyword, context_text,
+        site_url, channel — exactly like OpportunitySource.discover(context). A
+        signal may ignore it entirely or use it to steer what it fetches.
+
+        Collection is concurrent across every configured signal and independently
+        degrade-don't-abort: one signal raising contributes a working.tool_errors
+        entry and nothing else, and never fails the run or blocks the others.
+        """
+        ...
+
+
 class OutputSink(Protocol):
     """Where a finished run's result goes. Unlike every other Protocol in this file,
     a sink is not a tool the agent calls to do its work — it runs once, after the

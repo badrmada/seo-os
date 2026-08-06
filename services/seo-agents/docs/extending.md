@@ -2,13 +2,16 @@
 
 The whole point of the provider pattern (see
 [architecture.md](architecture.md#the-four-provider-flavors-mock-templated-custom-llm))
-is that plugging in your own analytics source, traffic source, search engine, or
-opportunity finder comes down to three steps:
+is that plugging in your own analytics source, traffic source, search engine,
+opportunity finder, or any other data source entirely comes down to three steps:
 
 1. `pip install -r requirements.txt` (plus whatever your own code needs).
 2. Write one Python class with the method the interface expects.
 3. Point your config at it: `"<field>_provider": "custom"` and
-   `"<field>_custom_class": "module:ClassName"` (a file in your `plugins/` folder).
+   `"<field>_custom_class": "module:ClassName"` (a file in your `plugins/`
+   folder) — or, for the kinds that are a *list* of named entries
+   (`signal_sources`, `discovery_sources`, `output_sinks`),
+   `{"name": "...", "provider": "custom", "class": "module:ClassName"}`.
 
 Nothing under `src/agent/` or `src/tools/` changes. That's the whole deal — the
 rest of this page is a worked walkthrough, plus the honest limits.
@@ -251,6 +254,86 @@ class GA4TrafficClient:
   "traffic_custom_class": "ga4:GA4TrafficClient"
 }
 ```
+
+## Walkthrough: a signal input
+
+The two walkthroughs above fill one of three fixed slots. A **signal** is the
+open-ended case: a data source this project has never heard of, added to
+`signal_sources` under a name you choose. There is no limit on how many, and no
+field to add.
+
+One method, `collect(context)`:
+
+```python
+# userdata/acme/plugins/rank_tracker.py
+import httpx
+
+class RankTracker:
+    """A SignalSource. Only `summary` is required in the return value."""
+
+    def __init__(self, config, options=None):
+        options = options or {}
+        self._api_key = options["api_key"]
+        self._site = options["site"]
+
+    async def collect(self, context: dict) -> dict:
+        async with httpx.AsyncClient() as client:
+            response = await client.get(
+                "https://api.rank-tool.example/v1/keywords",
+                params={"site": self._site, "q": context.get("seed_keyword", "")},
+                headers={"Authorization": f"Bearer {self._api_key}"},
+            )
+        rows = response.json()["keywords"]
+        close = [r for r in rows if 11 <= r["position"] <= 20]
+        return {
+            "summary": (
+                f"{len(close)} of {len(rows)} tracked keywords are at positions 11-20 — "
+                "close enough that improving an existing page usually beats a new one."
+            ),
+            "facts": {"tracked": len(rows), "striking_distance": len(close)},
+            "items": [{"label": r["keyword"], "position": r["position"], "url": r["url"]}
+                      for r in close],
+        }
+```
+
+```jsonc
+{
+  "signal_sources": [
+    { "name": "rank_tracker", "provider": "custom",
+      "class": "rank_tracker:RankTracker",
+      "options": { "api_key": "...", "site": "example.com" } }
+  ]
+}
+```
+
+Then in your prompt template, keyed by the name you gave it:
+
+```jinja
+{{ signals.rank_tracker.summary }}
+{% for row in signals.rank_tracker['items'] %}- {{ row.label }} ({{ row.position }})
+{% endfor %}
+```
+
+Four things worth knowing:
+
+- **`context`** carries what the run knows so far — `seed_keyword`,
+  `context_text`, `site_url`, `channel` — exactly like a discovery source's
+  `discover(context)`. Treat every key as optional; `channel` is `""` when the
+  agent hasn't decided one yet. Ignoring `context` entirely is fine.
+- **`def` or `async def`**, as everywhere else. The example above is async
+  because `httpx` has a native coroutine API; a blocking client should be a plain
+  `def` and runs off the event loop.
+- **Failing is safe.** Signals are collected concurrently and independently:
+  raising costs you that signal (an empty entry plus a `tool_errors` record), not
+  the run. Don't swallow errors to be polite — a failure that nothing records is
+  worse than one that does.
+- **Returning less is fine.** `{"summary": "..."}` alone is a complete signal, a
+  bare string is read as the summary, and `None` means "nothing to report".
+
+If your data is already JSON you can reshape with a snippet, you don't need a
+class at all — use `"provider": "templated"` instead. See
+[configuration.md](configuration.md#any-other-data-source-signal_sources) and
+[example 07](../examples/07-signal-inputs/).
 
 ## Test your class before wiring it into a run
 
