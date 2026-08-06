@@ -3,6 +3,11 @@
 Not built yet. This folder is a placeholder so the intended structure of the
 system is visible; there is no code here.
 
+It is **step 4** of
+[the roadmap](../../docs/roadmap.md#4-the-frontend-watching-an-agent-work), and
+last on purpose: it is a client of the [gateway](../gateway/) and of nothing
+else, so a UI built before that one exists would be a client of a mock.
+
 ## What it will be
 
 A UI over the runtime: your agents, their runs, and the drafts they produce.

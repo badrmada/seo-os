@@ -1,20 +1,28 @@
 # Roadmap
 
-What's actually built vs. what's next — kept honest and short. For *how* the
-shipped parts work, see [architecture.md](architecture.md); this page is only
+What's actually built vs. what's next, for the **whole repository** — not just the
+runtime. Kept honest and short. For *how* the shipped parts work, see
+[architecture.md](../services/seo-agents/docs/architecture.md); this page is only
 about status and direction.
 
-## Shipped
+| Service | Status |
+|---|---|
+| [`services/seo-agents/`](../services/seo-agents/) — the runtime | Shipped, tested, in use |
+| [`services/gateway/`](../services/gateway/) — the HTTP API, queue and approval loop | Planned — [step 3](#3-the-gateway-the-api-handler) |
+| [`services/frontend/`](../services/frontend/) — the UI over agents, runs and drafts | Planned — [step 4](#4-the-frontend-watching-an-agent-work) |
+| Build and deployment | [Step 1](#1-images-built-and-tested-in-ci) partly — tests and docs run in CI, the image build is written and parked; [step 2](#2-deployment-compose-now-a-helm-chart-later) is Compose only |
+
+## Shipped — the runtime
 
 - **Product-agnostic providers.** LLM, search performance, site traffic, and app analytics
   are all config-driven (`mock`/`templated`/`custom`, plus real vendor
   clients for LLM/Search Console/traffic) — no tenant gets a bespoke Python client baked
   into this repo for data it can express declaratively. See
-  [configuration.md](configuration.md).
+  [configuration.md](../services/seo-agents/docs/configuration.md).
 - **Opportunity discovery.** `discovery_sources` (`mock`/`llm`/`custom`) lets
   the agent surface its own topics/threads/links instead of only reacting to
   a caller-supplied keyword or thread. See
-  [architecture.md](architecture.md#discovery-the-agent-finding-its-own-work).
+  [architecture.md](../services/seo-agents/docs/architecture.md#discovery-the-agent-finding-its-own-work).
 - **Agent-decided channel.** With discovery configured and no explicit
   `input.channel`, `choose_channel` scores discovered opportunities and picks
   the channel itself; an explicit `input.channel` still always wins.
@@ -25,7 +33,7 @@ about status and direction.
 - **Tool-as-agent, proven, not just claimed.** The `"custom"` provider
   mechanism (shared across analytics/traffic/discovery-source classes)
   places no constraint on what's behind the Protocol — see
-  [extending.md](extending.md#walkthrough-an-opportunity-source-thats-itself-an-agent)
+  [extending.md](../services/seo-agents/docs/extending.md#walkthrough-an-opportunity-source-thats-itself-an-agent)
   for a worked example of a discovery source that runs its own multi-step
   tool loop rather than a single call.
 - **Degrade, don't abort — everywhere in the pipeline, not just discovery.**
@@ -39,11 +47,11 @@ about status and direction.
   passes that through rather than crashing on a missing draft.
   `AgentRunner.run()` itself is the outermost safety net for anything that
   reaches it first (bad input, before the graph even starts): it always
-  returns the same top-level shape (see [output-schema.md](output-schema.md))
+  returns the same top-level shape (see [output-schema.md](../services/seo-agents/docs/output-schema.md))
   — a caller never needs a `try/except` around `run()`, and nothing in this
   pipeline crashes the process because of a tool, a connection, or an API
   call. See
-  [architecture.md](architecture.md#error-handling-degrade-dont-crash).
+  [architecture.md](../services/seo-agents/docs/architecture.md#error-handling-degrade-dont-crash).
 - **Parallel discovery fan-out.** With 2+ configured `discovery_sources`,
   `_default_spec` now picks `PipelineStage("discover", mode="parallel_by_source")`
   and `build_graph` fans out one LangGraph `Send` per source into a
@@ -52,7 +60,7 @@ about status and direction.
   sources still use the original sequential `DiscoverStage` path unchanged
   (nothing to gain from fanning out one source). Same
   opportunities/tool_errors merge contract either way — see
-  [architecture.md](architecture.md#how-the-pipeline-is-assembled).
+  [architecture.md](../services/seo-agents/docs/architecture.md#how-the-pipeline-is-assembled).
 - **Grounded `"llm"` discovery, default on.** `LLMClient.generate()` takes a
   `grounded` param; `GeminiClient` backs it with Google Search grounding, so
   the model searches for real topics/threads instead of guessing from
@@ -93,7 +101,7 @@ about status and direction.
   `raw.grounding` (`"search"`/`"llm"`/`"none"`) and `raw.grounding_error`. The
   first version of this shipped a run that reported success while quietly
   producing unverified links, with nothing anywhere saying so. See
-  [architecture.md](architecture.md#grounding-a-system-capability-not-a-model-feature).
+  [architecture.md](../services/seo-agents/docs/architecture.md#grounding-a-system-capability-not-a-model-feature).
 
 - **Discovery contract enforced, not trusted.** Every item any
   `OpportunitySource` returns (`mock`/`llm`/`custom` alike) is coerced by
@@ -112,7 +120,7 @@ about status and direction.
   half. A zero-discovery tenant is unaffected: `analyze_context` isn't added
   to that graph at all, and `analyze` fetches analytics/traffic itself
   exactly as before. See
-  [architecture.md](architecture.md#how-the-pipeline-is-assembled).
+  [architecture.md](../services/seo-agents/docs/architecture.md#how-the-pipeline-is-assembled).
 
 - **Verbose mode — a run you can watch.** `-v`/`-vv` (or `verbose` in tenant
   config) reports every stage and every tool call as it happens, with timings,
@@ -126,7 +134,7 @@ about status and direction.
   client and `observed_node()` wraps each pipeline stage, so no stage — and no
   tenant's `"custom"` class — contains any reporting code. With reporting off
   (the default) the proxies aren't in the call path at all. See
-  [configuration.md](configuration.md#watching-a-run-happen-verbose-mode).
+  [configuration.md](../services/seo-agents/docs/configuration.md#watching-a-run-happen-verbose-mode).
 
 - **Output sinks — the result goes where you want it.** `output_sinks` sends a
   finished run to stdout, a file, a JSONL archive, an HTTP endpoint, or a class
@@ -134,14 +142,14 @@ about status and direction.
   the same indented document to stdout the agent has always printed, so nothing
   changes for an existing tenant. Sinks run *after* the graph, at the
   `AgentRunner`/CLI boundary — no stage can see one, and the result shape in
-  [output-schema.md](output-schema.md) is untouched. Build failures are fatal
+  [output-schema.md](../services/seo-agents/docs/output-schema.md) is untouched. Build failures are fatal
   before the run (a webhook with no url shouldn't be discovered after a pipeline
   has spent real LLM calls); emit failures never are (the result already
   exists). Custom sinks load through the same `load_custom()` every other
   `"custom"` provider now uses, which also grew an optional second `options`
   argument so a provider can carry its own settings and secrets — the original
   `__init__(self, config)` form still works untouched. See
-  [configuration.md](configuration.md#where-the-result-goes-output-sinks).
+  [configuration.md](../services/seo-agents/docs/configuration.md#where-the-result-goes-output-sinks).
 
 - **A real CLI.** `run`, `check-data`, `show-graph`, `list-tools`,
   `list-specialists`, and `preview-prompt`, built on Typer. Every command is
@@ -155,7 +163,7 @@ about status and direction.
   unimportable custom class actually shows up; `show-graph` renders from the
   `PipelineSpec` alone, so a purely structural question needs no API key.
   `list-tools` reads a declarative provider catalog that a test pins against the
-  builders, so it can't drift. See [cli.md](cli.md).
+  builders, so it can't drift. See [cli.md](../services/seo-agents/docs/cli.md).
 
 - **A tenant is a folder.** `userdata/<name>/` holds a tenant's `tenant.json`,
   `plugins/`, `templates/`, `data/`, and `output/`, and a run names it:
@@ -178,7 +186,7 @@ about status and direction.
   tenant's code to another. Tenant names are validated rather than sanitized,
   since in a server they arrive from a request. Extra dependencies mean a new
   image, on purpose: there is no per-tenant environment management. See
-  [cli.md](cli.md) and [extending.md](extending.md#where-your-code-goes-the-plugins-folder).
+  [cli.md](../services/seo-agents/docs/cli.md) and [extending.md](../services/seo-agents/docs/extending.md#where-your-code-goes-the-plugins-folder).
 
 - **Grounding is a contract, not a hope.** `LLMResponse` now carries `grounded`
   — whether grounding *actually happened*, not merely whether it was asked for.
@@ -201,7 +209,7 @@ about status and direction.
 
   The decision that made this non-invasive: **every Protocol accepts a sync *or*
   an async implementation.** The framework awaits an async one and runs a sync
-  one in a worker thread ([`agent/utils/async_utils.py`](../src/agent/utils/async_utils.py)),
+  one in a worker thread ([`agent/utils/async_utils.py`](../services/seo-agents/src/agent/utils/async_utils.py)),
   decided in one place — the proxies that already wrapped every tool call. So no
   existing `"custom"` class had to change, and none of the examples did.
   `GoogleSearchConsoleClient` stays sync because `googleapiclient` is
@@ -212,9 +220,9 @@ about status and direction.
   A run also has an optional overall deadline now (`run_timeout_seconds`, `0` =
   unbounded) on top of the per-call timeouts — a dozen individually-timely calls
   can still hold a worker slot far longer than intended. See
-  [architecture.md](architecture.md#how-a-run-executes-async-and-why-you-can-ignore-that).
+  [architecture.md](../services/seo-agents/docs/architecture.md#how-a-run-executes-async-and-why-you-can-ignore-that).
 
-- **A service layer.** [`agent/service.py`](../src/agent/service.py)'s
+- **A service layer.** [`agent/service.py`](../services/seo-agents/src/agent/service.py)'s
   `AgentService` is the channel-agnostic entry point: `RunRequest` in,
   `RunResult` out. It owns what the CLI used to do inline — resolve the config,
   build the reporter, run, emit to the sinks, keep the state — so an HTTP
@@ -230,7 +238,7 @@ about status and direction.
   the sink-failure warning are both request-level choices, defaulting to what a
   CLI wants. Still out of scope, on purpose: the queue, the worker pool, the HTTP
   framework, the scheduler. See
-  [architecture.md](architecture.md#calling-the-agent-the-service-layer).
+  [architecture.md](../services/seo-agents/docs/architecture.md#calling-the-agent-the-service-layer).
 
 - **A provider registry, and provider-owned settings.** `ToolsManager`'s five
   parallel if/elif ladders are one registry, `kind -> {name -> factory}`, and
@@ -276,7 +284,7 @@ about status and direction.
   `provider: "custom"` remains for what the built-in deliberately isn't —
   several tool calls, choosing the tool at runtime, work in between, or an MCP
   server behind the analytics/traffic/search interfaces.
-  [`examples/06-mcp-discovery/`](../examples/06-mcp-discovery/) now runs both
+  [`examples/06-mcp-discovery/`](../services/seo-agents/examples/06-mcp-discovery/) now runs both
   side by side, offline.
 
 - **Signal inputs as a named list.** `signal_sources` makes every *input* the
@@ -310,7 +318,7 @@ about status and direction.
   Those three keep their own hand-shaped interfaces rather than being folded into
   `collect()` — their callers predate it and generalizing search performance's
   striking-distance keyword picking is a different job.
-  [`examples/07-signal-inputs/`](../examples/07-signal-inputs/) runs a templated
+  [`examples/07-signal-inputs/`](../services/seo-agents/examples/07-signal-inputs/) runs a templated
   signal and a custom one, offline.
 
   Explicitly not done: capability inference. A signal contributes context; it
@@ -365,7 +373,7 @@ about status and direction.
   name ends in `_template` plus every entry in `prompt_templates`, rather than at
   a hand-maintained list of today's options — so a provider that gains a template
   option later gets this without touching
-  [`agent/config/template_files.py`](../src/agent/config/template_files.py). The
+  [`agent/config/template_files.py`](../services/seo-agents/src/agent/config/template_files.py). The
   rejected alternatives are recorded there: a sigil (`"@x.j2"`) needs an escape
   hatch for a template that legitimately starts with `@`, and a
   `*_template_file` twin per option doubles a config surface that already has
@@ -397,7 +405,7 @@ about status and direction.
   shapes.
 
   **The bar was concrete and is met:
-  [`examples/08-custom-pipeline/`](../examples/08-custom-pipeline/) is a site
+  [`examples/08-custom-pipeline/`](../services/seo-agents/examples/08-custom-pipeline/) is a site
   audit — crawl, findings, verify — whose stages, template and fixtures all live
   in the tenant folder, producing `kind: "site_audit"` in the frozen result
   schema with nothing in `src/` knowing it exists.** That is why the built-in
@@ -436,7 +444,7 @@ about status and direction.
   that makes a run's progress visible to a *different* process) or `custom`, with
   connection details in `state_options` like every other provider. The interface
   it always had — `save`/`load`/`delete`, plus optional `flush`/`close` — is now
-  written down in [`src/state/base.py`](../src/state/base.py), and a store may be
+  written down in [`src/state/base.py`](../services/seo-agents/src/state/base.py), and a store may be
   sync or async like every other pluggable thing here.
 
   **The store is the one provider whose failures are routine**, so the guard
@@ -444,7 +452,7 @@ about status and direction.
   `save()` used to propagate out of `AgentRunner._run` and be caught by the
   outermost handler — turning a run that had produced a good draft into
   `phase="failed"`. Now every call is degrade-record-continue
-  ([`state_manager.py`](../src/agent/managers/state_manager.py)): the failure
+  ([`state_manager.py`](../services/seo-agents/src/agent/managers/state_manager.py)): the failure
   lands on `RunResult.state_errors` and the event stream, and a store that is down
   is attempted twice per run rather than once per super-step, since `save` runs
   after each one and a five-second timeout five times over is a run nobody can
@@ -454,7 +462,7 @@ about status and direction.
 
   **The terminal snapshot is the result**, not the last raw graph state — so
   something reading a finished run gets the documented JSON
-  ([output-schema.md](output-schema.md)) rather than an internal state with
+  ([output-schema.md](../services/seo-agents/docs/output-schema.md)) rather than an internal state with
   `working` on it. Explicitly *not* adopted: LangGraph's `checkpointer=`. Resuming
   an interrupted graph is a different feature with different guarantees, and
   nothing has asked for it; conflating the two would have made "we persist state"
@@ -462,17 +470,160 @@ about status and direction.
 
 ## Next
 
-Nothing planned inside the agent itself. Every step this roadmap was steered by
-has shipped — *inputs are signals* as `signal_sources`, *the deliverable is not
-always a draft* as agent types and pipelines, and a run's state now outlives the
-process that produced it. What's next is the layer above (see below), or whatever
-a real use case turns out to need.
+Nothing is planned inside the agent itself. Every step this roadmap was steered
+by has shipped — *inputs are signals* as `signal_sources`, *the deliverable is
+not always a draft* as agent types and pipelines, and a run's state now outlives
+the process that produced it. What's next is everything *around* it: getting the
+runtime built, shipped, deployed and driven by something other than a terminal.
 
-## Explicitly out of scope for this agent
+The four steps below are ordered, and the order is a dependency chain read
+backwards. The frontend is the visible one and it is deliberately last, because a
+UI with nothing to call is a mock: it needs the gateway. The gateway is a
+long-running process, and a long-running process is only worth writing once
+there's somewhere to run it — so deployment comes before it, and a deployable
+image before that. **Shipping an image is therefore first, not because it is the
+most interesting, but because everything else is undeployable without it.**
 
-No queue, no worker pool, no approval gate, no scheduling, no CMS/community
-posting integration. Those are a worker/control-plane concern layered on top of
-`AgentService.aexecute()`, not something this agent should grow into doing itself
-— what it now provides them is a run whose state is durable and readable by
-another process ([`src/state/`](../src/state/)), which is the seam a queue needs,
-not the queue.
+Only **step 1 is partly done**: `tests.yml` and `docs.yml` run on every push, and
+the image build and deploy workflows are written but parked until the build is
+ready. Everything else below is a plan, deliberately written before any of it is
+implemented.
+
+### 1. Images built and tested in CI
+
+The runtime already has a
+[`Dockerfile`](../services/seo-agents/Dockerfile) that mounts tenants rather than
+baking them in — one image serves every tenant under `/userdata`. What is missing
+is anything that builds it, so "does this still build?" is answered by a person,
+on a laptop, sometimes.
+
+| Workflow | State | Does |
+|---|---|---|
+| [`tests.yml`](../.github/workflows/tests.yml) | **live**, every push and PR | the runtime's `pytest` suite on 3.11, the version the image ships |
+| [`docs.yml`](../.github/workflows/docs.yml) | **live**, every push and PR | [`check_docs.py`](../scripts/check_docs.py) — executes every documented command, resolves every link and anchor |
+| [`images.yml.disabled`](../.github/workflows/images.yml.disabled) | written, **parked** | buildx to GHCR, tags from `metadata-action`, a `--help` smoke test inside the built image |
+| [`deploy.yml.disabled`](../.github/workflows/deploy.yml.disabled) | written, **parked** | `docker compose pull && up -d` over SSH, manually triggered |
+
+The two parked ones are disabled by file extension rather than by commenting out
+their bodies: GitHub only parses `.yml` here, whereas a fully-commented workflow
+is a YAML document with no `on:` key and shows up as "Invalid workflow file".
+Renaming re-enables them.
+
+Two decisions already made in the parked build, worth keeping when it is turned
+on. **A pull request builds but never publishes** — a fork opening a PR would
+otherwise be pushing to this project's registry. And **the service list is a
+matrix**, not copied jobs: `gateway` and `frontend` join it by adding a
+`Dockerfile` and one line, which is the whole reason a matrix exists while there
+is one service in it.
+
+Still to plan: signed images, an SBOM, and a `pip-audit` job.
+
+**A Makefile in the runtime, and not only in CI.** The commands a workflow runs
+are the same ones you want on a laptop, and a workflow is a bad place to read
+them from. `services/seo-agents/Makefile` should carry one target each for:
+building the image, pushing it, running the test suite, running an example
+(`make example EXAMPLE=08-custom-pipeline`), and doing a real run against a
+tenant (`make run TENANT=acme`). The point is not convenience — it is that CI
+then calls the same target a person does, so "works locally, fails in CI" stops
+being a category of problem. Not written yet.
+
+### 2. Deployment, Compose now, a Helm chart later
+
+[`deploy/compose/`](../deploy/compose/) is the single-host deployment and is the
+whole of what exists: Redis, so a run's state is readable from outside the
+process that produced it, plus the runtime as a one-shot `run --tenant …` behind
+a Compose profile — because a CLI is not a service and Compose restarting a
+finished one forever is not a deployment.
+
+**The cluster deployment will be a Helm chart, and is not written.** Raw
+manifests for it existed briefly and were deleted rather than kept: a chart is
+what people actually install, and a folder of loose YAML is not a step towards
+one — it is a second thing to keep in sync with the first. What the chart needs
+to cover is already known from the Compose file and from the runtime's own
+design, which is the useful part of planning it now:
+
+- **Redis**, as the state store rather than a cache — the seam the gateway and
+  the frontend are both built on.
+- **A volume for `/userdata`**, because a tenant is a folder. Not a ConfigMap and
+  not a Secret: the same folder layout has to work on a laptop, in Compose and in
+  a cluster, and adding a tenant must not need a cluster permission.
+- **A `CronJob` per scheduled tenant** — the closest thing to a scheduler that
+  exists before the gateway does, and deliberately the whole of it. A cluster
+  already has a scheduler; using it needs nothing added to the runtime. One
+  CronJob is one tenant, which does not scale to fifty — fifty is the queue that
+  step 3 owns.
+- **Secrets for API keys**, reaching the container through `envFrom` rather than
+  sitting in a `tenant.json` on the volume.
+- **A Deployment and Service for the gateway**, absent until step 3 and the only
+  thing in the whole chart with a rollout to wait on.
+
+The honest limitation, and the reason step 3 exists: **there is no long-running
+process to deploy yet.** Compose today runs Redis and a one-shot. The compose
+file already carries the gateway's shape — a service, a port, a health check —
+commented out and waiting, so that step is configuration rather than a rewrite.
+
+### 3. The gateway, the API handler
+
+The service that turns "a run is callable" into "a run is *requestable*":
+`services/gateway/`, an HTTP API over
+[`AgentService.aexecute()`](../services/seo-agents/src/agent/service.py), which
+already exists as a channel-agnostic entry point built for exactly this. The CLI
+is one adapter over it; this is the second.
+
+What it owns, all of it deliberately absent from the runtime:
+
+- **The HTTP surface** — submit a run, fetch a run, list an agent's runs, stream a
+  run's events over SSE. The result shape is not invented here: it is the
+  [frozen output schema](../services/seo-agents/docs/output-schema.md) the runtime
+  already returns.
+- **The status-code mapping**, which is the one piece of real design in the
+  translation: **a failed run is a successful request.** A run that comes back
+  `phase: "failed"` is a `200` carrying a failed run; only an unrunnable request
+  — unknown agent, unloadable config, a sink with no URL — is a `4xx`. Collapsing
+  those two into "500" is the mistake this note exists to prevent.
+- **Auth and multi-user isolation.** The runtime already isolates agents from each
+  other on disk and in memory; deciding *who may run which* has no home until
+  there is a request to attach an identity to.
+- **A queue and workers.** One run is one call today. Retrying, scheduling and
+  running many at once belongs here — and the seam it needs already exists, which
+  is `state_provider: "redis"`: a run's progress is readable by a process that
+  isn't the one executing it.
+- **The approval loop.** The runtime drafts and never publishes, on purpose.
+  Turning "a human approves every word" into review-and-ship needs somewhere to
+  hold state between the draft and the decision, and that somewhere is a database
+  this service owns.
+
+Why it isn't in the runtime: a queue that can't be swapped out is worse than no
+queue. The runtime's job is to make a run callable, observable and durable —
+owning the transport, the schedule and the approval policy is a different concern
+with different operational needs, and folding it in would make every tenant who
+only wants a CLI carry a web framework.
+
+### 4. The frontend, watching an agent work
+
+`services/frontend/`: a UI over agents, their runs, and the drafts they produce.
+Last, because it is a client of step 3 and nothing else.
+
+- **Agents** — what each one has wired in, editable, and checkable without
+  spending an API call (`list-specialists` and `check-data`, with a face).
+- **Runs, live** — the point of the whole thing. The runtime writes a state
+  snapshot after every step keyed by `run_id`, precisely so another process can
+  read a run that hasn't finished; the gateway streams those as SSE; this renders
+  them as the pipeline actually executing — which stage is running, which tool
+  call is in flight, which one degraded. A run's `tool_errors` and
+  `raw.grounding` stop being fields in a JSON blob and become the two things you
+  can see at a glance: *what did it look at, and what did it fail to look at?*
+- **The graph** — `show-graph` already renders a pipeline from the `PipelineSpec`
+  alone, no API key required. Drawing that same spec, with the live run lit up on
+  top of it, is the visualization that makes a configured pipeline legible.
+- **Review** — the part the runtime deliberately doesn't do. Drafts arrive with
+  self-review notes attached and nothing is published automatically; approving,
+  editing and shipping one is a human step that wants an interface rather than a
+  `curl`.
+
+It builds against two contracts that are already stable and already frozen: the
+[JSON a run returns](../services/seo-agents/docs/output-schema.md), and
+[where a run's state is](../services/seo-agents/docs/configuration.md#where-the-runs-state-is-kept-state_provider)
+while it is still going. Neither was designed for a UI after the fact — both were
+written so that this step needs no change to the runtime, which is the claim this
+step is here to test.

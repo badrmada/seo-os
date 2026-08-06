@@ -3,6 +3,14 @@
 Not built yet. This folder is a placeholder so the intended structure of the
 system is visible; there is no code here.
 
+It is **step 3** of
+[the roadmap](../../docs/roadmap.md#3-the-gateway-the-api-handler) — after an
+image that builds in CI and somewhere to run it, before the frontend that calls
+it. It is also the first thing in this system that is a long-running *service*
+rather than a CLI or a store, which is why
+[`deploy/compose/`](../../deploy/compose/) already carries its shape, commented
+out: a service, a port, a health check.
+
 ## What it will be
 
 The layer between the outside world and the runtime — everything the runtime

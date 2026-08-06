@@ -31,7 +31,7 @@ keys.
 | What JSON does a run return? | [output-schema.md](../services/seo-agents/docs/output-schema.md) |
 | What commands are there? | [cli.md](../services/seo-agents/docs/cli.md) |
 | Why is it built this way? | [architecture.md](../services/seo-agents/docs/architecture.md) |
-| What's built, what's next? | [roadmap.md](../services/seo-agents/docs/roadmap.md) |
+| What's built, what's next? | [roadmap.md](roadmap.md) |
 | Where does my contribution go? | [CONTRIBUTING.md](../CONTRIBUTING.md) |
 
 ## About these docs
@@ -47,5 +47,5 @@ Two conventions worth knowing as a reader:
   there because stale commands and renamed headings are invisible to reading —
   they've been caught six times this way and zero times by review.
 
-The plan these docs were written against, including what was deliberately left
-out, is [DOCS_PLAN.md](../DOCS_PLAN.md).
+What is built and what is coming — for the runtime and for the services around it
+— is [roadmap.md](roadmap.md).

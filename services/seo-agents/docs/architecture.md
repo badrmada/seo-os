@@ -533,7 +533,7 @@ In steps 1 and 2 a `link` the model claims is kept **only if it's in the trusted
 list**; anything else is dropped rather than propagated as though it were real.
 Step 3 keeps the link but the reporter says out loud that it's unverified — the
 distinction `LLMResponse.grounded` exists to preserve (see the "grounding is a
-contract" note in [roadmap.md](roadmap.md)).
+contract" note in [roadmap.md](../../../docs/roadmap.md)).
 
 A failing search is not a failing run: it costs the source its search grounding
 and lands on step 2, like every other degrade-don't-abort path here. But it isn't
@@ -650,4 +650,4 @@ when you save your config — not in the middle of a run.
   forking.
 - [output-schema.md](output-schema.md) — the exact JSON a run returns, for
   building a UI on it.
-- [roadmap.md](roadmap.md) — what's built and what's next.
+- [roadmap.md](../../../docs/roadmap.md) — what's built and what's next.

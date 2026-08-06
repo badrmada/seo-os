@@ -1,6 +1,6 @@
 # SEO Agent Plan — remaining work
 
-Everything already shipped is documented in [`docs/roadmap.md`](docs/roadmap.md)
+Everything already shipped is documented in [`docs/roadmap.md` (repo root)](../../docs/roadmap.md)
 and removed from this file. What follows is only what is left to build.
 
 ## START HERE
@@ -36,13 +36,13 @@ python src/main.py run --userdata examples --tenant 08-custom-pipeline  # a site
 
 | # | Step | Why in this order |
 |---|---|---|
-| ~~D~~ | ~~`SearchClient` (pluggable grounding)~~ | **Done** — see docs/roadmap.md. DuckDuckGo is the default; the resolution order is search → the model's own grounding → ungrounded. |
-| ~~E~~ | ~~Built-in `provider: "mcp"` discovery source~~ | **Done** — see docs/roadmap.md. Official `mcp` SDK, stdio + streamable HTTP, mapped by `items_template`. |
-| ~~F~~ | ~~Signal inputs as a named list~~ | **Done** — see docs/roadmap.md. `signal_sources`, collected concurrently, reaching the prompt as `signals` keyed by name. A crawler or a sitemap reader is a signal like any other. |
-| ~~G~~ | ~~Stage and pipeline registration~~ | **Done** — see docs/roadmap.md. `config.pipelines` + `--agent`; `examples/08-custom-pipeline/` is the site audit that proves the bar. |
+| ~~D~~ | ~~`SearchClient` (pluggable grounding)~~ | **Done** — see the repo-root docs/roadmap.md. DuckDuckGo is the default; the resolution order is search → the model's own grounding → ungrounded. |
+| ~~E~~ | ~~Built-in `provider: "mcp"` discovery source~~ | **Done** — see the repo-root docs/roadmap.md. Official `mcp` SDK, stdio + streamable HTTP, mapped by `items_template`. |
+| ~~F~~ | ~~Signal inputs as a named list~~ | **Done** — see the repo-root docs/roadmap.md. `signal_sources`, collected concurrently, reaching the prompt as `signals` keyed by name. A crawler or a sitemap reader is a signal like any other. |
+| ~~G~~ | ~~Stage and pipeline registration~~ | **Done** — see the repo-root docs/roadmap.md. `config.pipelines` + `--agent`; `examples/08-custom-pipeline/` is the site audit that proves the bar. |
 | ~~H~~ | ~~`seo_audit` agent type~~ | **Dropped** — the `"custom"` mechanism plus G covers it. See below. |
-| ~~J~~ | ~~Template values: inline or from a file~~ | **Done, ahead of G** — see docs/roadmap.md. `{"file": "x.j2"}` anywhere a template string is accepted. Taken first because G's whole point is a tenant authoring their own stages and prompts. |
-| ~~I~~ | ~~State persistence~~ | **Done, and last** — see docs/roadmap.md. `state_provider`: memory/file/redis/custom, with the guard around a store (degrade, record, bound the retries) as the substance rather than the stores. |
+| ~~J~~ | ~~Template values: inline or from a file~~ | **Done, ahead of G** — see the repo-root docs/roadmap.md. `{"file": "x.j2"}` anywhere a template string is accepted. Taken first because G's whole point is a tenant authoring their own stages and prompts. |
+| ~~I~~ | ~~State persistence~~ | **Done, and last** — see the repo-root docs/roadmap.md. `state_provider`: memory/file/redis/custom, with the guard around a store (degrade, record, bound the retries) as the substance rather than the stores. |
 
 Letters are order-of-work, nothing more — they are not renumbered when a step is
 dropped, since docs and commits already refer to them.
@@ -194,7 +194,7 @@ which a remaining step is judged too narrow:
   credentials, gitignored. `check-data --tenant echooers` validates it without
   spending an API call; `run` spends a real one, so don't run it casually.
 - **A step is not done until its config fields are in `docs/configuration.md`
-  and its status is in `docs/roadmap.md`**, with tests alongside.
+  and its status is in `docs/roadmap.md` (repo root)**, with tests alongside.
 - **A mock that stands in for a *decision* is a trap, and this repo has been
   caught by it once.** `gsc_provider` defaulted to `"mock"`, the mock returned
   striking-distance rows, and `_pick_keyword` prefers those over the caller's
@@ -247,7 +247,7 @@ observing proxy wrapping its client, never by reaching into run context.
 ## ~~Step D — `SearchClient` (pluggable grounding)~~ — shipped
 
 Kept only for the decisions a later step needs to know about; the full write-up
-is in `docs/roadmap.md` and `docs/architecture.md`.
+is in `docs/roadmap.md` (repo root) and `docs/architecture.md`.
 
 - **`search_provider` defaults to `"duckduckgo"`, not `"none"`.** Grounding is
   the system's capability, not the model's — otherwise "can this agent see the
@@ -286,7 +286,7 @@ is in `docs/roadmap.md` and `docs/architecture.md`.
 ## ~~Step E — Built-in `provider: "mcp"` discovery source~~ — shipped
 
 Kept only for the decisions a later step needs to know about; the full write-up
-is in `docs/roadmap.md` and `docs/configuration.md`.
+is in `docs/roadmap.md` (repo root) and `docs/configuration.md`.
 
 - **`mcp` (the official SDK) is a new dependency**, and a heavy one — it pulls in
   `starlette`, `uvicorn`, `sse-starlette`, `httpx2` and eleven others, a server
@@ -326,11 +326,11 @@ is in `docs/roadmap.md` and `docs/configuration.md`.
 ## ~~Step F — Signal inputs as a named list~~ — shipped
 
 Kept only for the decisions a later step needs to know about; the full write-up
-is in `docs/roadmap.md`, `docs/architecture.md` and `docs/configuration.md`.
+is in `docs/roadmap.md` (repo root), `docs/architecture.md` and `docs/configuration.md`.
 
 - **The three built-in slots stayed slots, and the *names* became reserved.**
   (Written at the time; `gsc` has since been renamed `search_performance` — see
-  docs/roadmap.md. The reasoning below is unchanged, only the name.)
+  the repo-root docs/roadmap.md. The reasoning below is unchanged, only the name.)
   `Tools.gsc/.traffic/.analytics` are still real dataclass fields with their own
   Protocols; `Tools.signals` holds everything else. The plan said "views onto the
   signal dict", and that was wrong in one specific way worth remembering: the
@@ -379,7 +379,7 @@ is in `docs/roadmap.md`, `docs/architecture.md` and `docs/configuration.md`.
 ## ~~Step G — Stage and pipeline registration~~ — shipped
 
 Kept only for the decisions a later step needs to know about; the full write-up is
-in `docs/roadmap.md`, `docs/architecture.md` and `docs/configuration.md`.
+in `docs/roadmap.md` (repo root), `docs/architecture.md` and `docs/configuration.md`.
 
 - **The bar was met, and `examples/08-custom-pipeline/` is the proof** — a site
   audit whose three stages, report template and fixtures live entirely in the
@@ -472,7 +472,7 @@ finished:
 ## ~~Step I — State persistence~~ — shipped
 
 Kept only for the decisions a later step needs to know about; the full write-up is
-in `docs/roadmap.md`, `docs/architecture.md` and `docs/configuration.md`.
+in `docs/roadmap.md` (repo root), `docs/architecture.md` and `docs/configuration.md`.
 
 - **The stores were the easy half; the guard is the step.** `save()` propagating
   out of `_run` turned a run that had produced a good draft into
@@ -528,7 +528,7 @@ in `docs/roadmap.md`, `docs/architecture.md` and `docs/configuration.md`.
 ## ~~Step J — Template values: inline or from a file~~ — shipped
 
 Kept only for the decisions a later step needs to know about; the full write-up is
-in `docs/roadmap.md` and `docs/configuration.md`.
+in `docs/roadmap.md` (repo root) and `docs/configuration.md`.
 
 - **Template slots are found by naming convention, not by a list.** A
   `{"file": ...}` object is honored at any key ending in `_template`, plus every

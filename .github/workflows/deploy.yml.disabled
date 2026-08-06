@@ -1,0 +1,78 @@
+# DISABLED — there is nothing to deploy yet, and `images.yml` (which publishes
+# the image this would roll out) is parked too. Re-enable by renaming this file
+# to `deploy.yml`; see the note at the top of `images.yml.disabled` for why the
+# extension and not a commented-out body.
+#
+# The Kubernetes half of this workflow was removed with the raw manifests — the
+# cluster story will be a Helm chart. What remains is the single-host Compose
+# path in `deploy/compose/`.
+
+name: deploy
+
+# Manual only, and deliberately so. Nothing here deploys on a push: choosing to
+# run an image is a separate decision from building it.
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Image tag to roll out (a tag images.yml published — latest, v1.2.0, sha-<full sha>)"
+        type: string
+        required: true
+        default: latest
+
+concurrency:
+  # One deploy at a time. Two overlapping rollouts of different tags is a race
+  # whose winner is whichever `docker compose up` returned last.
+  group: deploy-compose
+  cancel-in-progress: false
+
+env:
+  IMAGE_REPO: ghcr.io/${{ github.repository }}
+
+jobs:
+  compose:
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - name: Open an SSH connection
+        env:
+          SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.DEPLOY_KNOWN_HOSTS }}
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER_NAME: ${{ secrets.DEPLOY_USER }}
+        run: |
+          missing=""
+          [ -z "$SSH_KEY" ]     && missing="$missing DEPLOY_SSH_KEY"
+          [ -z "$KNOWN_HOSTS" ] && missing="$missing DEPLOY_KNOWN_HOSTS"
+          [ -z "$HOST" ]        && missing="$missing DEPLOY_HOST"
+          [ -z "$USER_NAME" ]   && missing="$missing DEPLOY_USER"
+          if [ -n "$missing" ]; then
+            echo "::error::missing secrets:$missing"
+            echo "::error::DEPLOY_KNOWN_HOSTS is \`ssh-keyscan <host>\` — pinned rather than"
+            echo "::error::trusted on first use, because a deploy is exactly when that matters."
+            exit 1
+          fi
+          mkdir -p ~/.ssh && chmod 700 ~/.ssh
+          printf '%s\n' "$SSH_KEY"     > ~/.ssh/id_deploy
+          printf '%s\n' "$KNOWN_HOSTS" > ~/.ssh/known_hosts
+          chmod 600 ~/.ssh/id_deploy ~/.ssh/known_hosts
+
+      # The compose file, the .env and the userdata folder live on the host and
+      # are not shipped from here: .env holds credentials and userdata holds
+      # tenants, neither of which belongs in this repo or in a runner. This pulls
+      # a tag and restarts, and nothing else.
+      - name: Pull and restart
+        env:
+          HOST: ${{ secrets.DEPLOY_HOST }}
+          USER_NAME: ${{ secrets.DEPLOY_USER }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH || '/srv/seo-os' }}
+          IMAGE_TAG: ${{ inputs.image_tag }}
+        run: |
+          ssh -i ~/.ssh/id_deploy "$USER_NAME@$HOST" \
+              IMAGE_REPO="$IMAGE_REPO" IMAGE_TAG="$IMAGE_TAG" DEPLOY_PATH="$DEPLOY_PATH" \
+              'bash -euo pipefail -s' <<'REMOTE'
+            cd "$DEPLOY_PATH"
+            docker compose pull
+            docker compose up -d --remove-orphans
+            docker compose ps
+          REMOTE

@@ -432,7 +432,7 @@ schema, including what a failed run looks like, is in
 | [docs/configuration.md](docs/configuration.md) | Every config field, with the full Echooers example explained line by line. |
 | [docs/extending.md](docs/extending.md) | Plugging in your own code — analytics, traffic, a signal input of your own, or a custom opportunity finder (including one that's its own mini-agent) — without forking. |
 | [docs/output-schema.md](docs/output-schema.md) | The exact JSON a run returns (success and failure), for building a UI on top of it. |
-| [docs/roadmap.md](docs/roadmap.md) | What's built, what's next, and what's deliberately left out. |
+| [../../docs/roadmap.md](../../docs/roadmap.md) | What's built and what's next — for this runtime and for the services around it. |
 | [examples/](examples/) | Eight complete, runnable example configs (SaaS, e-commerce, community, job board, MCP, signal inputs, a site audit), simple to advanced. |
 
 ## Bring your own tools, no fork required
@@ -461,7 +461,8 @@ or a community, and no memory carried from one run into the next. Those belong t
 service layer above this one (see the [repo root](../../README.md#the-repository))
 — what the runtime gives that layer is a run whose state it can read while it
 happens (`"state_provider": "file"` or `"redis"`), not the layer itself. See
-[docs/roadmap.md](docs/roadmap.md) for what *is* planned inside the runtime.
+[../../docs/roadmap.md](../../docs/roadmap.md) for what *is* planned, and in what
+order.
 
 ## Contributing
 

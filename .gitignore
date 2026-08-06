@@ -4,6 +4,11 @@
 *.env
 *.env.*
 
+# ...except the committed sample. deploy/compose/README.md tells you to copy it,
+# so it has to survive a clone; it holds names and defaults, never a value.
+!.env.example
+!**/.env.example
+
 # Virtual environments and local Python environments
 .venv/
 venv/
