@@ -28,6 +28,10 @@ agent **discover** what's worth engaging with and **decide the channel itself**.
 python src/main.py run --userdata examples --tenant 04-community-homelabhub --input input.discover.json
 ```
 
+Or `make example EXAMPLE=04-community-homelabhub ARGS="--input input.discover.json"`,
+or in Docker with nothing installed — the same run three ways is in
+[Running an example](../README.md#running-an-example).
+
 There's no `channel` in the input, so the agent runs discovery, then picks. Real
 output (trimmed):
 

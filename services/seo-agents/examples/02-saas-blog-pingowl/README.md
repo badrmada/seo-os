@@ -90,6 +90,9 @@ offline](../README.md#whats-real-offline-and-what-isnt).)
 python src/main.py run --userdata examples --tenant 02-saas-blog-pingowl
 ```
 
+Or `make example EXAMPLE=02-saas-blog-pingowl`, or in Docker with nothing installed —
+the same run three ways is in [Running an example](../README.md#running-an-example).
+
 ## Go live
 
 In `tenant.json`, switch the mocks for real tools:

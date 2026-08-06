@@ -10,7 +10,7 @@ about status and direction.
 | [`services/seo-agents/`](../services/seo-agents/) — the runtime | Shipped, tested, in use |
 | [`services/gateway/`](../services/gateway/) — the HTTP API, queue and approval loop | Planned — [step 3](#3-the-gateway-the-api-handler) |
 | [`services/frontend/`](../services/frontend/) — the UI over agents, runs and drafts | Planned — [step 4](#4-the-frontend-watching-an-agent-work) |
-| Build and deployment | [Step 1](#1-images-built-and-tested-in-ci) mostly — tests, docs and the image build all run in CI, images publish to GHCR; the Makefile is not written. [Step 2](#2-deployment-compose-now-a-helm-chart-later) is Compose only |
+| Build and deployment | [Step 1](#1-images-built-and-tested-in-ci) done bar signing/SBOM/`pip-audit` — tests, docs and the image build run in CI, images publish to GHCR with OCI metadata, and a Makefile carries the same commands. [Step 2](#2-deployment-compose-now-a-helm-chart-later) is Compose only |
 
 ## Shipped — the runtime
 
@@ -484,11 +484,13 @@ there's somewhere to run it — so deployment comes before it, and a deployable
 image before that. **Shipping an image is therefore first, not because it is the
 most interesting, but because everything else is undeployable without it.**
 
-Only **step 1 is mostly done**: `tests.yml`, `docs.yml` and `images.yml` all run
-on every push, and a merge to `main` publishes an image to GHCR. What is left of
-it is the Makefile, and the deploy workflow — which stays parked, because there
-is nothing long-running to deploy until step 3. Everything else below is a plan,
-deliberately written before any of it is implemented.
+Only **step 1 is essentially done**: `tests.yml`, `docs.yml` and `images.yml` all
+run on every push, a merge to `main` publishes an OCI-annotated image to GHCR,
+and a Makefile carries those same commands for a laptop. What is left of it is
+signed images, an SBOM and a `pip-audit` job — plus the deploy workflow, which
+stays parked because there is nothing long-running to deploy until step 3.
+Everything else below is a plan, deliberately written before any of it is
+implemented.
 
 ### 1. Images built and tested in CI
 
@@ -535,12 +537,32 @@ Still to plan: signed images, an SBOM, and a `pip-audit` job.
 
 **A Makefile in the runtime, and not only in CI.** The commands a workflow runs
 are the same ones you want on a laptop, and a workflow is a bad place to read
-them from. `services/seo-agents/Makefile` should carry one target each for:
-building the image, pushing it, running the test suite, running an example
-(`make example EXAMPLE=08-custom-pipeline`), and doing a real run against a
-tenant (`make run TENANT=acme`). The point is not convenience — it is that CI
-then calls the same target a person does, so "works locally, fails in CI" stops
-being a category of problem. Not written yet.
+them from. [`services/seo-agents/Makefile`](../services/seo-agents/Makefile)
+carries one target each for building the image, pushing it, running the suite,
+running an example (`make example EXAMPLE=08-custom-pipeline`) and doing a real
+run against a tenant (`make run TENANT=acme`), plus `version` and `labels` for
+inspecting what a build would carry. The point is not convenience — it is that CI
+calls the same target a person does, so "works locally, fails in CI" stops being
+a category of problem.
+
+`ENGINE=docker` on `example` and `run` switches the same command from the local
+virtualenv to the image, which is what lets the examples document three ways to
+run one thing without three definitions of it. The Docker form needs no
+`--userdata` flag: the image sets `SEO_AGENT_USERDATA=/userdata`, so mounting a
+folder there *is* the flag.
+
+**The image carries [OCI annotations](https://github.com/opencontainers/image-spec/blob/main/annotations.md)**
+— `org.opencontainers.image.*`, what `docker inspect`, GHCR's package page and
+every scanner already read, rather than the deprecated `org.label-schema.*`.
+`version`, `revision` and `created` arrive as build args from
+`git describe --tags --always --dirty --match 'v*'`; everything else is static in
+the Dockerfile, because it describes the project rather than the build. There are
+no tags yet, so a build today is labelled with a short SHA and starts producing
+SemVer the moment `v0.1.0` exists — which `images.yml`'s `type=semver` patterns
+are already waiting for. The args are declared at the end of the Dockerfile so a
+new commit doesn't invalidate the pip-install layer, and in CI
+`docker/metadata-action` passes the same annotations as `--label`, which win: one
+image shape from either path.
 
 ### 2. Deployment, Compose now, a Helm chart later
 

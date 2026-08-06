@@ -75,6 +75,9 @@ Products you may reference naturally (add their link to internal_links):
 python src/main.py run --userdata examples --tenant 03-ecommerce-roast-co
 ```
 
+Or `make example EXAMPLE=03-ecommerce-roast-co`, or in Docker with nothing installed —
+the same run three ways is in [Running an example](../README.md#running-an-example).
+
 The result includes a self-review note (real offline output):
 
 ```json

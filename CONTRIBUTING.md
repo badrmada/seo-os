@@ -129,6 +129,14 @@ actually executing it has caught stale commands four separate times, including a
 anchor check found two more the day it was written: links pointing at headings
 that had been renamed out from under them.
 
+**It runs `python src/main.py …` lines and nothing else.** The `make …` and
+`docker run …` forms the examples also document are checked by hand when you
+change them — running them here would mean building an image inside the docs
+workflow, which [`images.yml`](.github/workflows/images.yml) already does. So if
+you touch the [Makefile](services/seo-agents/Makefile) or a documented `docker
+run` line, run it yourself; nothing else will. `make` on its own lists every
+target, and `make test` is the same command CI runs.
+
 Commands run against a **scratch workspace** the script builds itself — the
 `acme` and `globex` tenants exactly as the quickstart tells a reader to create
 them (`SCRATCH_TENANTS` in the script). That's there because `userdata/` is
