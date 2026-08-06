@@ -15,9 +15,15 @@ import asyncio
 import json
 
 from agent.config.agent_config import AgentConfig
+from agent.graph.stages.discover import DiscoverStage
+from agent.graph.tools import Tools
 from agent.schemas.opportunity import normalize_opportunity
 from tools.clients.opportunity_llm import LLMOpportunitySource
 from tools.llm.base import LLMResponse
+from tools.llm.mocks.mock_client import MockLLMClient
+from tools.mocks.analytics_mock import MockAppAnalyticsClient
+from tools.mocks.gsc_mock import MockGoogleSearchConsoleClient
+from tools.mocks.traffic_mock import MockTrafficClient
 
 
 class FakeLLMClient:
@@ -84,6 +90,33 @@ def _payload(items: list[dict]) -> str:
     return json.dumps(items)
 
 
+def _discover(source, context: dict = None) -> list[dict]:
+    """Run the source **through DiscoverStage**, the way a real run does, and
+    return the opportunities it produced.
+
+    Not `source.discover(...)` directly, deliberately. DiscoverStage is what calls
+    normalize_opportunity on every item, which is where `source` gets stamped on
+    and where a malformed item is dropped — so the normalized shape these tests
+    assert is only the real output shape if it is reached the real way.
+
+    Calling discover() directly is what hid a bug for a whole step: the source
+    used to normalize its own items, so a second pass here wrapped each one again
+    and put `raw.grounding` at `raw.raw.grounding` in every actual run, while
+    these tests kept reading `raw.grounding` from the single-pass result and
+    passing. A test double one layer short of reality asserts the shape of the
+    double.
+    """
+    tools = Tools(
+        gsc=MockGoogleSearchConsoleClient(), analytics=MockAppAnalyticsClient(),
+        traffic=MockTrafficClient(), llm=MockLLMClient(),
+        discovery_sources={source.name: source},
+    )
+    stage = DiscoverStage(tools, _config())
+    working = asyncio.run(stage.run({"input": context or {}, "working": {}}))["working"]
+    assert working["tool_errors"] == [], working["tool_errors"]
+    return working["opportunities"]
+
+
 # --- grounded by default ---
 
 
@@ -91,7 +124,7 @@ def test_discover_calls_llm_grounded_by_default():
     llm = FakeLLMClient(LLMResponse(text=_payload([]), sources=[]))
     source = LLMOpportunitySource("llm_source", llm, _config())
 
-    asyncio.run(source.discover({}))
+    _discover(source)
 
     assert llm.last_kwargs["grounded"] is True
 
@@ -100,7 +133,7 @@ def test_discover_respects_grounded_false():
     llm = FakeLLMClient(LLMResponse(text=_payload([]), sources=[]))
     source = LLMOpportunitySource("llm_source", llm, _config(), grounded=False)
 
-    asyncio.run(source.discover({}))
+    _discover(source)
 
     assert llm.last_kwargs["grounded"] is False
 
@@ -121,7 +154,7 @@ def test_grounded_link_kept_when_it_matches_a_real_citation():
     )
     source = LLMOpportunitySource("llm_source", llm, _config())
 
-    [opportunity] = asyncio.run(source.discover({}))
+    [opportunity] = _discover(source)
 
     assert opportunity["raw"]["link"] == real_url
     assert opportunity["raw"]["grounding_sources"] == [real_url]
@@ -146,7 +179,7 @@ def test_grounded_link_dropped_when_not_a_real_citation():
     )
     source = LLMOpportunitySource("llm_source", llm, _config())
 
-    [opportunity] = asyncio.run(source.discover({}))
+    [opportunity] = _discover(source)
 
     assert opportunity["raw"]["link"] == ""
 
@@ -162,7 +195,7 @@ def test_ungrounded_link_passes_through_unverified():
     )
     source = LLMOpportunitySource("llm_source", llm, _config(), grounded=False)
 
-    [opportunity] = asyncio.run(source.discover({}))
+    [opportunity] = _discover(source)
 
     assert opportunity["raw"]["link"] == "https://x.test/y"
 
@@ -182,7 +215,7 @@ def test_a_grounded_call_that_cited_nothing_still_drops_the_link():
     )
     source = LLMOpportunitySource("llm_source", llm, _config())
 
-    [opportunity] = asyncio.run(source.discover({}))
+    [opportunity] = _discover(source)
 
     assert opportunity["raw"]["link"] == ""
 
@@ -204,7 +237,7 @@ def test_links_survive_a_provider_that_cannot_ground():
     )
     source = LLMOpportunitySource("llm_source", llm, _config())  # grounded=True by default
 
-    [opportunity] = asyncio.run(source.discover({}))
+    [opportunity] = _discover(source)
 
     assert llm.last_kwargs["grounded"] is True   # it did ask
     assert opportunity["raw"]["link"] == real_url  # and kept the data anyway
@@ -228,7 +261,7 @@ def test_search_results_are_searched_for_and_fed_into_the_prompt():
     )
     source = LLMOpportunitySource("llm_source", llm, _config(), search=search)
 
-    [opportunity] = asyncio.run(source.discover({}))
+    [opportunity] = _discover(source)
 
     # Sorted, not in order: the queries go out concurrently, so which one reaches
     # the client first is a race — the *results* keep argument order (gather does),
@@ -246,7 +279,7 @@ def test_search_grounding_does_not_also_ask_the_model_to_ground():
     llm = ScriptedLLMClient(_queries_response("q"), LLMResponse(text=_opportunity("")))
     source = LLMOpportunitySource("llm_source", llm, _config(), search=search)
 
-    asyncio.run(source.discover({}))
+    _discover(source)
 
     assert [kwargs["grounded"] for kwargs in llm.kwargs] == [False, False]
 
@@ -260,7 +293,7 @@ def test_a_link_that_is_not_a_search_result_is_dropped():
     )
     source = LLMOpportunitySource("llm_source", llm, _config(), search=search)
 
-    [opportunity] = asyncio.run(source.discover({}))
+    [opportunity] = _discover(source)
 
     assert opportunity["raw"]["link"] == ""
     assert opportunity["raw"]["grounding_sources"] == ["https://example.test/real"]
@@ -275,7 +308,7 @@ def test_configured_queries_skip_the_query_writing_call():
         "llm_source", llm, _config(), search=search, search_queries=["fixed query", "  "],
     )
 
-    asyncio.run(source.discover({}))
+    _discover(source)
 
     assert search.queries == ["fixed query"]
     assert len(llm.prompts) == 1
@@ -293,7 +326,7 @@ def test_results_are_deduplicated_across_queries_and_capped():
         "llm_source", llm, _config(), search=search, max_search_results=2,
     )
 
-    asyncio.run(source.discover({}))
+    _discover(source)
 
     prompt = llm.prompts[1]
     assert prompt.count("https://example.test/2") == 1
@@ -307,7 +340,7 @@ def test_a_seed_keyword_is_the_fallback_query():
     llm = ScriptedLLMClient(LLMResponse(text="not json at all"), LLMResponse(text="[]"))
     source = LLMOpportunitySource("llm_source", llm, _config(), search=search)
 
-    asyncio.run(source.discover({"seed_keyword": "static site seo"}))
+    _discover(source, {"seed_keyword": "static site seo"})
 
     assert search.queries == ["static site seo"]
 
@@ -319,7 +352,7 @@ def test_no_queries_and_no_seed_keyword_means_no_search():
     llm = ScriptedLLMClient(LLMResponse(text="not json at all"), LLMResponse(text="[]"))
     source = LLMOpportunitySource("llm_source", llm, _config(), search=search)
 
-    asyncio.run(source.discover({}))
+    _discover(source)
 
     assert search.queries == []
 
@@ -335,10 +368,32 @@ def test_each_opportunity_records_which_grounding_it_got():
     llm = ScriptedLLMClient(_queries_response("q"), LLMResponse(text=_opportunity("")))
     source = LLMOpportunitySource("llm_source", llm, _config(), search=search)
 
-    [opportunity] = asyncio.run(source.discover({}))
+    [opportunity] = _discover(source)
 
     assert opportunity["raw"]["grounding"] == "search"
     assert "grounding_error" not in opportunity["raw"]
+
+
+def test_the_grounding_record_is_at_raw_not_buried_a_level_deeper():
+    """The guard for how the test above was passing while the thing it describes
+    was false. normalize_opportunity puts the item it is given under `raw`, so a
+    source that normalizes before returning gets normalized twice by
+    DiscoverStage and everything it recorded ends up at `raw.raw.*`. A nested
+    `raw` key is the fingerprint of that second pass.
+
+    The same assertion guards the MCP source
+    (test_mcp_discovery.py::test_every_opportunity_records_which_server_and_tool_produced_it),
+    because the trap is the OpportunitySource contract's, not either source's.
+    """
+    search = FakeSearchClient(results=[_result("https://example.test/a")])
+    llm = ScriptedLLMClient(_queries_response("q"), LLMResponse(text=_opportunity("")))
+    source = LLMOpportunitySource("llm_source", llm, _config(), search=search)
+
+    [opportunity] = _discover(source)
+
+    assert "raw" not in opportunity["raw"], (
+        "the item was normalized twice; the grounding audit trail is now at raw.raw.*"
+    )
 
 
 def test_a_search_outage_is_recorded_on_what_it_degraded_to():
@@ -346,7 +401,7 @@ def test_a_search_outage_is_recorded_on_what_it_degraded_to():
     llm = ScriptedLLMClient(_queries_response("q"), LLMResponse(text=_opportunity("")))
     source = LLMOpportunitySource("llm_source", llm, _config(), search=search)
 
-    [opportunity] = asyncio.run(source.discover({}))
+    [opportunity] = _discover(source)
 
     assert opportunity["raw"]["grounding"] == "none"   # the mock LLM cannot ground either
     assert "rate limited" in opportunity["raw"]["grounding_error"]
@@ -367,7 +422,7 @@ def test_one_failed_query_among_several_is_not_a_degraded_run():
     llm = ScriptedLLMClient(_queries_response("a", "b"), LLMResponse(text=_opportunity("")))
     source = LLMOpportunitySource("llm_source", llm, _config(), search=FlakySearch())
 
-    [opportunity] = asyncio.run(source.discover({}))
+    [opportunity] = _discover(source)
 
     assert opportunity["raw"]["grounding"] == "search"
     assert "grounding_error" not in opportunity["raw"]
@@ -377,7 +432,7 @@ def test_the_models_own_grounding_is_recorded_as_such():
     llm = FakeLLMClient(LLMResponse(text=_opportunity(""), sources=["https://x.test"], grounded=True))
     source = LLMOpportunitySource("llm_source", llm, _config())
 
-    [opportunity] = asyncio.run(source.discover({}))
+    [opportunity] = _discover(source)
 
     assert opportunity["raw"]["grounding"] == "llm"
 
@@ -396,7 +451,7 @@ def test_a_failing_search_falls_back_to_the_models_own_grounding():
     )
     source = LLMOpportunitySource("llm_source", llm, _config(), search=search)
 
-    [opportunity] = asyncio.run(source.discover({}))
+    [opportunity] = _discover(source)
 
     assert llm.kwargs[1]["grounded"] is True   # step 2, not a failed run
     assert opportunity["raw"]["link"] == "https://example.test/cited"
@@ -407,7 +462,7 @@ def test_a_search_that_finds_nothing_falls_back_the_same_way():
     llm = ScriptedLLMClient(_queries_response("q"), LLMResponse(text="[]", grounded=True))
     source = LLMOpportunitySource("llm_source", llm, _config(), search=search)
 
-    asyncio.run(source.discover({}))
+    _discover(source)
 
     assert llm.kwargs[1]["grounded"] is True
 
@@ -418,7 +473,7 @@ def test_no_search_client_configured_is_the_old_behavior_exactly():
     llm = FakeLLMClient(LLMResponse(text="[]", sources=[]))
     source = LLMOpportunitySource("llm_source", llm, _config(), search=None)
 
-    asyncio.run(source.discover({}))
+    _discover(source)
 
     assert llm.last_kwargs["grounded"] is True
 
@@ -430,7 +485,7 @@ def test_grounded_false_skips_search_entirely():
     llm = ScriptedLLMClient(LLMResponse(text=_opportunity("https://x.test/y")))
     source = LLMOpportunitySource("llm_source", llm, _config(), search=search, grounded=False)
 
-    [opportunity] = asyncio.run(source.discover({}))
+    [opportunity] = _discover(source)
 
     assert search.queries == []
     assert len(llm.prompts) == 1
@@ -454,7 +509,7 @@ def test_malformed_item_dropped_others_kept():
     )
     source = LLMOpportunitySource("llm_source", llm, _config())
 
-    opportunities = asyncio.run(source.discover({}))
+    opportunities = _discover(source)
 
     assert len(opportunities) == 1
     assert opportunities[0]["topic"] == "good one"
@@ -467,7 +522,7 @@ def test_out_of_range_signal_strength_is_clamped():
     )
     source = LLMOpportunitySource("llm_source", llm, _config())
 
-    [opportunity] = asyncio.run(source.discover({}))
+    [opportunity] = _discover(source)
 
     assert opportunity["signal_strength"] == 1.0
 
@@ -483,7 +538,7 @@ def test_invalid_intent_and_channel_hint_fall_back_to_defaults():
     )
     source = LLMOpportunitySource("llm_source", llm, _config())
 
-    [opportunity] = asyncio.run(source.discover({}))
+    [opportunity] = _discover(source)
 
     assert opportunity["intent"] == "informational"
     assert opportunity["suggested_channel_hint"] is None

@@ -44,7 +44,21 @@ class OpportunitySource(Protocol):
         """context carries whatever the run has so far (seed_keyword, context_text,
         already-known opportunities from earlier sources) — a source may ignore it
         entirely or use it to steer its own query. Opportunity is
-        agent/schemas/opportunity.py's TypedDict."""
+        agent/schemas/opportunity.py's TypedDict.
+
+        **Return plain items; do not call normalize_opportunity yourself.**
+        agent/graph/stages/discover.py normalizes every item every source returns,
+        and normalize_opportunity puts the item it is given *under* `raw` — so a
+        source that normalizes first gets normalized twice, and anything it
+        recorded for the caller (grounding, provenance, its own fields) ends up at
+        `raw.raw.*` instead of `raw.*`.
+
+        This is not hypothetical and it is not cheap to notice: LLMOpportunitySource
+        did it, which silently moved Step D's whole grounding audit trail one level
+        deeper in every real run, while the tests kept passing because they called
+        discover() directly and only ever saw the single-pass result. A test for a
+        source's *output* shape has to go through DiscoverStage to mean anything.
+        """
         ...
 
 

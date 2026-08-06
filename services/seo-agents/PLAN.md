@@ -82,19 +82,21 @@ They are also the answer to "why is there a plan step for this at all":
   `src/tests/test_imports.py` imports each package cold in a subprocess — **run
   it after any new intra-package import.** The fix is usually a deferred import
   inside the function, as `agent/validators/template_validator.py` already does.
-- **A source must not call `normalize_opportunity` itself.**
-  `agent/graph/stages/discover.py` normalizes *every* item *every* source
-  returns, and `normalize_opportunity` puts the item it is given under `raw` — so
-  a source that normalizes before returning gets normalized twice, and everything
-  it recorded ends up at `raw.raw.*` instead of `raw.*`. It is invisible in a
-  test that calls `discover()` directly and only appears in a real run.
-  **`LLMOpportunitySource` still does this**, so Step D's `raw.grounding` /
-  `raw.grounding_error` are really at `raw.raw.grounding` in actual output —
-  a live bug, not a style point, and the reason
-  `test_mcp_discovery.py::test_every_opportunity_records_which_server_and_tool_produced_it`
-  asserts through `DiscoverStage`. Left unfixed on purpose: correcting it changes
-  the `raw` shape the real tenant's output has today, which is a call to make
-  deliberately rather than as a side effect of Step E.
+- **A source must not call `normalize_opportunity` itself** — now stated on the
+  `OpportunitySource` Protocol in `tools/base.py`, where a new source's author
+  will look. `agent/graph/stages/discover.py` normalizes *every* item *every*
+  source returns, and `normalize_opportunity` puts the item it is given under
+  `raw`, so normalizing first means normalizing twice and everything the source
+  recorded lands at `raw.raw.*`. Both built-in sources did this; both are fixed,
+  and a `assert "raw" not in opportunity["raw"]` guard sits in
+  `test_opportunity_llm.py` and `test_mcp_discovery.py`.
+- **A source test that asserts the output shape must go through `DiscoverStage`.**
+  This is the general lesson from the above, and the more expensive half. The
+  double-normalization survived a whole step because every test in
+  `test_opportunity_llm.py` called `source.discover()` directly, saw the
+  single-pass result, and passed — while every real run put the grounding audit
+  trail somewhere the docs said it wasn't. Both files now have a `_discover`
+  helper that runs the real stage.
 - **Docs go stale silently.** The reliable check is to extract every
   `python src/main.py …` line from `README.md`, `docs/*.md`, and
   `examples/*/README.md` and actually execute it — that has caught four stale

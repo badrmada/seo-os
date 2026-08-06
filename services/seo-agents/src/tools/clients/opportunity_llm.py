@@ -4,7 +4,6 @@ import asyncio
 import json
 import re
 
-from agent.schemas.opportunity import normalize_opportunity
 from agent.utils.async_utils import call as acall
 
 from .templated_json import render_text
@@ -213,7 +212,7 @@ class LLMOpportunitySource:
         # result schema (docs/output-schema.md).
         grounding = "search" if results else ("llm" if verify_links else "none")
 
-        opportunities = []
+        annotated = []
         for item in items:
             if not isinstance(item, dict):
                 continue
@@ -232,11 +231,17 @@ class LLMOpportunitySource:
             item["link"] = link
             if sources:
                 item["grounding_sources"] = sources
+            annotated.append(item)
 
-            opportunity = normalize_opportunity(item, source=self.name)
-            if opportunity is not None:
-                opportunities.append(opportunity)
-        return opportunities
+        # Normalizing is deliberately left to the caller. Every item every source
+        # returns already goes through normalize_opportunity in
+        # agent/graph/stages/discover.py, and normalize_opportunity puts the item
+        # it is given *under* `raw` — so doing it here too nested everything
+        # above at `raw.raw.grounding` in real output while every test that
+        # called discover() directly still saw `raw.grounding` and passed. The
+        # grounding audit trail this step exists for was therefore not where it
+        # was documented to be. Sources return items; the stage normalizes them.
+        return annotated
 
     # --- step 1: real search -------------------------------------------------
 

@@ -81,6 +81,10 @@ decided (see
                                           // "grounding": "search" | "llm" | "none", the URLs it was
                                           // allowed to cite in "grounding_sources", and
                                           // "grounding_error" if a search failed and it fell back.
+                                          // An "mcp" source records "mcp_tool" and "mcp_server".
+                                          // These sit directly on "raw" — a source that normalizes
+                                          // its own items before returning them would push all of
+                                          // it down to "raw"."raw", which is a bug, not a variant.
       "reason": "..."
     }
   ],
