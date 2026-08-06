@@ -484,10 +484,10 @@ there's somewhere to run it — so deployment comes before it, and a deployable
 image before that. **Shipping an image is therefore first, not because it is the
 most interesting, but because everything else is undeployable without it.**
 
-Only **step 1 is essentially done**: `tests.yml`, `docs.yml` and `images.yml` all
-run on every push, a merge to `main` publishes an OCI-annotated image to GHCR,
-and a Makefile carries those same commands for a laptop. What is left of it is
-signed images, an SBOM and a `pip-audit` job. **CI ends at the image**, and there
+Only **step 1 is essentially done**: `images.yml` runs the tests and the
+documentation check and then builds, a merge to `main` publishes an OCI-annotated
+image to GHCR, and a Makefile carries those same commands for a laptop. What is
+left of it is signed images, an SBOM and a `pip-audit` job. **CI ends at the image**, and there
 is no deploy workflow to re-enable — a parked one was deleted rather than kept
 waiting, for the reason in [step 1](#1-images-built-and-tested-in-ci). Step 2's
 Compose half is written and [documented](../deploy/compose/README.md); its
@@ -503,9 +503,24 @@ build?" used to be answered by a person, on a laptop, sometimes.
 
 | Workflow | State | Does |
 |---|---|---|
-| [`tests.yml`](../.github/workflows/tests.yml) | **live**, every push and PR | the runtime's `pytest` suite on 3.11, the version the image ships |
-| [`docs.yml`](../.github/workflows/docs.yml) | **live**, every push and PR | [`check_docs.py`](../scripts/check_docs.py) — executes every documented command, resolves every link and anchor |
-| [`images.yml`](../.github/workflows/images.yml) | **live**, every push and PR | buildx to GHCR, tags from `metadata-action`, a `--help` smoke test inside the built image |
+| [`images.yml`](../.github/workflows/images.yml) | **live**, the entry point — every push, PR and `v*` tag | calls the two below, then buildx to GHCR: tags from `metadata-action`, a `--help` smoke test inside the built image |
+| [`tests.yml`](../.github/workflows/tests.yml) | **live**, called by `images.yml` | the runtime's `pytest` suite on 3.11, the version the image ships |
+| [`docs.yml`](../.github/workflows/docs.yml) | **live**, called by `images.yml` | [`check_docs.py`](../scripts/check_docs.py) — executes every documented command, resolves every link and anchor |
+
+**One entry point, and the order in that table is the dependency order.** These
+were three workflows on the same triggers, which read like a gate and was not
+one: they raced, so a merge to `main` published an image whether or not the suite
+running beside it went green, and a `v*` tag — the build people actually pin —
+ran no tests at all, because `tests.yml` was `branches: [main]` and a tag is not
+a branch. `build` now declares `needs: [tests, docs]`. The cost is that a pull
+request waits for the suite before it starts building; the benefit is that
+"published" means "tested", which is what everyone already assumed it meant.
+
+Calling the two rather than inlining them keeps one definition of "the tests" and
+gives the checks the names branch protection needs — `tests / seo-agents`,
+`docs / check`, `image (seo-agents)`. That last rename was not cosmetic: the
+build job was `${{ matrix.service }}`, which is also `seo-agents`, and a ruleset
+matches on that string.
 
 **There is deliberately no fourth row.** A deploy workflow existed here, parked —
 `docker compose pull && up -d` over SSH, manually triggered — and has been

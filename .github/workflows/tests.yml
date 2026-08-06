@@ -1,15 +1,18 @@
+# The runtime's test suite. **Called, never triggered directly** — `images.yml`
+# is the one entry point for CI, and it runs this as a dependency of the build so
+# that an image can only be published from a commit whose tests passed. Giving
+# this file its own `push`/`pull_request` triggers would run it twice per event
+# and, worse, make it look like a gate when it gated nothing.
+
 name: tests
 
 on:
-  push:
-    branches: [main]
-  pull_request:
+  workflow_call:
 
-# A second push to the same ref cancels the first: the older run's result is not
-# a fact anyone needs.
-concurrency:
-  group: tests-${{ github.ref }}
-  cancel-in-progress: true
+# The suite reads the checkout and writes nothing back. Without this the job
+# inherits the repository default, which is broader than anything here needs.
+permissions:
+  contents: read
 
 jobs:
   seo-agents:
@@ -21,12 +24,12 @@ jobs:
         working-directory: services/seo-agents
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
 
       # 3.11 and nothing else, on purpose: requirements.txt is fully pinned and
       # the Dockerfile is python:3.11-slim, so a second version here would be
       # testing an interpreter nobody deploys.
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
         with:
           python-version: "3.11"
           cache: pip
