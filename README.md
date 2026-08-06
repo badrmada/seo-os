@@ -68,6 +68,43 @@ web search, your analytics, where the result lands, even what it produces — is
 piece you choose and can replace. That's the "OS" in the name, and
 [the section below](#why-os-and-not-just-a-tool) is what it buys you.
 
+Here is the whole of it — what a run **reads** on the left, what it **produces**
+on the right. Every dashed box is a **slot**, not a component: it names a real
+config field, it ships with something that works today, and it takes your own
+class instead — no fork, no runtime change.
+
+```mermaid
+flowchart LR
+    LLM["the model<br/><i>llm_provider</i><br/>gemini · mock · yours"]
+    SRCH["web search<br/><i>search_provider</i><br/>duckduckgo · none · yours"]
+    RANK["how you rank<br/><i>search_performance_provider</i><br/>search console · templated · yours"]
+    TRAF["traffic<br/><i>traffic_provider</i><br/>cloudflare · templated · yours"]
+    ANA["analytics<br/><i>analytics_provider</i><br/>templated · yours"]
+    SIG["signals, any number<br/><i>signal_sources</i><br/>backlinks · tickets · trends · anything"]
+    DISC["discovery, any number<br/><i>discovery_sources</i><br/>llm · mcp server · your own agent"]
+
+    CORE("<b>SEO-OS</b><br/>a LangGraph pipeline<br/>assembled from your config")
+
+    PIPE["the deliverable<br/><i>pipelines</i><br/>article · site audit · brief · your stages"]
+    CH["the channel<br/>site_article · external_article<br/>engagement_comment"]
+    SINK["where it lands<br/><i>output_sinks</i><br/>stdout · file / JSONL · webhook · CMS · Slack"]
+    ST["the live run state<br/><i>state_provider</i><br/>memory · file · redis · yours"]
+
+    LLM & SRCH & RANK & TRAF & ANA & SIG & DISC --- CORE
+    CORE --- PIPE & CH & SINK & ST
+
+    classDef slot stroke-dasharray:5 5,stroke-width:1.5px
+    classDef hub stroke-width:3px
+    class LLM,SRCH,RANK,TRAF,ANA,SIG,DISC,PIPE,CH,SINK,ST slot
+    class CORE hub
+```
+
+The core is the only box that isn't yours to swap — and it's the one that doesn't
+know what's in any of the others. It talks to every slot through a small
+interface, so a local model, a rank tracker this project has never heard of, and
+a deliverable that isn't a draft at all are the same kind of change: a few lines
+of config, and a class in your own folder if the logic is real.
+
 Underneath, a run is a **[LangGraph pipeline built from your
 config](#the-core-a-langgraph-pipeline-assembled-from-config)** — specialists as
 nodes, branches that run concurrently, and a graph shape that changes with what

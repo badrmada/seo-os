@@ -44,6 +44,48 @@ That's why verbose mode, sinks, and state snapshots exist without a single line
 of reporting or delivery code inside any step — see [The run-context
 plane](#the-run-context-plane-observing-and-delivering-a-run).
 
+Drawn as seams rather than as planes, the same system looks like this — each
+dashed box is one `Protocol` and the config field that selects an implementation
+for it:
+
+```mermaid
+flowchart LR
+    LLM["<b>the model</b><br/>LLMClient<br/><i>llm_provider</i>"]
+    SRCH["<b>web search</b><br/>SearchClient<br/><i>search_provider</i>"]
+    RANK["<b>how you rank</b><br/>SearchPerformanceClient<br/><i>search_performance_provider</i>"]
+    TRAF["<b>traffic</b><br/>SiteTrafficClient<br/><i>traffic_provider</i>"]
+    ANA["<b>analytics</b><br/>AppAnalyticsClient<br/><i>analytics_provider</i>"]
+    SIG["<b>signals</b> · any number<br/>SignalSource<br/><i>signal_sources</i>"]
+    DISC["<b>discovery</b> · any number<br/>OpportunitySource<br/><i>discovery_sources</i>"]
+
+    CORE("<b>the pipeline</b><br/>stages built from a PipelineSpec<br/>AgentRunner.arun")
+
+    PIPE["<b>the deliverable</b><br/>your own stage classes<br/><i>pipelines</i> + --agent"]
+    SINK["<b>where it lands</b><br/>OutputSink<br/><i>output_sinks</i>"]
+    ST["<b>the live run state</b><br/>StateStore<br/><i>state_provider</i>"]
+    RES["<b>the result</b><br/>AgentState, frozen schema<br/>output-schema.md"]
+
+    LLM & SRCH & RANK & TRAF & ANA & SIG & DISC --- CORE
+    CORE --- PIPE & SINK & ST & RES
+
+    classDef slot stroke-dasharray:5 5,stroke-width:1.5px
+    classDef hub stroke-width:3px
+    class LLM,SRCH,RANK,TRAF,ANA,SIG,DISC,PIPE,SINK,ST slot
+    class CORE hub
+```
+
+The seven on the left are the **tools** plane, bundled into `Tools` and visible to
+a stage. `OutputSink` and `StateStore` are the **run-context** plane — they hang
+off the runner, not off `Tools`, which is why no stage can reach them. The one
+solid box is the point of the picture: **the result is the only thing here you
+can't swap.** Everything else is a slot precisely so that the JSON a caller
+receives never has to change.
+
+[`agent/managers/providers.py`](../src/agent/managers/providers.py)'s `CATALOG` is
+this diagram as data — every kind, its interface, its config field and the
+provider names it accepts. `list-tools` prints it, and the tests assert it matches
+the code, so the two can't drift.
+
 ## What one run looks like
 
 Here's the full pipeline. The exact steps depend on whether discovery is turned
