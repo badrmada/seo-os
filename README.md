@@ -1,7 +1,10 @@
 # SEO-OS
 
-**An open-source AI agent that grows your organic traffic** — the visitors who
-arrive through search and online conversations, not through ads.
+**The open-source OS for LLM-native SEO.** Grow your brand where people actually
+look — search results, live conversations, the app you already shipped. Articles,
+replies, site audits, or something nobody's built yet: the deliverable is a slot
+you fill, not a feature you wait for. Organic growth, bounded by your imagination
+— not by our roadmap.
 
 > **Not a docs person?** Understood, and there will be no quiz. Skip straight to
 > **[the eight examples](#learn-by-example)** — a dev SaaS, a store, a forum, a
