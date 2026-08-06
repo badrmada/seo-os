@@ -1,24 +1,75 @@
 # SEO-OS
 
-**An agent operating system for organic growth.** Bring your own data, install the
-capabilities and skills you want, and run agents that find the work, do it, and
-show you why — on your stack, with no model or vendor you didn't choose.
+**An open-source AI agent that grows your product's organic traffic** — the
+visitors who arrive through search and online conversations, not through ads.
 
-```bash
-git clone https://github.com/badrmada/seo-os && cd seo-os/services/seo-agents
-python3.11 -m venv .venv && source .venv/bin/activate
-pip install -r requirements.txt
-mkdir -p userdata/acme && echo '{}' > userdata/acme/tenant.json
-echo '{ "channel": "site_article", "seed_keyword": "your topic here" }' > userdata/acme/input.json
-python src/main.py run --tenant acme
+You describe your product once. From then on, the agent goes looking for the
+moments where your product is a genuine answer to something people are already
+dealing with:
+
+- **a conversation happening right now** where the problem being discussed is the
+  one you solve — and where a real reply is welcome, not spam;
+- **a search people are running** that you could rank for but don't yet;
+- **a page you already have** that sits just off page one and needs one good
+  article or improvement to get there.
+
+It then writes the thing — the article, or the reply — in your voice, checks its
+own work, and hands it to you with its reasoning attached. **Nothing is published
+automatically.** A human approves every word.
+
+It's a Swiss-army knife, not an appliance: every part of it — the AI model, the
+web search, your analytics, where the result lands, even what it produces — is a
+piece you choose and can replace. That's the "OS" in the name, and
+[the section below](#why-os-and-not-just-a-tool) is what it buys you.
+
+## What a run actually gives you
+
+One request in, one JSON result out. Here's a run where the agent was told
+nothing except "go find something" — it searched, found a live discussion about
+honest anonymous feedback, judged that a genuine reply would land better than a
+cold article, and wrote one:
+
+```jsonc
+{
+  "phase": "done",
+  "output": {
+    "kind": "comment",
+    "content": "Relate to this a lot re: \"why anonymous feedback gets people to be more honest\" — ran into the same thing myself. Full disclosure, I help build an anonymous posting platform for exactly this kind of conversation, no login or tracking involved, so no judgment either way.",
+    "metadata": { "mentions_platform": false, "disclosure_included": true, "qa_notes": [] }
+  },
+  "discovery": {
+    "opportunities": [
+      {
+        "source": "echooers_ideas",
+        "topic": "why anonymous feedback gets people to be more honest",
+        "signal_strength": 0.82,
+        "intent": "discussion",
+        "suggested_channel_hint": "engagement_comment",
+        "reason": "A recent idea on the platform about honest feedback is getting unusually high engagement."
+      }
+    ],
+    "channel_decision": {
+      "chosen": "engagement_comment",
+      "reason": "Highest-scoring channel hint across 1 discovered opportunity: {'engagement_comment': 0.82}.",
+      "fallback": false
+    }
+  }
+}
 ```
 
-That's a complete run — analyze, draft, self-review — **with no API keys and no
-network**, printing the full result so you can see exactly how it behaves before
-connecting anything real. An empty `tenant.json` means "use the built-in fake for
-every job."
+Read it bottom-up. **`discovery` is the answer to "why this?"** — what it found,
+how strongly, and why it chose a reply over an article. **`output` is the thing
+you review and post.** `disclosure_included: true` means it identified itself
+rather than pretending to be a neutral bystander; `qa_notes` is empty because the
+draft passed its own checks.
 
----
+That reasoning is in every response, never buried in a log. It's the difference
+between a tool you can trust with your brand's voice and one you have to
+double-check by hand.
+
+The full result schema, success and failure, is
+[documented and frozen](services/seo-agents/docs/output-schema.md) — so you can
+build a UI or a worker on top of it.
 
 ## Why this exists
 
@@ -34,36 +85,78 @@ So the design goal was never "an SEO tool." It was: **whatever you already use
 should plug in, and whatever you need that I've never heard of should plug in
 too — without forking.**
 
-## The idea: an OS for agents, not an SEO tool
+## Try it in 60 seconds
 
-An SEO tool decides what your growth process is. An operating system decides
-nothing — it gives you a runtime, a capability model, and somewhere to install
-what you actually need. That's the "OS" in the name, and every word below is a
-mechanism in the code rather than a metaphor:
+No API key, no account, no network. The built-in fakes let you watch a full run
+before connecting anything real:
 
-| | What it is | Why you care |
+```bash
+git clone https://github.com/badrmada/seo-os && cd seo-os/services/seo-agents
+python3.11 -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
+mkdir -p userdata/acme && echo '{}' > userdata/acme/tenant.json
+echo '{ "channel": "site_article", "seed_keyword": "your topic here" }' > userdata/acme/input.json
+python src/main.py run --tenant acme
+```
+
+An empty `tenant.json` means "use the built-in fake for everything." You get a
+complete run — analyze, draft, self-review — and the full result printed, so you
+can see exactly what you'd be wiring into before you wire anything.
+
+## The seven words you need
+
+You'll meet these on the first page of any doc here. Each links to the full
+explanation:
+
+| Word | Means |
+|---|---|
+| **[Agent](docs/concepts.md#4-an-agent-is-a-folder)** | One configured worker: your product's description, its voice, its goal, its tools. You can run several. |
+| **[Tenant](docs/concepts.md#4-an-agent-is-a-folder)** | An agent's folder on disk — its config, data, code and output. "Tenant" is what the CLI calls it, because one process safely serves many. |
+| **[Capability](docs/concepts.md#1-a-capability-is-a-job-an-interface-and-a-set-of-providers)** | A job an agent can do: write text, search the web, read your rankings, discover opportunities. Nine of them. |
+| **[Provider](docs/concepts.md#1-a-capability-is-a-job-an-interface-and-a-set-of-providers)** | Which implementation does that job — Gemini or your own model, Cloudflare or your own numbers. Swappable by editing config. |
+| **[Signal](docs/recipes.md#1-backlinks-ahrefs-majestic-moz-anything)** | Any data source feeding a run: a backlink API, a rank tracker, your own dashboard. A list of any length. |
+| **[Specialist](docs/concepts.md#3-a-run-and-why-you-decide-whats-in-it)** | One step of a run — discover, choose, analyze, draft, review. A team, not one giant prompt. |
+| **[Skill](docs/concepts.md#5-skills-the-deliverable-isnt-always-a-draft)** | A packaged deliverable you drop into an agent's folder, for when you want something other than an article. |
+
+New here? **[docs/concepts.md](docs/concepts.md)** teaches all of it in one sitting.
+
+## Why "OS", and not just a tool
+
+An SEO tool decides what your growth process is: which model writes, which data
+counts, what "content" even means. An operating system decides none of that. It
+gives you a runtime, a capability model, and somewhere to install what you
+actually need.
+
+Concretely — here's every job in a run, what ships for it, and what you can put
+there instead. There is no row you're stuck with:
+
+| The job | Ships with | Or bring |
 |---|---|---|
-| **Agent** | A configured worker with a goal, a voice, a set of capabilities, and a pipeline. One folder holds it. | You run several side by side — different goals, different voices, different tools. |
-| **Capability** | A job an agent can do, defined by an interface: write text, search the web, read rankings, read traffic, discover work, persist state. Nine of them today. | The runtime knows jobs, never brands. Nothing is hardwired to a vendor. |
-| **Provider** | The implementation behind a capability. `gemini`, `cloudflare`, `duckduckgo`, `redis` — plus `mock`, `templated` and `custom`. | Swap any one by editing config. Your own class counts as a provider. |
-| **Specialists** | The team inside a run: one finds the work, one picks the channel, one gathers your data, one writes, one reviews. | Not one giant prompt. Each step is inspectable, and `list-specialists` prints yours. |
-| **Tools & signals** | What specialists call. Backlink APIs, rank trackers, trends exports, your own dashboard — a named list of any length, collected concurrently. | Plugging in a data source this project never heard of is config, not a fork. |
-| **MCP** | Model Context Protocol servers as first-class sources — stdio or streamable HTTP. | The tool server you already run becomes a capability here without glue code. |
-| **Grounding** | Real web search first, the model's own grounding second, ungrounded last. | A link an agent hands you is one a search returned. Invented URLs are discarded, not shipped. |
-| **Skills** | A packaged deliverable you drop into an agent's folder: its pipeline, its stages, its templates, its data. | This is how you get an agent that does something we never built — see below. |
-| **Runs** | One request in, one result out, each with a `run_id` and a readable state snapshot after every step. | A UI or worker can watch a run that hasn't finished. |
+| Writing the text | Gemini | any model, local or hosted |
+| Seeing the real web | DuckDuckGo, no key | your own search API — or turn it off |
+| How your pages rank | Google Search Console | any tracker's JSON, or your own code |
+| Traffic numbers | Cloudflare | any tool's JSON, or your own code |
+| Product analytics | a template over your JSON | a live API, or a database query |
+| Anything else that informs a run | — | backlinks, trends, your own dashboard |
+| Finding opportunities | the model + live web search | an MCP server, or your own research agent |
+| Where the result lands | stdout | a webhook, a JSONL archive, your CMS, Slack |
+| Watching a run in progress | in memory | a file, Redis, or your own store |
+| **What it produces at all** | an article or a reply | **your own pipeline** — an audit, a brief, a link report |
 
-The consequence worth internalizing: **there is no privileged vendor and no
-privileged model.** Gemini, Google Search Console and Cloudflare ship so your
-first real run takes minutes instead of a day. Drop all three — or run a local
-model behind a `custom` provider — and the system is exactly as capable, because
-grounding, discovery and review belong to the runtime rather than to whatever is
-generating text.
+Two things that follow, which a tool can't give you:
 
-> On the word *skill*: it's the right modern name for what this does, so the docs
-> use it — but there's no `skills` field to grep for. A skill here is spelled
-> `pipelines` in config plus classes in `plugins/` and templates in `templates/`,
-> all inside one agent's folder.
+- **No privileged vendor, and no privileged model.** Gemini, Search Console and
+  Cloudflare ship so your first real run takes minutes instead of a day. Drop all
+  three and the system is exactly as capable.
+- **Grounding belongs to the runtime, not the model.** The agent searches the web
+  itself and hands the results to whatever model you chose. So switching to a
+  local model doesn't cost you real links — a claim most AI writing tools can't
+  make, because for them grounding is the model's feature.
+
+> On the word *skill*: it's the right modern name for this, so the docs use it —
+> but there's no `skills` field to grep for. A skill here is spelled `pipelines`
+> in config, plus classes in `plugins/` and templates in `templates/`, all inside
+> one agent's folder.
 
 ## What's in the box
 
@@ -72,8 +165,8 @@ The agent that ships is `seo_content`, and it will:
 - **Read your data.** Traffic, product analytics and how your pages already rank
   reach the prompt as facts, from whichever tools you connected. Until you connect
   one, traffic and analytics stand in as fakes and your own seed keyword drives
-  the run — a fixture is a fine stand-in for a *shape*, never for a decision you
-  can already make better.
+  the run — a fixture is a fine stand-in for *data*, never for a decision you can
+  already make better.
 - **Write the draft** in your brand voice, toward your stated goal.
 - **Review its own work** — word count, keyword presence, readability, undisclosed
   brand mentions, link density — attached as notes, never a silent block.
@@ -83,21 +176,16 @@ The agent that ships is `seo_content`, and it will:
 Turn on **discovery** — one entry in `discovery_sources` — and it does the harder
 half too:
 
-- **Finds its own work.** It searches the live web (DuckDuckGo by default: no API
+- **Finds the openings.** It searches the live web (DuckDuckGo by default: no API
   key, no account, nothing to configure), has a model read the results, and
-  surfaces the topics, threads and links worth acting on right now. A link it
+  surfaces the discussions, questions and searches where your product is a real
+  answer — scored, so you see which is worth acting on first. A link it
   hands you is one search actually returned; a URL a model invented is thrown away
   rather than passed off as real.
 - **Picks the right kind of content** — an article on your own site, an article
   for somewhere else, or a genuine reply in an existing conversation — from what
   it found. Tell it explicitly and it obeys instead; it only decides when you
   leave the choice open.
-
-Grounding is the *system's* capability, not the model's, which is why swapping in
-a local model or a gateway doesn't cost you it.
-
-And a human reviews everything before it goes live. SEO-OS drafts; it doesn't
-publish behind your back.
 
 ```mermaid
 flowchart LR
@@ -120,7 +208,7 @@ The same job — say, your product's analytics — can be answered at whichever 
 matches what you have. This escalation is the whole design:
 
 **Level 0 — the default.** Write nothing. A built-in fake stands in, the run
-completes, and you learn the shape.
+completes, and you see the result schema.
 
 ```jsonc
 {}
@@ -135,7 +223,7 @@ fields: which provider, and that provider's own options.
 ```
 
 **Level 2 — a template, no code.** Your data is JSON with your own field names.
-A short Jinja2 snippet reshapes it into what the agent expects. This covers most
+A short Jinja2 snippet maps it onto the fields the agent expects. This covers most
 analytics, traffic and rank data, including from a live API.
 
 ```jsonc
@@ -160,8 +248,8 @@ current terms. The runtime can't tell the difference, which is the point.
 
 ## Real-world: what you actually wire in
 
-Nobody's growth stack is only what ships here. These are the shapes that come up
-most, with the real field names:
+Nobody's growth stack is only what ships here. These are the integrations that
+come up most, with the real field names:
 
 **Backlinks from Ahrefs, Majestic or Moz** — a signal. The runtime has never heard
 of them; it doesn't need to.
@@ -225,8 +313,8 @@ SEO-OS is a monorepo of services. Today there is one, and it's the important one
 | Service | What it is | Status |
 |---|---|---|
 | [`services/seo-agents/`](services/seo-agents/) | **The runtime** — the agent engine, the capability model, the CLI. Everything above lives here. | Shipped, tested, in use |
-| `services/frontend/` | A UI over runs, tenants and drafts | Planned |
-| `services/gateway/` | HTTP API, auth, queueing and scheduling in front of the runtime | Planned |
+| [`services/frontend/`](services/frontend/) | A UI over agents, runs and drafts | Planned |
+| [`services/gateway/`](services/gateway/) | HTTP API, auth, queueing, scheduling and the approval loop | Planned |
 
 The runtime deliberately has no queue, no scheduler, no approval workflow and no
 publishing. Those belong to the layer above it — and what it gives that layer is a
@@ -237,9 +325,12 @@ a queue needs, not the queue.
 
 Start here, then go as deep as you need:
 
+Everything is indexed at **[docs/](docs/)**. The short version:
+
 | Doc | Read it for |
 |---|---|
 | [docs/concepts.md](docs/concepts.md) | **The model, properly** — the nine capabilities, the four levels of installing one, what a run is, and where your own code goes. Read this second. |
+| [docs/recipes.md](docs/recipes.md) | **Wiring in what you already use** — backlink APIs, rank trackers, MCP servers, publishing to a CMS or Slack, watching runs from your own UI. |
 | [seo-agents/README.md](services/seo-agents/README.md) | The full quickstart: the two files, a real `tenant.json` explained line by line, two runs compared. |
 | [docs/configuration.md](services/seo-agents/docs/configuration.md) | Every config field, every provider's options, templates taught properly. |
 | [docs/architecture.md](services/seo-agents/docs/architecture.md) | How the runtime is built: the pipeline, the specialists, grounding, how a failing tool degrades instead of crashing. |
@@ -255,14 +346,19 @@ This is open source because the problem isn't specific to one product: anyone
 growing something through search runs the same loop with a different set of tools.
 Issues and pull requests are welcome.
 
-The one thing worth reading first: if you're adding a whole new *kind* of
-capability rather than another provider for an existing one, see
-[extending.md](services/seo-agents/docs/extending.md#adding-a-new-provider-kind-not-just-a-new-instance).
-Most integrations aren't that — they're a class in your own tenant folder, and
-they need no change here at all.
+**[CONTRIBUTING.md](CONTRIBUTING.md)** is the place to start — mostly because
+for a large class of useful work, the right answer is *don't change this repo*.
+Connecting a tool, adding a data source, publishing somewhere, producing a
+different deliverable: all of that lives in your own agent's folder and ships
+immediately. What's genuinely wanted here is the opposite report — **an extension
+point that doesn't quite reach your case**, which is a real bug in the seams.
 
 ```bash
 cd services/seo-agents
 pip install -r requirements.txt
 pytest
 ```
+
+## License
+
+[MIT](LICENSE). Use it, change it, ship it commercially — just keep the notice.

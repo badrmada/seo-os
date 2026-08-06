@@ -146,7 +146,7 @@ python src/main.py run --tenant acme
 ```
 
 That's a complete run against fake data — it prints the full result so you can
-see the exact shape before connecting anything real.
+see the exact result schema before connecting anything real.
 
 ### 4. Connect your real tools in `tenant.json`
 
@@ -248,7 +248,7 @@ exact example line by line.
 > `highlights_template` are how you feed the agent your product's
 > own analytics **without writing any code**. Your analytics is just JSON with
 > your own field names (here: `total_ideas`, `top_by_upvotes`, and so on). A
-> template is a short snippet that reshapes that JSON into the two things the
+> template is a short snippet that maps that JSON onto the two things the
 > agent expects: a one-line **summary** and a short list of **highlights**
 > (each a label plus a URL). This is worth understanding well —
 > [docs/configuration.md](docs/configuration.md#templates-explained-properly-with-examples)
@@ -409,7 +409,7 @@ time:
 
 That `discovery` block is the answer to "why did it decide that." It's always
 in the response — you never have to go digging in logs. The full field-by-field
-shape, including what a failed run looks like, is in
+schema, including what a failed run looks like, is in
 **[docs/output-schema.md](docs/output-schema.md)**.
 
 ## Key concepts
@@ -417,7 +417,7 @@ shape, including what a failed run looks like, is in
 | Concept | What it means here |
 |---|---|
 | **Channel** | The kind of thing that gets written: `site_article` (an SEO article on your own site), `external_article` (an article for somewhere else — Medium, a partner blog), or `engagement_comment` (a genuine reply to an existing conversation). |
-| **Provider** | The concrete tool behind a job. Options include `mock` (the offline fake), `templated` (your own data reshaped with a template — no code), `custom` (your own code), real vendors (`gemini`, `google`, `cloudflare`), and — for discovery only — `llm` (the AI model itself does the finding). |
+| **Provider** | The concrete tool behind a job. Options include `mock` (the offline fake), `templated` (your own data mapped with a template — no code), `custom` (your own code), real vendors (`gemini`, `google`, `cloudflare`), and — for discovery only — `llm` (the AI model itself does the finding). |
 | **Opportunity** | One thing worth acting on — a topic, a thread, an idea — with a source, a strength score, an intent, and (optionally) a hint about which channel suits it. This is what discovery produces. |
 | **Tenant config** | One `tenant.json` per configured agent. It overrides only the fields you set; everything else keeps the default. The same product can run several agents side by side (different goal, voice, or channel mix), each from its own file. |
 | **Self-review** | Quick automated checks on every draft (word count, keyword presence, undisclosed brand mentions, and so on). They're advisory notes attached to the output, never a silent block. |

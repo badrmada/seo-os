@@ -495,7 +495,7 @@ That `context` is the one thing signals have that analytics and traffic don't:
 `{{ context.context_text }}`. A signal is often *about* what this run is going
 after, not just about the site.
 
-For `"custom"`, it's one method — see [extending.md](extending.md#a-signal-input).
+For `"custom"`, it's one method — see [extending.md](extending.md#walkthrough-a-signal-input).
 
 ### Using signals in a prompt
 

@@ -74,7 +74,7 @@ So the contract for your class is just this:
   ```
 
   The system already does this for every path *declared in config*
-  ([configuration.md](configuration.md#how-file-paths-in-your-config-are-resolved));
+  ([configuration.md](configuration.md#a-tenant-is-a-folder));
   a path hardcoded inside your class is the one case it can't reach. Getting
   this right is what lets your class work regardless of where the command runs
   from — including from a server running several tenants at once, where the

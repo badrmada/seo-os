@@ -9,7 +9,7 @@ that has the field names.
 
 1. [A capability is a job, an interface, and a set of providers](#1-a-capability-is-a-job-an-interface-and-a-set-of-providers)
 2. [Four levels of installing one](#2-four-levels-of-installing-one)
-3. [A run, and why its shape is yours](#3-a-run-and-why-its-shape-is-yours)
+3. [A run, and why you decide what's in it](#3-a-run-and-why-you-decide-whats-in-it)
 4. [An agent is a folder](#4-an-agent-is-a-folder)
 5. [Skills: the deliverable isn't always a draft](#5-skills-the-deliverable-isnt-always-a-draft)
 6. [Where does my thing go? The three planes](#6-where-does-my-thing-go-the-three-planes)
@@ -72,13 +72,13 @@ resting places. Here is one job, product analytics, carried through all four.
 ### Level 0 — the default
 
 Write nothing. A built-in fake stands in, the run completes end to end, and you
-learn the shape before spending an API call.
+see the result schema before spending an API call.
 
 ```jsonc
 {}
 ```
 
-A fixture is the right stand-in for a **shape** nothing else provides. It is the
+A fixture is the right stand-in for **data nothing else provides**. It is the
 wrong stand-in for a **decision you can already make better** — which is why
 `search_performance` defaults to `"none"` rather than to a fake. A mock that
 invents rankings would quietly override the keyword you asked for. (That bug
@@ -103,8 +103,8 @@ that needs it.
 
 ### Level 2 — a template: your data, no code
 
-Your analytics is JSON with your own field names. A short Jinja2 snippet reshapes
-it into what the runtime expects. Works against a file or a live API.
+Your analytics is JSON with your own field names. A short Jinja2 snippet maps
+it onto the fields the runtime expects. Works against a file or a live API.
 
 ```jsonc
 {
@@ -154,7 +154,6 @@ search, fetch, summarize, score — behind the same one-method interface. A
 is the point: the complexity you need lives in your folder, not in a fork of this
 one. [extending.md](../services/seo-agents/docs/extending.md#walkthrough-an-opportunity-source-thats-itself-an-agent)
 walks through exactly that.
-→ [extending.md](../services/seo-agents/docs/extending.md)
 
 ### Choosing a level
 
@@ -168,7 +167,7 @@ walks through exactly that.
 Moving up a level is a config edit. Nothing you built at a lower level is thrown
 away, because every level satisfies the same interface.
 
-## 3. A run, and why its shape is yours
+## 3. A run, and why you decide what's in it
 
 One request in, one result out. No queue, no background worker, no hidden state
 between runs.
@@ -200,7 +199,8 @@ flowchart TD
 | `draft` | One model call, with your brand voice, your goal, and those facts. |
 | `self_qa` | Word count, keyword presence, readability, undisclosed brand mentions, link density — attached as advisory notes. |
 
-**The shape is a function of your config, not a fixed graph with switches.** A
+**Which specialists run is a function of your config, not a fixed graph with
+switches.** A
 tenant with no `discovery_sources` doesn't run `discover` as a no-op — the stage
 isn't in their graph at all. Two or more sources fan out into one branch each and
 merge. `show-graph` prints exactly what your config produces, needs no API key,
@@ -378,6 +378,7 @@ differ:
 |---|---|
 | Run it on your own product | [seo-agents/README.md](../services/seo-agents/README.md) |
 | Find every field | [configuration.md](../services/seo-agents/docs/configuration.md) |
+| Wire in a tool you already pay for | [recipes.md](recipes.md) |
 | Copy something close to your product | [examples/](../services/seo-agents/examples/) |
 | Write your own provider, signal, sink or stage | [extending.md](../services/seo-agents/docs/extending.md) |
 | Build a UI or a worker on top | [output-schema.md](../services/seo-agents/docs/output-schema.md) |

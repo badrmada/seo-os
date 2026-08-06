@@ -5,7 +5,7 @@ if you have no event loop — **always returns the same top-level keys, whether 
 run succeeded or failed**. It never raises past its own boundary: bad input, a
 failing search-performance/analytics/traffic/LLM call, a run that overran
 `run_timeout_seconds`, or any other exception is caught inside `arun()` and
-mapped onto the same `"failed"` shape below, instead of propagating as a raw
+mapped onto the same `"failed"` schema below, instead of propagating as a raw
 traceback. See
 [`src/agent/managers/run_manager.py`](../src/agent/managers/run_manager.py)'s
 `AgentRunner.arun()` for the try/except that enforces this — it's the one
@@ -20,7 +20,7 @@ always there, just possibly empty.
 **This is also what a finished run leaves in the state store**, if one is
 configured ([configuration.md](configuration.md#where-the-runs-state-is-kept-state_provider)):
 the terminal snapshot is exactly this object, so a reader that arrives after the
-run gets the same shape as the caller who started it. The snapshots written
+run gets the same schema as the caller who started it. The snapshots written
 *during* the run are the raw pipeline state instead — they carry `run_id` and
 `phase` too, but a `working` block in place of `discovery`, and only `phase`
 tells you which you're holding.
@@ -33,14 +33,14 @@ tells you which you're holding.
 | `agent_type` | `string` | Which pipeline ran — `"seo_content"` unless the tenant declared others under `pipelines` (see [configuration.md](configuration.md#a-different-deliverable-agent-types-and-pipelines)). |
 | `phase` | `"done"` \| `"failed"` | The only two terminal values `run()` returns. |
 | `input` | `object` | Echoes what you sent in, after defaults are applied — see `agent/managers/run_manager.py`'s `_build_agent_input`. |
-| `output` | `object` \| `null` | `null` iff `phase == "failed"`; otherwise the shape below. |
-| `discovery` | `object` | Always the 3-key shape below — never `null`, never absent. |
+| `output` | `object` \| `null` | `null` iff `phase == "failed"`; otherwise the schema below. |
+| `discovery` | `object` | Always exactly the three keys below — never `null`, never absent. |
 | `usage` | `{tokens: number, cost_usd: number}` | `0`/`0` on failure or if nothing ran yet. |
 | `error` | `string` \| `null` | `null` iff `phase == "done"`; otherwise `str(exception)`. |
 
 ## `output` (only when `phase == "done"`)
 
-The shape depends on `output.kind`. For the built-in `seo_content` agent that
+The schema depends on `output.kind`. For the built-in `seo_content` agent that
 is exactly the effective `channel` for this run — the caller's `input.channel`,
 or whatever `choose_channel` decided (see
 [architecture.md](architecture.md#discovery-the-agent-finding-its-own-work)).
@@ -50,7 +50,7 @@ report, a brief) with whatever `metadata` that deliverable needs. That is the on
 extension point in this document: a new deliverable is a new `kind`, never a new
 top-level field, so a caller reading `run_id`/`phase`/`output`/`error` works
 unchanged whichever agent produced the result. `discovery` is still present and
-still exactly the shape below — empty, for a pipeline with no discover stage.
+still exactly the schema below — empty, for a pipeline with no discover stage.
 
 ```jsonc
 {
@@ -80,7 +80,7 @@ still exactly the shape below — empty, for a pipeline with no discover stage.
 }
 ```
 
-## `discovery` (always this exact shape)
+## `discovery` (always exactly these three keys)
 
 ```jsonc
 {
@@ -91,7 +91,7 @@ still exactly the shape below — empty, for a pipeline with no discover stage.
       "signal_strength": 0.8,        // 0-1
       "intent": "discussion",         // "commercial" | "informational" | "mixed" | "discussion"
       "suggested_channel_hint": "engagement_comment",  // a Channel value, or null
-      "raw": { },                       // source-specific, kept for context — shape varies by source.
+      "raw": { },                       // source-specific, kept for context — the fields vary by source.
                                           // An "llm" source records how it was grounded here:
                                           // "grounding": "search" | "llm" | "none", the URLs it was
                                           // allowed to cite in "grounding_sources", and
@@ -128,7 +128,7 @@ For a tenant with `discovery_sources: []` (the default), every run's
 
 ## On failure (`phase == "failed"`)
 
-`output` is `null`. `discovery` is the empty shape above, even if some
+`output` is `null`. `discovery` is the empty schema above, even if some
 discovery sources had already succeeded before the failure — a failed run
 makes no output claim at all. `usage` is `{"tokens": 0, "cost_usd": 0}`.
 `error` is a human-readable message (`str(exception)`) — things like
