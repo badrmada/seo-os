@@ -58,12 +58,16 @@ class DraftStage:
         channel = working.get("channel") or input_.get("channel", self.config.default_channel)
         params = input_.get("params", {})
 
+        # AnalyzeStage always writes this; .get keeps a hand-built working dict (a
+        # test double, a caller driving stages directly) from having to know about it.
+        signals = working.get("signals", {})
+
         if channel == Channel.ENGAGEMENT_COMMENT:
             # working.context_text is only set by ChooseChannelStage, and only when
             # it picked engagement_comment itself with no input.context_text given
             # (see stages/choose_channel.py) — everyone else uses input.context_text.
             context_text = working.get("context_text") or input_.get("context_text", "")
-            prompt = prompts.build_comment_prompt(context_text, params, self.config)
+            prompt = prompts.build_comment_prompt(context_text, params, self.config, signals)
         else:
             source_row = working.get("chosen_keyword_row") or {}
             prompt = prompts.build_article_prompt(
@@ -75,6 +79,7 @@ class DraftStage:
                 working["traffic_summary"],
                 self.config,
                 strategy=source_row.get("reason", ""),
+                signals=signals,
             )
 
         response = await acall(self.tools.llm.generate, prompt)

@@ -1,0 +1,9 @@
+{
+  "channel": "site_article",
+  "gsc_domain": "sc-domain:sproutly.example.com",
+  "seed_keyword": "indoor herb garden",
+  "params": {
+    "max_words": 900,
+    "tone": "practical and encouraging"
+  }
+}

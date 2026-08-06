@@ -14,6 +14,13 @@ doesn't have.
 
 from dataclasses import dataclass
 
+# The one exception to "this file imports nothing": a pure-`typing` schema module,
+# not a client. See agent/schemas/signal.py for why the reserved names live there
+# rather than here.
+from ..schemas.signal import BUILTIN_SIGNAL_NAMES
+
+_SIGNAL_SOURCES = "signal_sources"
+
 
 @dataclass(frozen=True)
 class ProviderKind:
@@ -28,11 +35,35 @@ class ProviderKind:
                             # single chosen provider
 
     def selected(self, config) -> list[str]:
-        """Which provider(s) this tenant's config actually selects."""
+        """Which provider(s) this tenant's config actually selects.
+
+        Both branches account for `signal_sources` being able to spell the same
+        choice two ways (see AgentConfig.signal_sources): an entry named "gsc"
+        selects the *gsc* kind, so it has to be read by that kind and skipped by
+        the signal kind. Getting this wrong wouldn't break a run — it would just
+        make `list-tools` quietly describe the wrong thing as in use, which is the
+        one job this file has.
+        """
         value = getattr(config, self.config_field, None)
         if not self.is_list:
+            entry = _reserved_entry(config, self.kind)
+            if entry is not None:
+                return [entry.get("provider", value)]
             return [value] if value else []
-        return [entry.get("provider", "mock") for entry in value or []]
+        entries = value or []
+        if self.config_field == _SIGNAL_SOURCES:
+            entries = [e for e in entries if e.get("name") not in BUILTIN_SIGNAL_NAMES]
+        return [entry.get("provider", "mock") for entry in entries]
+
+
+def _reserved_entry(config, kind: str):
+    """The signal_sources entry claiming one of the built-in kinds, if any."""
+    if kind not in BUILTIN_SIGNAL_NAMES:
+        return None
+    for entry in getattr(config, _SIGNAL_SOURCES, None) or []:
+        if entry.get("name") == kind:
+            return entry
+    return None
 
 
 CUSTOM = 'a class of your own ("module.path:ClassName")'
@@ -86,6 +117,17 @@ CATALOG = (
         config_field="analytics_provider",
         providers={
             "mock": "offline, deterministic — no API calls",
+            "templated": "your own JSON (file or API), mapped by Jinja2 templates",
+            "custom": CUSTOM,
+        },
+    ),
+    ProviderKind(
+        kind="signal",
+        interface="tools/base.py::SignalSource",
+        config_field="signal_sources",
+        is_list=True,
+        providers={
+            "mock": "offline, deterministic fixtures",
             "templated": "your own JSON (file or API), mapped by Jinja2 templates",
             "custom": CUSTOM,
         },

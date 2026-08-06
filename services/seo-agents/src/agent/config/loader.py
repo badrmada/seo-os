@@ -3,6 +3,7 @@ from dataclasses import fields
 from pathlib import Path
 
 from .. import prompts
+from ..schemas.signal import BUILTIN_SIGNAL_NAMES
 from ..validators.template_validator import TemplateValidator
 from .agent_config import AgentConfig
 
@@ -34,6 +35,21 @@ MOVED_FIELDS = {
     "analytics_summary_template": "analytics_options.summary_template",
     "analytics_highlights_template": "analytics_options.highlights_template",
 }
+
+
+def _signal_names(config: AgentConfig) -> tuple:
+    """The names a prompt template may use inside `signals` — this tenant's own
+    signal_sources entries, minus the reserved ones, which select a built-in slot
+    rather than adding a key to working.signals (see agent/schemas/signal.py).
+
+    Reading it here rather than in the prompt layer is what keeps the check honest:
+    the template is validated against exactly the signals this config builds, so a
+    typo'd name fails at save time instead of mid-run.
+    """
+    return tuple(
+        entry["name"] for entry in config.signal_sources
+        if entry.get("name") and entry["name"] not in BUILTIN_SIGNAL_NAMES
+    )
 
 
 class AgentConfigLoader:
@@ -108,12 +124,13 @@ class AgentConfigLoader:
         if template_overrides:
             if not isinstance(template_overrides, dict):
                 raise ValueError(f"prompt_templates in {source} must be an object of channel -> template string")
+            signal_names = _signal_names(config)
             merged_templates = dict(config.prompt_templates)
             for channel, template_str in template_overrides.items():
                 if channel not in merged_templates:
                     raise ValueError(f"Unknown channel {channel!r} in prompt_templates ({source})")
                 try:
-                    prompts.validate_template(channel, template_str)
+                    prompts.validate_template(channel, template_str, signal_names)
                 except ValueError as exc:
                     raise ValueError(f"Invalid prompt_templates.{channel} in {source}: {exc}") from exc
                 merged_templates[channel] = template_str

@@ -279,37 +279,75 @@ about status and direction.
   [`examples/06-mcp-discovery/`](../examples/06-mcp-discovery/) now runs both
   side by side, offline.
 
+- **Signal inputs as a named list.** `signal_sources` makes every *input* the
+  agent reads an open, named list — `{"name", "provider", "options"}`, any number
+  of them, `"templated"` for JSON you can map with a snippet and `"custom"` for
+  what needs code. Before it, `Tools` had three fixed slots (`gsc`, `traffic`,
+  `analytics`), so swapping Cloudflare for Plausible worked while *adding* a
+  trends feed or a rank tracker did not — that took a fork. Now it's config, and
+  nothing in this repo knows the name of a signal a tenant adds.
+
+  Each signal returns `{summary, facts, items}` — prose the prompt uses as-is,
+  plus structure for a template that knows what it asked for — and reaches every
+  prompt as `signals`, keyed by its configured name. The default templates loop
+  over it without naming anything, so adding a signal changes no template; a
+  tenant's own template may name one, and *is validated against that tenant's
+  configured names at save time*, so a typo fails while they're editing rather
+  than mid-run.
+
+  Collection is one `asyncio.gather` alongside analytics and traffic, so ten
+  signals cost one round trip rather than ten, and each is independently
+  degrade-don't-abort: one that fails contributes an empty entry plus a
+  `discovery.tool_errors` record and never blocks the others. Crucially,
+  `signals` has one key per *configured* signal on every run whatever happened to
+  it — the prompt's variables are a function of the config, not of which API
+  happened to answer.
+
+  **No config breaks, and nothing needed migrating.** `gsc_provider` /
+  `traffic_provider` / `analytics_provider` and their `*_options` work exactly as
+  before; `gsc`, `traffic` and `analytics` are additionally reserved *names* in
+  the list, so the whole input set can be written as one block if you prefer.
+  Those three keep their own hand-shaped interfaces rather than being folded into
+  `collect()` — their callers predate it and generalizing Search Console's
+  striking-distance keyword picking is a different job.
+  [`examples/07-signal-inputs/`](../examples/07-signal-inputs/) runs a templated
+  signal and a custom one, offline.
+
+  Explicitly not done: capability inference. A signal contributes context; it
+  does not rewire the pipeline.
+
 ## Next
 
-In order. Two framings shape the list, and both are things the code only partly
-lives up to today:
+In order. One framing shapes what's left, and it's something the code still only
+partly lives up to:
 
-- **Inputs are *signals*, and the vendors shipped here are defaults, not the
-  model.** Search Console, Cloudflare and product analytics get someone to a real
-  run quickly; a trends feed, a rank tracker, a keyword API, a crawler or an MCP
-  server are the same kind of thing. Adding one should be config, not a fork.
 - **The deliverable is not always a draft.** Writing an article is one way to
   grow a site; telling someone what to fix on the site they already have is
-  another.
+  another. The way to be true to that is *not* to ship a second agent here — it's
+  to open the seams so a tenant builds one without forking, which is item 1.
 
-1. **Signal inputs as a named list.** `Tools` has three fixed slots — `gsc`,
-   `traffic`, `analytics` — so swapping Cloudflare for Plausible works while
-   *adding* a trends feed does not. Signals get the shape `discovery_sources`
-   already has: a named list, any number, any provider. The three built-in slots
-   stay as views onto it, so no config breaks.
-2. **Stage and pipeline registration.** Config-declared stages, and a pipeline
-   spec per agent type rather than one global default.
-3. **A `seo_audit` agent type.** Crawl the site, read the sitemap, cross-
-   reference the configured signals, and return prioritized recommendations —
-   thin or duplicate pages, weak metadata, broken internal links, orphan pages,
-   pages ranking 11–20 that deserve work rather than a new article. A separate
-   `agent_type` sharing tools, config, the service layer and the result schema
-   (`kind: "site_audit"`), not a fourth channel. Findings carry the URLs they
-   came from; the crawler is bounded by default (robots.txt, rate limits, page
-   and depth caps) because it is the one tool here that can hurt someone else's
-   server.
-4. **State persistence.** `InMemoryStateStore` promoted to a selectable provider
+(The other framing — *inputs are signals, and the vendors shipped here are
+defaults, not the model* — shipped above as `signal_sources`. A crawler and a
+sitemap reader are signals like any other.)
+
+1. **Stage and pipeline registration.** Config-declared stages, and a pipeline
+   spec per agent type rather than one global default, selectable with
+   `--agent <name>`. The bar for "done" is concrete: a tenant should be able to
+   build a **site audit** on it — crawler and sitemap as `signal_sources` with
+   their own classes, their own stages, their own verification step, producing
+   `kind: "site_audit"` in the existing result schema — without touching `src/`.
+   A built-in audit agent was on this list and was dropped for exactly that
+   reason: which findings matter and what a crawler does are a tenant's position
+   to hold, not this repo's.
+2. **State persistence.** `InMemoryStateStore` promoted to a selectable provider
    — file/JSONL first, since it needs no infrastructure and survives the process.
+3. **Templates from a file.** Anywhere a template string is accepted today, also
+   accept `{"file": "name.j2"}`, read from the tenant's already-reserved
+   `templates/` folder. Prompt wording is the thing tenants edit most, and it
+   currently lives as a single escaped JSON line — unreadable and undiffable.
+   One rule everywhere rather than a `*_template_file` twin per option, resolved
+   at config-load time so save-time validation and the plain-data config are
+   unchanged.
 
 ## Explicitly out of scope for this agent
 

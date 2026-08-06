@@ -20,6 +20,7 @@ from tools.clients.cloudflare import CloudflareAnalyticsClient
 from tools.clients.google_search_console import GoogleSearchConsoleClient
 from tools.clients.opportunity_llm import LLMOpportunitySource
 from tools.clients.opportunity_mcp import MCPOpportunitySource
+from tools.clients.signal_templated import TemplatedSignalSource
 from tools.clients.traffic_templated import TemplatedTrafficClient
 from tools.llm.gemini_client import GeminiClient
 from tools.llm.mocks.mock_client import MockLLMClient
@@ -28,6 +29,7 @@ from tools.mocks.gsc_mock import MockGoogleSearchConsoleClient
 from tools.mocks.opportunity_mock import MockOpportunitySource
 from tools.mocks.search_mock import MockSearchClient
 from tools.mocks.search_null import NullSearchClient
+from tools.mocks.signal_mock import MockSignalSource
 from tools.mocks.traffic_mock import MockTrafficClient
 from tools.mocks.traffic_null import NullTrafficClient
 from tools.search.duckduckgo import DuckDuckGoSearchClient
@@ -35,6 +37,7 @@ from tools.search.duckduckgo import DuckDuckGoSearchClient
 from ..config.paths import resolve_path
 from ..graph.tools import Tools
 from .plugin_loader import load_custom
+from .providers import BUILTIN_SIGNAL_NAMES
 
 @dataclass(frozen=True)
 class ProviderContext:
@@ -149,6 +152,21 @@ def _mcp_opportunity_source(ctx: ProviderContext) -> MCPOpportunitySource:
     )
 
 
+def _templated_signal(ctx: ProviderContext) -> TemplatedSignalSource:
+    return TemplatedSignalSource(
+        ctx.extras["name"],
+        ctx.option("source", "file"),
+        ctx.option("summary_template", ""),
+        facts_template=ctx.option("facts_template", ""),
+        items_template=ctx.option("items_template", ""),
+        report_path=ctx.path_option("report_path"),
+        api_url=ctx.option("api_url", ""),
+        api_method=ctx.option("api_method", "GET"),
+        api_headers=ctx.option("api_headers", {}),
+        api_timeout_seconds=ctx.option("api_timeout_seconds", 10.0),
+    )
+
+
 def _llm_opportunity_source(ctx: ProviderContext) -> LLMOpportunitySource:
     return LLMOpportunitySource(
         ctx.extras["name"], ctx.extras["llm"], ctx.config,
@@ -203,6 +221,15 @@ _REGISTRY = {
         "mock": lambda ctx: MockAppAnalyticsClient(),
         "templated": _templated_analytics,
         "custom": lambda ctx: ctx.custom("analytics_custom_class"),
+    },
+    "signal": {
+        "mock": lambda ctx: MockSignalSource(
+            ctx.extras["name"], fail=ctx.option("fail", False),
+        ),
+        "templated": _templated_signal,
+        # The class path is on the entry, not on a config field — same as a
+        # discovery source; see build_signal_sources below.
+        "custom": lambda ctx: ctx.custom("class"),
     },
     "discovery": {
         "mock": lambda ctx: MockOpportunitySource(
@@ -260,23 +287,89 @@ class ToolsManager:
         )
 
     def build_gsc(self):
-        return self._build("gsc", self.config.gsc_provider, self._options("gsc_options"))
+        return self._build_signal_slot("gsc")
 
     def build_traffic(self):
         """"cloudflare" is a real, reusable vendor integration (not a
         tenant-specific hack), kept as one option among several — a tenant not on
         Cloudflare uses "templated"/"custom"/"none" instead."""
-        return self._build(
-            "traffic", self.config.traffic_provider, self._options("traffic_options"),
-        )
+        return self._build_signal_slot("traffic")
 
     def build_analytics(self):
         """No tenant gets a bespoke Python client baked into this codebase —
         "templated" covers any tenant's own JSON shape declaratively; "custom"
         remains for cases that genuinely need code."""
+        return self._build_signal_slot("analytics")
+
+    def _signal_entries(self) -> dict:
+        """config.signal_sources keyed by name, validated once — the single reader
+        of that field, shared by the three built-in slots and build_signal_sources.
+
+        Both rules below fail loudly rather than doing something reasonable-looking:
+        an entry with no name has no way to reach the prompt (it is keyed by name)
+        and a duplicate would silently shadow the earlier one, which surfaces much
+        later as "my trends signal isn't running" with nothing pointing at why.
+        """
+        entries: dict = {}
+        for position, entry in enumerate(self.config.signal_sources):
+            name = entry.get("name", "")
+            if not name:
+                raise ValueError(f'signal_sources[{position}] has no "name"')
+            if name in entries:
+                raise ValueError(
+                    f"duplicate signal source name {name!r} in signal_sources; "
+                    "each signal reaches the prompt keyed by its name, so names must be unique"
+                )
+            entries[name] = entry
+        return entries
+
+    def _build_signal_slot(self, kind: str):
+        """One of the three built-in signal slots — selected either by its own
+        `<kind>_provider`/`<kind>_options` fields or by a `signal_sources` entry
+        using that reserved name, which wins where both appear.
+
+        Two spellings for one thing, on purpose: the fields are what every existing
+        tenant, example and doc already writes and they keep meaning exactly what
+        they did, while the list is what makes "here is every input this agent
+        reads" a single readable block. Neither is a migration of the other — see
+        AgentConfig.signal_sources.
+        """
+        entry = self._signal_entries().get(kind)
+        if entry is None:
+            return self._build(
+                kind, getattr(self.config, f"{kind}_provider"), self._options(f"{kind}_options"),
+            )
+        options = entry.get("options") or {}
         return self._build(
-            "analytics", self.config.analytics_provider, self._options("analytics_options"),
+            kind, entry.get("provider", getattr(self.config, f"{kind}_provider")), options,
+            plugin_options=options,
+            where=f" for signal source {kind!r}",
+            name=kind, class_path=entry.get("class", ""),
+            label=f"signal_sources[{kind!r}].class",
         )
+
+    def build_signal_sources(self) -> dict:
+        """The signals that aren't one of the three built-in slots, keyed by name,
+        for Tools.signals — every input a tenant added that this repo has never
+        heard of.
+
+        Unlike a discovery source's entry, a signal's settings live only under
+        `options`. There is no back-compatibility to keep here (the field is new),
+        and one place to look beats two.
+        """
+        sources = {}
+        for name, entry in self._signal_entries().items():
+            if name in BUILTIN_SIGNAL_NAMES:
+                continue  # a built-in slot; see _build_signal_slot
+            options = entry.get("options") or {}
+            sources[name] = self._build(
+                "signal", entry.get("provider", "mock"), options,
+                plugin_options=options,
+                where=f" for signal source {name!r}",
+                name=name, class_path=entry.get("class", ""),
+                label=f"signal_sources[{name!r}].class",
+            )
+        return sources
 
     def build_discovery_sources(self, llm, search=None) -> dict:
         """AgentConfig.discovery_sources is a list (unlike the other provider
@@ -319,4 +412,5 @@ class ToolsManager:
             llm=llm,
             search=search,
             discovery_sources=self.build_discovery_sources(llm, search),
+            signals=self.build_signal_sources(),
         )

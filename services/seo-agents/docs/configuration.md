@@ -347,6 +347,126 @@ needs real code, like a database query — see [extending.md](extending.md).
 
 ---
 
+## Any other data source (`signal_sources`)
+
+The three sections above are the inputs that get you to a real run quickly. They
+are not the *model* of an input. A trends feed, a rank tracker, a keyword API, a
+competitor watcher, your own internal dashboard — all the same kind of thing, and
+adding one is configuration, not a fork of this project.
+
+`signal_sources` is that open list. Each entry is a named input:
+
+```jsonc
+"signal_sources": [
+  { "name": "keyword_trends", "provider": "templated", "options": { "...": "..." } },
+  { "name": "rank_tracker",   "provider": "custom",
+    "class": "rank_tracker:RankTracker", "options": { "...": "..." } }
+]
+```
+
+| Key | Type | Meaning |
+|---|---|---|
+| `name` | `str` | **Required, unique.** How this signal reaches your prompt: `{{ signals.keyword_trends }}`. |
+| `provider` | `str` | `"mock"`, `"templated"`, or `"custom"`. Defaults to `"mock"`. |
+| `class` | `str` | `"custom"` only — `"module:ClassName"`, a file in your tenant's `plugins/` folder. |
+| `options` | `dict` | That provider's own settings. |
+
+| `options` for… | Keys |
+|---|---|
+| `"templated"` | `source` (`"file"` or `"api"`), `report_path`, `api_url`, `api_method`, `api_headers`, `api_timeout_seconds`, plus `summary_template`, `facts_template`, `items_template` |
+| `"custom"` | whatever your class reads |
+| `"mock"` | `fail` (`bool`, default `false`) — makes this signal raise, to see the degrade path |
+
+Worked end to end in [example 07](../examples/07-signal-inputs/).
+
+### What a signal produces
+
+Three parts, of which only the first is required:
+
+```jsonc
+{
+  "summary": "2 tracked keywords sit at positions 11-20.",  // text, into the prompt as-is
+  "facts":   { "tracked": 4, "striking_distance": 2 },       // named values
+  "items":   [ { "label": "indoor herb garden", "position": 12 } ]  // rows
+}
+```
+
+For `"templated"`, that's three Jinja2 templates: `summary_template` renders to
+text, `facts_template` to a JSON **object**, `items_template` to a JSON **array**
+(the same rule as `highlights_template` — see
+[Templates, explained properly](#templates-explained-properly-with-examples)).
+All three render against `{"data": <your raw JSON>, "context": <this run>}`.
+
+That `context` is the one thing signals have that analytics and traffic don't:
+`{{ context.seed_keyword }}`, `{{ context.site_url }}`, `{{ context.channel }}`,
+`{{ context.context_text }}`. A signal is often *about* what this run is going
+after, not just about the site.
+
+For `"custom"`, it's one method — see [extending.md](extending.md#a-signal-input).
+
+### Using signals in a prompt
+
+Every signal arrives as `signals`, keyed by name:
+
+```jinja
+{% for name, signal in signals.items() %}
+{% if signal.summary %}- {{ name }}: {{ signal.summary }}
+{% endif %}
+{% endfor %}
+```
+
+That loop names no signal, so adding one changes no template. You can also reach
+into one you know:
+
+```jinja
+{{ signals.rank_tracker.facts.striking_distance }} keywords are close to page one.
+{% for row in signals.rank_tracker['items'] %}- {{ row.label }} ({{ row.position }})
+{% endfor %}
+```
+
+`signals` has **one key per configured signal on every run**, whatever happened
+to it — a signal that failed or had nothing to report contributes empty values,
+not a missing key. So a template naming your signal keeps working, and a
+misspelled name is rejected when you save the config rather than mid-run. (Keys
+*inside* `facts`/`items` are your provider's own vocabulary, so those aren't
+checked at save time — a wrong one renders empty.)
+
+### The three built-in inputs, in the same list
+
+`gsc`, `traffic` and `analytics` are **reserved names**. An entry using one
+selects that built-in tool instead of adding a fourth signal:
+
+```jsonc
+"signal_sources": [
+  { "name": "gsc",     "provider": "google",     "options": { "key_file": "service_account.json" } },
+  { "name": "traffic", "provider": "cloudflare", "options": { "api_token": "...", "zone_id": "..." } },
+  { "name": "trends",  "provider": "templated",  "options": { "...": "..." } }
+]
+```
+
+This is purely so you can see every input in one block. `gsc_provider` /
+`traffic_provider` / `analytics_provider` and their `*_options` still work and
+mean exactly what they always did — **nothing needs migrating**. Where both
+appear, the `signal_sources` entry wins.
+
+The three keep their own shapes (`gsc` returns query rows, `analytics` returns
+`highlights`), so they reach the prompt as `keyword`, `analytics_summary`,
+`highlights` and `traffic_summary` — not as `signals` keys. They also get that
+kind's providers: `{"name": "gsc", "provider": "templated"}` is an error, because
+there is no templated Search Console.
+
+### When one breaks
+
+Every signal is collected **concurrently** and fails **independently**. One that
+raises contributes empty values and a `discovery.tool_errors` entry in the
+output; the run continues on everything else. Adding ten signals costs one round
+trip, not ten.
+
+`check-data --tenant <name>` builds every configured signal without running
+anything — the fastest way to find a bad path or an unimportable class.
+
+---
+
 ## Templates, explained properly (with examples)
 
 This is the feature that lets you plug in **your own** analytics or traffic

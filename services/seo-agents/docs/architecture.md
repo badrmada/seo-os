@@ -36,7 +36,7 @@ these three a thing is part of. They stay separate on purpose.
 
 | Plane | What's in it | Rule |
 |---|---|---|
-| **Tools** | What a step *calls*: the LLM, Search Console, analytics, traffic, discovery sources. Bundled in `Tools`, built by `ToolsManager`. | A step depends only on the interfaces in [`tools/base.py`](../src/tools/base.py). |
+| **Tools** | What a step *calls*: the LLM, web search, discovery sources, and every signal input — Search Console, analytics, traffic, plus whatever else the tenant configured. Bundled in `Tools`, built by `ToolsManager`. | A step depends only on the interfaces in [`tools/base.py`](../src/tools/base.py). |
 | **Run context** | How a run is *observed and delivered*: the verbose reporter, the output sinks, the state store. | Never enters `Tools` and never enters the result state — a step can't see any of it. |
 | **Result** | `AgentState` and the JSON a run returns, documented in [output-schema.md](output-schema.md). | Deliberately frozen: it's the contract a UI or control plane is built on. |
 
@@ -94,8 +94,8 @@ Read it top to bottom. Three things are worth calling out:
 |---|---|---|
 | `discover` | Call every configured opportunity source and collect what they find. | Discovery is on. |
 | `choose_channel` | Score the opportunities and pick the channel — unless you already picked one. | Discovery is on. |
-| `analyze_context` | Fetch analytics and traffic data early, in parallel with discovery. | Discovery is on. |
-| `analyze` | Finalize the data. For article channels, pull Search Console rows and pick the best keyword to target. | Always. |
+| `analyze_context` | Collect analytics, traffic and every configured signal early — all concurrently, in parallel with discovery. | Discovery is on. |
+| `analyze` | Finalize the data, collecting that same context itself when `analyze_context` didn't run. For article channels, pull Search Console rows and pick the best keyword to target. | Always. |
 | `draft` | Build a prompt from your brand voice, goal, and data, and ask the AI model to write the draft. | Always. |
 | `self_qa` | Run quick automated checks on the draft and attach the notes. Produce the final `output`. | Always. |
 
@@ -322,7 +322,14 @@ class Tools:
     llm: LLMClient                              # the AI model that writes
     discovery_sources: dict[str, OpportunitySource]  # the opportunity finders
     search: SearchClient                        # real web search — grounding
+    signals: dict[str, SignalSource]            # every other input, by name
 ```
+
+The first three are inputs with hand-shaped interfaces of their own; `signals` is
+every *other* input, named by the tenant — a trends feed, a rank tracker, a
+crawler. Which is to say: three fixed slots plus an open list, not three slots
+full stop. See [signal inputs](#signal-inputs-the-open-half-of-the-tools-plane)
+below.
 
 There's exactly **one** place that decides which concrete tool to use for each
 interface: `ToolsManager`
@@ -348,14 +355,60 @@ provider's own `options` rather than becoming another top-level config field.
 | `GSCClient` | Search Console rows (query, position, clicks) | `mock`, `google` |
 | `AppAnalyticsClient` | Your analytics → `{summary, highlights}` | `mock`, `templated`, `custom` |
 | `SiteTrafficClient` | Your traffic → `{summary}` | `none`, `mock`, `cloudflare`, `templated`, `custom` |
-| `OpportunitySource` | Content opportunities → a list of `Opportunity` | `mock`, `llm`, `custom` |
+| `SignalSource` | Any other input → `{summary, facts, items}` | `mock`, `templated`, `custom` |
+| `OpportunitySource` | Content opportunities → a list of `Opportunity` | `mock`, `llm`, `mcp`, `custom` |
 
-Analytics, traffic, and opportunities are deliberately **free-form**. What a
-product tracks (ideas and upvotes, or orders and revenue, or articles and reads)
-and what counts as a good opportunity (a rising search term, a hot thread, a
-stale but relevant idea) don't share one fixed shape across products. So the
+Analytics, traffic, signals and opportunities are deliberately **free-form**.
+What a product tracks (ideas and upvotes, or orders and revenue, or articles and
+reads) and what counts as a good opportunity (a rising search term, a hot thread,
+a stale but relevant idea) don't share one fixed shape across products. So the
 system never assumes a fixed vocabulary — only the concrete tool, which
 understands its own data, converts raw numbers into the generic shape above.
+
+## Signal inputs: the open half of the tools plane
+
+Search Console, traffic and analytics are three inputs that get someone to a real
+run quickly. They are not the *model* of an input. A trends feed, a rank tracker,
+a keyword API, a competitor watcher, a crawler are the same kind of thing, and a
+system where adding one means editing this repo has the abstraction in the wrong
+place.
+
+So `signal_sources` is an open, named list, the shape `discovery_sources` already
+had:
+
+```jsonc
+"signal_sources": [
+  { "name": "keyword_trends", "provider": "templated", "options": { "...": "..." } },
+  { "name": "rank_tracker",   "provider": "custom", "class": "rank_tracker:RankTracker" }
+]
+```
+
+Four properties, each deliberate:
+
+- **They reach the prompt keyed by name**, as `signals` — so no stage and no
+  system template ever names a particular signal, and adding one changes neither.
+  A tenant's own template *may* name theirs, and is validated against their
+  configured names when the config is saved.
+- **`signals` has one key per configured signal on every run**, whatever happened
+  to it. A signal that failed contributes empty values, not a missing key: the
+  prompt's variables are a function of the config, not of which API answered.
+- **Collection is one `asyncio.gather`**, alongside analytics and traffic. Ten
+  signals cost one round trip. This is most of what async execution bought.
+- **Each fails independently.** One raising contributes a
+  `discovery.tool_errors` record and nothing else — same degrade-don't-abort
+  contract as every other outbound call.
+
+The three built-in slots stay as slots because their interfaces genuinely differ
+(`search_analytics` returns ranked query rows; `report` returns linkable
+highlights) and their callers predate this one — generalizing Search Console's
+striking-distance keyword picking is a separate job, not this abstraction's. But
+`gsc`, `traffic` and `analytics` are reserved *names* in the list too, so a
+config can present every input as one block. `<kind>_provider` and `<kind>_options`
+keep working unchanged; nothing needed migrating.
+
+What a signal explicitly does **not** do is change the shape of the run. There is
+no capability inference: a signal contributes context, it does not add or reorder
+a stage.
 
 ## The four provider flavors: `mock`, `templated`, `custom`, `llm`
 
@@ -366,12 +419,13 @@ it applies everywhere:
   It's what a zero-config run gets, and it's what lets the test suite run
   without touching any real API.
 
-- **`templated`** *(analytics, traffic)* — you hand the agent your own data
-  (from a file or a live API) plus a short **template** that reshapes it into
-  the generic interface shape. No Python required. This is what Echooers uses
-  for its analytics; see [configuration.md](configuration.md)'s worked example.
+- **`templated`** *(analytics, traffic, signals)* — you hand the agent your own
+  data (from a file or a live API) plus a short **template** that reshapes it
+  into the generic interface shape. No Python required. This is what Echooers
+  uses for its analytics; see [configuration.md](configuration.md)'s worked
+  example.
 
-- **`custom`** *(analytics, traffic, discovery)* — you point the config at your
+- **`custom`** *(analytics, traffic, signals, discovery)* — you point the config at your
   own Python class (`"module.path:ClassName"`). Use this when the logic is real
   code — a database query, a bespoke API call, or a multi-step research routine
   — rather than a simple reshape. This is the main extension point;
