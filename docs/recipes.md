@@ -398,6 +398,12 @@ Three things to build against:
 - **`ttl_seconds` matters on Redis.** Nothing else expires snapshots; retention is
   deliberately out of scope.
 
+**Don't have a Redis?** [`deploy/compose/`](../deploy/compose/README.md) is a
+Docker Compose file that runs one next to the agent, with a volume so the
+snapshots survive a restart. Redis is the example there rather than the
+requirement — the same page covers pointing this at a managed one, at `file`, or
+at a store of your own.
+
 Building a UI on this? [output-schema.md](../services/seo-agents/docs/output-schema.md)
 is the frozen contract — including what a failed run looks like.
 

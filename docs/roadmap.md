@@ -10,7 +10,7 @@ about status and direction.
 | [`services/seo-agents/`](../services/seo-agents/) — the runtime | Shipped, tested, in use |
 | [`services/gateway/`](../services/gateway/) — the HTTP API, queue and approval loop | Planned — [step 3](#3-the-gateway-the-api-handler) |
 | [`services/frontend/`](../services/frontend/) — the UI over agents, runs and drafts | Planned — [step 4](#4-the-frontend-watching-an-agent-work) |
-| Build and deployment | [Step 1](#1-images-built-and-tested-in-ci) done bar signing/SBOM/`pip-audit` — tests, docs and the image build run in CI, images publish to GHCR with OCI metadata, and a Makefile carries the same commands. [Step 2](#2-deployment-compose-now-a-helm-chart-later) is Compose only |
+| Build and deployment | [Step 1](#1-images-built-and-tested-in-ci) done bar signing/SBOM/`pip-audit` — tests, docs and the image build run in CI, images publish to GHCR with OCI metadata, and a Makefile carries the same commands. CI stops at the image and does not deploy. [Step 2](#2-deployment-compose-now-a-helm-chart-later) is Compose, [documented](../deploy/compose/README.md); the cluster half is [planned](#kubernetes-how-a-run-becomes-a-job), not written |
 
 ## Shipped — the runtime
 
@@ -487,10 +487,12 @@ most interesting, but because everything else is undeployable without it.**
 Only **step 1 is essentially done**: `tests.yml`, `docs.yml` and `images.yml` all
 run on every push, a merge to `main` publishes an OCI-annotated image to GHCR,
 and a Makefile carries those same commands for a laptop. What is left of it is
-signed images, an SBOM and a `pip-audit` job — plus the deploy workflow, which
-stays parked because there is nothing long-running to deploy until step 3.
-Everything else below is a plan, deliberately written before any of it is
-implemented.
+signed images, an SBOM and a `pip-audit` job. **CI ends at the image**, and there
+is no deploy workflow to re-enable — a parked one was deleted rather than kept
+waiting, for the reason in [step 1](#1-images-built-and-tested-in-ci). Step 2's
+Compose half is written and [documented](../deploy/compose/README.md); its
+cluster half is a plan. Everything else below is a plan too, deliberately written
+before any of it is implemented.
 
 ### 1. Images built and tested in CI
 
@@ -504,16 +506,21 @@ build?" used to be answered by a person, on a laptop, sometimes.
 | [`tests.yml`](../.github/workflows/tests.yml) | **live**, every push and PR | the runtime's `pytest` suite on 3.11, the version the image ships |
 | [`docs.yml`](../.github/workflows/docs.yml) | **live**, every push and PR | [`check_docs.py`](../scripts/check_docs.py) — executes every documented command, resolves every link and anchor |
 | [`images.yml`](../.github/workflows/images.yml) | **live**, every push and PR | buildx to GHCR, tags from `metadata-action`, a `--help` smoke test inside the built image |
-| [`deploy.yml.disabled`](../.github/workflows/deploy.yml.disabled) | written, **parked** | `docker compose pull && up -d` over SSH, manually triggered |
 
-The parked one is disabled by file extension rather than by commenting out its
-body: GitHub only parses `.yml` here, whereas a fully-commented workflow is a
-YAML document with no `on:` key and shows up as "Invalid workflow file". Renaming
-re-enables it — which is what turning the build on amounted to. It stays parked
-because it needs four host secrets (`DEPLOY_HOST`, `DEPLOY_USER`,
-`DEPLOY_SSH_KEY`, `DEPLOY_KNOWN_HOSTS`) that don't exist yet, and because there is
-still no long-running service to roll out — [step 2](#2-deployment-compose-now-a-helm-chart-later)
-is honest about that.
+**There is deliberately no fourth row.** A deploy workflow existed here, parked —
+`docker compose pull && up -d` over SSH, manually triggered — and has been
+deleted rather than left waiting for its four host secrets. Two reasons, and the
+second is the durable one. It had nothing to roll out: the runtime is a CLI, and
+rolling out a one-shot container means nothing until step 3 puts a long-running
+process on the host. And **CI's job ends at deciding a build is good; deciding to
+*run* one is a separate decision**, made by whoever owns the host. Automating it
+here would mean this repository holding an SSH key, a host address and the
+authority to restart someone's deployment — which is a lot of blast radius to
+own on behalf of two commands a person can type. Rolling out is
+[documented instead](../deploy/README.md#rolling-out-a-new-image); if the gateway
+ever wants continuous deployment, it will want it against a cluster's rollout
+semantics rather than an SSH session, which is
+[step 2's Kubernetes plan](#kubernetes-how-a-run-becomes-a-job).
 
 Three decisions in the build, all load-bearing. **A pull request builds but never
 publishes** — a fork opening a PR would otherwise be pushing to this project's
@@ -572,32 +579,186 @@ process that produced it, plus the runtime as a one-shot `run --tenant …` behi
 a Compose profile — because a CLI is not a service and Compose restarting a
 finished one forever is not a deployment.
 
-**The cluster deployment will be a Helm chart, and is not written.** Raw
-manifests for it existed briefly and were deleted rather than kept: a chart is
-what people actually install, and a folder of loose YAML is not a step towards
-one — it is a second thing to keep in sync with the first. What the chart needs
-to cover is already known from the Compose file and from the runtime's own
-design, which is the useful part of planning it now:
+**It is now documented rather than only present**, in
+[`deploy/compose/README.md`](../deploy/compose/README.md): what is persistent and
+where (the tenant workspace is a bind mount because you edit it; run state is a
+named volume because you don't), how a tenant actually opts into that Redis, and
+what does *not* work — a `tenant.json` is not shell, so `"${REDIS_URL}"` stays a
+literal string and the URL gets written out.
 
-- **Redis**, as the state store rather than a cache — the seam the gateway and
-  the frontend are both built on.
-- **A volume for `/userdata`**, because a tenant is a folder. Not a ConfigMap and
-  not a Secret: the same folder layout has to work on a laptop, in Compose and in
-  a cluster, and adding a tenant must not need a cluster permission.
-- **A `CronJob` per scheduled tenant** — the closest thing to a scheduler that
-  exists before the gateway does, and deliberately the whole of it. A cluster
-  already has a scheduler; using it needs nothing added to the runtime. One
-  CronJob is one tenant, which does not scale to fifty — fifty is the queue that
-  step 3 owns.
-- **Secrets for API keys**, reaching the container through `envFrom` rather than
-  sitting in a `tenant.json` on the volume.
-- **A Deployment and Service for the gateway**, absent until step 3 and the only
-  thing in the whole chart with a rollout to wait on.
+The point that page makes hardest is that **Redis here is the example, not the
+requirement.** It is in the file because it is the seam the gateway and the
+frontend will both read a live run through, and because one `image:` line is the
+cheapest honest demonstration of "a run is watchable from outside the process."
+Anyone who already runs a managed Redis points the URL at it; anyone who wants no
+infrastructure at all uses `state_provider: "file"` into the folder they already
+mounted; anyone with a job table of their own writes a `custom` store. The
+runtime names a provider in config and Compose only has to make it reachable —
+which is the same relationship a cluster will have to it.
 
 The honest limitation, and the reason step 3 exists: **there is no long-running
 process to deploy yet.** Compose today runs Redis and a one-shot. The compose
 file already carries the gateway's shape — a service, a port, a health check —
 commented out and waiting, so that step is configuration rather than a rewrite.
+
+#### Kubernetes: how a run becomes a Job
+
+**Not being implemented now** — no manifests, no chart, no chart scaffolding.
+Raw manifests existed here briefly and were deleted rather than kept: a chart is
+what people actually install, and a folder of loose YAML is not a step towards
+one, it is a second thing to keep in sync with the first. What follows is the
+design, written now because the decisions it contains are the reason the chart is
+worth waiting for — and because one of them (secrets) turns out to be a question
+for the *runtime*, which is much better found on this page than halfway through
+writing templates.
+
+**A run is a `Job`, not a `Deployment`.** The runtime is a process that does one
+run and exits, which is precisely the workload type Kubernetes already has. The
+container args are the CLI's, unchanged — `["run", "--tenant", "acme"]` — so
+nothing in the runtime learns what a cluster is. Four Job settings carry actual
+decisions:
+
+- **`backoffLimit: 0`.** A run spends real money on LLM calls, and the pipeline
+  already degrades rather than crashing — so a pod that failed anyway failed for
+  a reason retrying won't fix, and a blind retry buys a second bill and a second
+  draft. A failed run is a recorded run (`phase: "failed"` in the state store),
+  not a pod to run again.
+- **`activeDeadlineSeconds`**, set above the runtime's own
+  `run_timeout_seconds`. Two deadlines on purpose: the runtime's produces a clean
+  recorded failure with its `tool_errors` intact, the Job's is the backstop for a
+  pod that never got far enough to have one.
+- **`ttlSecondsAfterFinished`**, because the run's record lives in Redis and the
+  Job object is not where anyone should be reading history from.
+- **`restartPolicy: Never`**, `runAsNonRoot`, a `readOnlyRootFilesystem` with an
+  `emptyDir` for anything written, and real `resources.limits` — a tenant's own
+  plugin code executes in this pod.
+
+**The part that actually needs designing: how a tenant's folder gets into the
+pod.** On a laptop and in Compose it is a bind mount, and the runtime's whole
+tenant model rests on it: `--userdata` points at a workspace, `<name>/` inside it
+is one tenant, every path in a config resolves inside that folder. A cluster has
+no host folder to bind, and the folder holds four different kinds of thing that
+want four different treatments:
+
+| In the folder | What it really is | Wants |
+|---|---|---|
+| `tenant.json` | Configuration **and credentials** — API keys are literal values in it | A `Secret` |
+| `plugins/` | Python the pod imports and **executes** | An artifact with provenance — an image, or a tightly-controlled sync |
+| `templates/`, `data/` | Text and fixtures a human edits | A shared volume, or a `ConfigMap` while small |
+| `output/`, `state/` | Written by the run | An `emptyDir` — or nothing, if the sinks send it somewhere |
+
+Three delivery mechanisms are on the table, and the chart will not pick only one:
+
+1. **An RWX `PersistentVolumeClaim` mounted at `/userdata`, `readOnly: true`.**
+   The literal translation of the Compose bind mount: one volume, every tenant,
+   the same layout as a laptop. It is the right answer when the cluster already
+   has ReadWriteMany — and that is exactly its cost, since RWX means NFS, EFS,
+   Filestore or Azure Files, which plenty of clusters don't have and none of them
+   have for free. Adding a tenant stays `mkdir`, which is the property worth
+   preserving from Compose.
+
+2. **An init container that materializes the folder into an `emptyDir`** — the
+   default, because it needs no special storage class and works on every cluster
+   including a `kind` on a laptop. An `initContainer` pulls
+   `s3://…/tenants/acme/` (or a git ref, or whatever the tenant workspace of
+   record is) into an `emptyDir` that both containers mount, and the runtime
+   container then sees an ordinary `/userdata/acme`. Three properties make this
+   the recommendation rather than a workaround: a run gets an **immutable
+   snapshot** of the tenant taken at start, so an edit landing mid-run cannot
+   change what a run is doing halfway through; the pod is genuinely stateless, so
+   nothing outlives it that shouldn't; and the credentials for fetching live in
+   the init container, not in the one running tenant code. The cost is real and
+   should be stated: one more image to maintain, and editing a tenant becomes an
+   upload rather than a file save.
+
+3. **`Secret` and `ConfigMap` projected in with `subPath`**, for the small,
+   high-churn parts — `tenant.json` from a Secret, `templates/` from a
+   ConfigMap, landing as individual files inside the folder the other mechanism
+   provides. Three caveats belong in the chart's docs rather than in a user's
+   afternoon: a `subPath` mount **does not receive updates** (irrelevant for a
+   Job, which reads once and exits, and a trap for the gateway's long-lived
+   pod), the object limit is 1 MiB, and `data/` fixtures of any size have no
+   business in etcd.
+
+**The default will be 2 for the folder and 3 for `tenant.json`**, with 1 as a
+`values.yaml` switch for clusters that have RWX and want the laptop's ergonomics.
+That composite is the practical shape: bulk content arrives as an immutable
+snapshot in an `emptyDir`, the one file holding API keys arrives as a Secret
+mounted over it, and the pod never has a persistent volume attached at all.
+
+**Plugins are code, and code belongs in an image.** This is the boundary the
+Kubernetes design has to be strictest about, because it is the one where a
+convenience becomes a supply-chain hole: `plugins/` is Python that the runtime
+imports and executes inside a pod that also holds that tenant's API keys, so
+"sync the folder from a bucket" means *anyone who can write that bucket can
+execute in the cluster*. Two supported answers, and the split is by dependency:
+
+- **No extra dependencies** — sync the plugins with the rest of the folder
+  (mechanism 2), on the explicit understanding that the bucket is an artifact
+  store with the same access control as the image registry, not a shared drive.
+- **Extra dependencies** — a **per-tenant image**, `FROM
+  ghcr.io/badrmada/seo-os/seo-agents:<tag>`, adding the requirements and
+  `COPY`ing the plugins in. The runtime has always said there is no per-tenant
+  environment management and the Dockerfile has always said extra dependencies
+  mean a new image; the cluster is where that stops being a nuisance and starts
+  being the right shape, because an image is versioned, scanned, signed and
+  rolled back, and a bucket prefix is none of those.
+
+**Secrets, and the one thing the cluster wants from the runtime.** An earlier
+version of this plan said API keys would reach the container through `envFrom`
+rather than sitting in a `tenant.json`. That was wrong about the runtime: config
+values are literal, there is no `${VAR}` expansion, so `gemini_api_key` in
+`llm_options` is the actual key and the practical route is the *whole file* as a
+Secret. That works today and needs nothing new. The open question worth deciding
+**before** the chart rather than after: whether the runtime grows env-var
+interpolation in config values (`"api_key": "${GEMINI_API_KEY}"`), which would
+let a `tenant.json` be a non-secret ConfigMap, make `envFrom` the whole story,
+and make a rotated key not a re-uploaded config file. It is a small, contained
+change in the config loader — and it is the only thing on this page that the
+cluster deployment asks of the runtime, which is the claim this design is here to
+test. Alongside it: `imagePullSecrets` for private images, and the state store's
+own credentials (a managed Redis URL with a password in it) landing in the same
+Secret as everything else.
+
+**Where a run's output goes when the pod is gone.** A Job's filesystem dies with
+it, so an `output_sinks` entry writing a file into an `emptyDir` is a result
+nobody will ever read — the single most likely way for a first cluster run to be
+quietly disappointing. In a cluster the two that make sense are `webhook` (post
+the finished result to the gateway) and `state_provider: "redis"` (the snapshot
+the frontend reads while it is still going). The chart should ship that as the
+default tenant config it renders rather than leaving it to be discovered, which
+is one of the very few places the chart is entitled to an opinion about a
+tenant's configuration.
+
+**Scheduling is a `CronJob` per scheduled tenant**, and deliberately the whole
+scheduler: a cluster already has one, and using it needs nothing added to the
+runtime. `concurrencyPolicy: Forbid`, because two overlapping runs of one tenant
+are two drafts of the same thing at twice the API cost;
+`startingDeadlineSeconds`, so a cluster that was down for an hour doesn't
+stampede on recovery; small history limits. One CronJob per tenant does not scale
+to fifty — fifty is a queue, which is [step 3](#3-the-gateway-the-api-handler)'s,
+and at that point the gateway creates Jobs rather than the chart declaring them.
+
+**And then the gateway is the only `Deployment` in the chart** — a Service, an
+Ingress, a readiness probe, and the only thing in here with a rollout to wait on.
+The decision to record now is **who creates a run's Job**: the gateway itself,
+with a ServiceAccount and RBAC on `batch/v1` Jobs, so the cluster is the queue
+and each run gets its own pod, its own limits and its own blast radius; or a
+worker `Deployment` pulling from Redis and running runs in-process, which needs
+no RBAC and no per-run pod startup but re-implements isolation, retries and
+resource limits that a Job already has. **Leaning to the first**, for the
+isolation — a tenant's plugin code executing in its own pod is worth a lot — but
+it makes the gateway a cluster-privileged component, and that is not a small
+thing to hand a service that also terminates HTTP.
+
+**What the chart is, concretely:** one chart; `values.yaml` lists tenants; the
+templates are a Secret per tenant (or `external-secrets` references), a CronJob
+per scheduled tenant, the gateway's Deployment/Service/Ingress, a Redis subchart
+with an `external.url` escape hatch for a managed one, and a Job template that
+`helm template` can render for a single ad-hoc run. Explicitly **not** a
+per-tenant CRD or an operator: nothing here needs a reconciliation loop, a Job is
+already the Kubernetes-native spelling of "run this once", and an operator would
+put a new API in front of one that already exists.
 
 ### 3. The gateway, the API handler
 

@@ -1,8 +1,9 @@
 # Builds the runtime image on every push and PR, and publishes to GHCR from
-# `main` and `v*` tags. `deploy.yml.disabled` — which rolls one of these images
-# out — is still parked, by extension rather than by commenting out its body:
-# GitHub only parses `.yml`/`.yaml` here, whereas a fully-commented workflow is a
-# YAML document with no `on:` key and shows up as "Invalid workflow file".
+# `main` and `v*` tags. CI's job ends there, on purpose: **nothing here deploys.**
+# Rolling an image out is `docker compose pull && up -d` on the host that runs it
+# (deploy/compose/README.md), which needs that host's SSH key and its `.env` —
+# credentials this repo would have to hold in order to automate a decision that
+# is separate from building anyway.
 
 name: images
 

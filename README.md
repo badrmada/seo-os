@@ -468,17 +468,19 @@ SEO-OS is a monorepo of services. Today there is one, and it's the important one
 | [`services/seo-agents/`](services/seo-agents/) | **The runtime** — the agent engine, the capability model, the CLI. Everything above lives here. | Shipped, tested, in use |
 | [`services/gateway/`](services/gateway/) | HTTP API, auth, queueing, scheduling and the approval loop | Planned — [next, after deployment](docs/roadmap.md#3-the-gateway-the-api-handler) |
 | [`services/frontend/`](services/frontend/) | A UI over agents, runs and drafts — watch a run happen | Planned — [last, it needs the gateway](docs/roadmap.md#4-the-frontend-watching-an-agent-work) |
-| [`deploy/`](deploy/) | Docker Compose for one host; a Helm chart for a cluster, later | Compose only, and nothing long-running to deploy until the gateway exists |
+| [`deploy/`](deploy/) | [Docker Compose for one host](deploy/compose/README.md); a Helm chart for a cluster, later | Compose, documented; nothing long-running to deploy until the gateway exists |
 
 The runtime deliberately has no queue, no scheduler, no approval workflow and no
 publishing. Those belong to the layer above it — and what it gives that layer is a
 run whose state is durable and readable while it's still going, which is the seam
 a queue needs, not the queue.
 
-Tests and the documentation check run on every push
-([`.github/workflows/`](.github/workflows/)); the image build and the deploy are
-written and parked until the build is ready. The order the rest arrives in, and
-why it's that order, is [docs/roadmap.md](docs/roadmap.md).
+Tests, the documentation check and the image build all run on every push
+([`.github/workflows/`](.github/workflows/)), and a merge to `main` publishes to
+GHCR. **Nothing deploys from CI** — rolling an image out is two commands on the
+host that runs it, and choosing to run a build is a separate decision from
+deciding it is good. The order the rest arrives in, and why it's that order, is
+[docs/roadmap.md](docs/roadmap.md).
 
 ## Documentation
 

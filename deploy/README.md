@@ -15,8 +15,9 @@ means:
 > **The cluster story will be a Helm chart, and isn't written.** Raw Kubernetes
 > manifests were here briefly and were removed rather than kept as a second thing
 > to maintain: a chart is what people actually install, and half a chart's worth
-> of loose YAML is not a step towards one. See
-> [step 2](../docs/roadmap.md#2-deployment-compose-now-a-helm-chart-later).
+> of loose YAML is not a step towards one. How a run becomes a Job, and how a
+> tenant's folder and plugins reach that Job's pod, is planned in
+> [step 2](../docs/roadmap.md#kubernetes-how-a-run-becomes-a-job).
 
 ## Where the images come from
 
@@ -64,18 +65,24 @@ tenant under `/userdata`, and no tenant's credentials enter an image layer. Poin
 The gateway's shape is already in the compose file, commented out — a service, a
 port, a health check — so that step is configuration rather than a rewrite here.
 
+**[`compose/README.md`](compose/README.md) is the full walkthrough**: what is
+persistent and where, how a tenant actually opts into that Redis, and — since
+Redis here is the example rather than the requirement — how to point a run at a
+managed one, at no infrastructure at all (`state_provider: "file"`, into the
+folder you already mounted), or at a store of your own.
+
 ## Rolling out a new image
 
-[`deploy.yml.disabled`](../.github/workflows/deploy.yml.disabled): manually
-triggered, one input for the image tag, `docker compose pull && up -d` over SSH.
-Parked along with the build that would produce the image it rolls out.
+On the host, and by hand:
 
-It needs `DEPLOY_HOST`, `DEPLOY_USER`, `DEPLOY_SSH_KEY` and `DEPLOY_KNOWN_HOSTS`
-(optionally `DEPLOY_PATH`), and **fails by name before touching anything** when
-one is missing — a half-deploy is harder to explain than a job that refused to
-start. `DEPLOY_KNOWN_HOSTS` is `ssh-keyscan <host>`: the host key is pinned
-rather than trusted on first use, because a deploy is precisely when that
-distinction earns its keep.
+```bash
+docker compose pull
+docker compose up -d --remove-orphans
+```
 
-It ships **no files**. The compose file, the `.env` and the tenant folders live
-on the host, since two of those three hold credentials.
+**No CI job does this**, and there is no parked one waiting to. Automating it
+would mean this repository holding an SSH key, a host address and the ability to
+restart a deployment — to automate a decision (*run this build*) that is separate
+from the one CI already makes (*this build is good*). CI ends at publishing the
+image; choosing to run one is yours. The compose file, the `.env` and the tenant
+folders stay on the host anyway, since two of those three hold credentials.

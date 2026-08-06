@@ -1352,6 +1352,14 @@ This is *not* LangGraph's `checkpointer=`, which is a separate mechanism for
 **resuming** an interrupted graph. Nothing here resumes anything; these snapshots
 are for watching, not for continuing.
 
+**If you want the Redis in that example to actually exist**, there is a Docker
+Compose file for it: [`deploy/compose/`](../../../deploy/compose/README.md) brings
+one up next to the runtime, with a volume so the snapshots survive a restart, and
+walks through what a tenant writes to use it (`redis` is a hostname there — it is
+the Compose service name). Redis is the *example* in that file rather than a
+requirement: the same page covers pointing this provider at a managed Redis, at
+`file` into the folder you already mounted, or at a store of your own.
+
 ---
 
 ## Watching a run happen (verbose mode)
