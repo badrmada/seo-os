@@ -3,6 +3,12 @@
 **An open-source AI agent that grows your product's organic traffic** — the
 visitors who arrive through search and online conversations, not through ads.
 
+> **Not a docs person?** Understood, and there will be no quiz. Skip straight to
+> **[the eight examples](#learn-by-example)** — a dev SaaS, a store, a forum, a
+> job board, an MCP server, a site audit. Each is a complete agent that runs
+> offline in about a minute with no API key, no account, and no signup. A config
+> you can read beats three paragraphs about the config. This page will wait.
+
 Here's the shape of it, in the four steps you'd actually do.
 
 **1. You tell it what you sell and what winning looks like.** Two sentences about
