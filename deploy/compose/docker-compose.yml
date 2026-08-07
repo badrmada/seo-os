@@ -8,7 +8,7 @@
 # Two things to know before reading further:
 #
 # 1. The runtime is a CLI, not a server. There is nothing here to `up` except
-#    Redis until the gateway exists (docs/roadmap.md, step 3) — the agent is a
+#    Redis until the gateway exists (docs/roadmap.md, step 1) — the agent is a
 #    one-shot container behind the `run` profile, which is why `up` doesn't
 #    start it.
 # 2. A tenant is a folder, mounted rather than baked into the image. One image
@@ -59,7 +59,7 @@ services:
     # is the CLI's own default: print help and do nothing.
     command: ["--help"]
 
-  # The gateway, when it exists (docs/roadmap.md, step 3) — kept here as a shape
+  # The gateway, when it exists (docs/roadmap.md, step 1) — kept here as a shape
   # rather than a promise, so that step is configuration and not a rewrite. It is
   # the first thing in this file that is actually a service: same /userdata
   # mount, same Redis, a port and a health check of its own.
@@ -83,7 +83,7 @@ services:
   #     timeout: 3s
   #     retries: 5
   #
-  # The frontend (step 4) is a client of the gateway and nothing else, so it
+  # The frontend (step 3) is a client of the gateway and nothing else, so it
   # arrives as one more service here with a URL pointing at the one above.
 
 volumes:
