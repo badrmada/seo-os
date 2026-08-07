@@ -23,7 +23,7 @@ Redis. The agent sits behind a Compose *profile* (`profiles: ["run"]`) so
 `docker compose up` doesn't start it, because Compose restarting a finished CLI
 forever is not a deployment — you reach it with `docker compose run --rm agent …`
 instead. The first long-running service is the gateway,
-[step 2 of the roadmap](../../docs/roadmap.md#2-the-gateway-the-api); its
+[step 1 of the roadmap](../../docs/roadmap.md#1-the-gateway); its
 shape is already in the file, commented out, so that step is configuration rather
 than a rewrite.
 
@@ -153,9 +153,9 @@ tenant's folder, so nothing in a `tenant.json` needs to know it is in a containe
 **Scheduling** is the host's job for now — `cron` calling `docker compose run` is
 the entire supported answer, and it is a real one for a handful of tenants.
 Fifty tenants is a queue, which is the gateway's
-([step 2](../../docs/roadmap.md#2-the-gateway-the-api)), and a cluster's
-`CronJob` is [step 6's chart
-work](../../docs/roadmap.md#6-the-chart-past-a-single-job).
+([step 1](../../docs/roadmap.md#1-the-gateway)), and a cluster's
+`CronJob` is [step 4's chart
+work](../../docs/roadmap.md#4-the-chart-past-a-single-job).
 
 ## The `.env`
 
