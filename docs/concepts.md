@@ -342,6 +342,16 @@ stage crawls, bound it** (obey `robots.txt`, rate-limit, cap pages and depth and
 total time, identify yourself, never follow off-site links), and **findings must
 be evidence-backed** — an audit that asserts problems it can't point at is worse
 than no audit.
+
+The deliverable doesn't have to be aimed at search either.
+[`examples/09-newsletter/`](../services/seo-agents/examples/09-newsletter/)
+returns `kind: "newsletter"` — the issue that goes to a brand's own list,
+assembled from the signals they already configured, with one built-in stage doing
+the collecting and two of their own doing the editing. It adds a third
+constraint, and it belongs to anything a run can *send*: **verify before a person
+is asked to approve, and let the sink be a draft endpoint.** Its links are
+checked against the tenant's own domain first, because a link a data feed put in
+front of you is not the same thing as a link you mailed to your whole list.
 → [agent types and pipelines](../services/seo-agents/docs/configuration.md#a-different-deliverable-agent-types-and-pipelines)
 
 ## 6. Where does my thing go? The three planes

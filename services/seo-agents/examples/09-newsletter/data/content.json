@@ -1,0 +1,25 @@
+{
+  "since": "2026-07-01",
+  "published": [
+    {
+      "title": "Self-watering planters: how much water is too much",
+      "url": "https://sproutly.example.com/guides/self-watering-planters",
+      "note": "new guide, after three support tickets about root rot"
+    },
+    {
+      "title": "Sproutly starter kit",
+      "url": "https://listings.marketplace-example.com/sproutly-starter-kit",
+      "note": "syndicated marketplace listing"
+    },
+    {
+      "title": "The starter herb set, now with oregano",
+      "url": "https://sproutly.example.com/shop/starter-herb-set",
+      "note": "restocked"
+    },
+    {
+      "title": "Grow lights, ranked by what you are growing",
+      "url": "https://sproutly.example.com/guides/grow-lights",
+      "note": "rewritten with this year's models"
+    }
+  ]
+}

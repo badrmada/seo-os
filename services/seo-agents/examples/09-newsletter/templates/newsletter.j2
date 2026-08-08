@@ -1,0 +1,21 @@
+{# section['items'], not section.items: Jinja resolves a dot to an attribute
+   first, and every dict has an .items() method to hand back instead. #}
+# {{ subject }}
+
+Hello from {{ site_url }} — here is what happened this month.
+{% for section in sections %}
+
+## {{ section.title }}
+
+{% for item in section['items'] %}
+- {% if item.url %}[{{ item.label }}]({{ item.url }}){% else %}{{ item.label }}{% endif %}{{ " — " ~ item.note if item.note else "" }}
+{% endfor %}
+{% endfor %}
+
+---
+
+{{ audience_summary }}
+
+You are getting this because you bought a kit or asked us a question. Reply to
+this email if you are stuck on something — the answers become next month's
+guides.

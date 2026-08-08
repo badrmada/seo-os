@@ -1,9 +1,9 @@
 # Examples
 
-Eight worked examples for fictional products, each a complete, **runnable** agent
-you can copy and adapt. Together they're a curriculum: 01 through 08 install one
-new capability at a time, ending with an agent whose deliverable isn't a draft at
-all.
+Nine worked examples for fictional products, each a complete, **runnable** agent
+you can copy and adapt. Together they're a curriculum: 01 through 09 install one
+new capability at a time, ending with two agents whose deliverable isn't a draft
+at all — one of them not even aimed at search.
 
 Every one runs **fully offline with no API keys** — the built-in mock model, no
 rank source connected, data read from small local files. Each README then shows
@@ -36,6 +36,7 @@ proven rather than claimed.
 | **[06 · Scribe](06-mcp-discovery/)** *AI writing SaaS* | Discovery from an **MCP server**, both ways: `provider: "mcp"` with no code, and a `custom` client — side by side against one stub server. | Your existing tool server becomes a capability. Runs offline; the stub server is included. |
 | **[07 · Sproutly](07-signal-inputs/)** *indoor gardening* | **`signal_sources`** — a trends export and a rank tracker, one templated and one custom. Its article prompt is a **template file**. | The open-ended capability. This is the pattern for a backlink API, a competitor watcher, anything. Start here for [recipes.md](../../../docs/recipes.md). |
 | **[08 · a site audit](08-custom-pipeline/)** | **A different deliverable** — three stages of your own via `pipelines` + `--agent`. No draft, no channel, `kind: "site_audit"`. | Nothing in `src/` knows this example exists. It's the proof that a skill is a folder. |
+| **[09 · a newsletter](09-newsletter/)** *indoor gardening* | **A deliverable that isn't for search at all** — an issue assembled from the signals, with a built-in stage first and two of its own after it. Every link verified against your domain. | Where the signals you already configured pay for themselves twice, and where "a human approves it" stops being a slogan: this one goes to inboxes. |
 
 *(All brands and `example.com` domains are fictional.)*
 
@@ -49,6 +50,7 @@ proven rather than claimed.
 | plug in an MCP server | **06** |
 | add a data source that isn't rankings, traffic or analytics | **07** |
 | produce something other than an article | **08** |
+| send something to your own audience instead of publishing it | **09** |
 
 ## Running an example
 
@@ -102,7 +104,7 @@ rather than letting Docker fail at the registry.
 Two notes on the Docker form specifically. The mount must be **writable** —
 Python writes `__pycache__` beside a tenant's `plugins/`. And examples that need
 more than a config work unchanged: **06** spawns its MCP server as a subprocess
-inside the container, and **05/07/08** load their plugins from the mounted
+inside the container, and **05/07/08/09** load their plugins from the mounted
 folder, because a tenant is a folder either way.
 
 Three variations worth knowing (shown with `python`; each works the same way in
@@ -145,7 +147,8 @@ output reflect *your* configuration and which are placeholders:
 | Prompt wording (your templates) | |
 | Self-review notes | |
 
-Only the **body text** is fake. That's a change worth knowing about if you saw an
+Only the **body text** is fake — and **09** calls no model at all, so its
+newsletter is real end to end. That's a change worth knowing about if you saw an
 earlier version: the target keyword used to come from a canned Search Console
 fixture and override whatever you asked for. Now
 `search_performance_provider` defaults to `"none"`, so your own `seed_keyword`
