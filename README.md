@@ -2,15 +2,16 @@
 
 **The open-source OS for LLM-native SEO.** Grow your brand where people actually
 look — search results, live conversations, the app you already shipped. Articles,
-replies, site audits, or something nobody's built yet: the deliverable is a slot
-you fill, not a feature you wait for. Organic growth, bounded by your imagination
-— not by our roadmap.
+replies, site audits, the newsletter that goes to your own list, or something
+nobody's built yet: the deliverable is a slot you fill, not a feature you wait
+for. Organic growth, bounded by your imagination — not by our roadmap.
 
 > **Not a docs person?** Understood, and there will be no quiz. Skip straight to
-> **[the eight examples](#learn-by-example)** — a dev SaaS, a store, a forum, a
-> job board, an MCP server, a site audit. Each is a complete agent that runs
-> offline in about a minute with no API key, no account, and no signup. A config
-> you can read beats three paragraphs about the config. This page will wait.
+> **[the nine examples](#learn-by-example)** — a dev SaaS, a store, a forum, a
+> job board, an MCP server, a site audit, a newsletter. Each is a complete agent
+> that runs offline in about a minute with no API key, no account, and no
+> signup. A config you can read beats three paragraphs about the config. This
+> page will wait.
 
 Here's the shape of it, in the four steps you'd actually do.
 
@@ -61,10 +62,16 @@ thread — chosen for the opportunity rather than fixed in advance. But the
 deliverable itself is a
 [capability](docs/concepts.md#1-a-capability-is-a-job-an-interface-and-a-set-of-providers)
 like any other: plug in a different [skill](docs/concepts.md#5-skills-the-deliverable-isnt-always-a-draft)
-and the same runtime returns a site audit, a content brief, or a link report
-instead. Whatever it makes, it checks its own work and hands it over with its
-reasoning attached. **Nothing is published automatically.** A human approves
-every word.
+and the same runtime returns a site audit, a content brief, a link report — or
+**the newsletter that goes to your own list**, assembled from the same signals
+(what you shipped, what people read, what they started asking) rather than
+written from scratch. Whatever it makes, it checks its own work and hands it over
+with its reasoning attached, and where it lands is
+[a sink you choose](services/seo-agents/docs/configuration.md#where-the-result-goes-output-sinks):
+your CMS, Slack, your email provider. **Nothing is published automatically.** A
+human approves every word — most of all for a newsletter, which is the one output
+that reaches thousands of inboxes under your name with no further step, so point
+that sink at the endpoint that creates a *draft*, not the one that sends.
 
 It's a Swiss-army knife, not an appliance: every part of it — the AI model, the
 web search, your analytics, where the result lands, even what it produces — is a
@@ -88,7 +95,7 @@ flowchart LR
 
     CORE("<b>SEO-OS</b><br/>a LangGraph pipeline<br/>assembled from your config")
 
-    PIPE["the deliverable<br/><i>pipelines</i><br/>article · site audit · brief · your stages"]
+    PIPE["the deliverable<br/><i>pipelines</i><br/>article · site audit · newsletter · your stages"]
     CH["the channel<br/>site_article · external_article<br/>engagement_comment"]
     SINK["where it lands<br/><i>output_sinks</i><br/>stdout · file / JSONL · webhook · CMS · Slack"]
     ST["the live run state<br/><i>state_provider</i><br/>memory · file · redis · yours"]
@@ -436,17 +443,21 @@ template change.
 | A local model, a gateway, or a different vendor | `"llm_provider": "custom"` — grounding still works; it's the system's job, not the model's |
 | The result posted to your CMS, Slack, or a queue | an `output_sinks` webhook, or a `custom` sink class |
 | A progress bar in your own UI | `"state_provider": "file"` or `"redis"` — a snapshot per step, keyed by `run_id` |
-| A different deliverable entirely — a site audit, a link report, a brief | your own `pipelines` entry with your own stages |
+| A different deliverable entirely — a site audit, a newsletter, a link report, a brief | your own `pipelines` entry with your own stages |
 
 That last row is the strongest claim here, so it ships as proof rather than
 prose: [`examples/08-custom-pipeline/`](services/seo-agents/examples/08-custom-pipeline/)
 is a complete site audit — three stages, its own report template, its own output
 `kind` — a skill living entirely in one agent's folder, with **no change to the
-runtime**.
+runtime**. [`examples/09-newsletter/`](services/seo-agents/examples/09-newsletter/)
+is the same trick pointed at your existing audience: it reuses a *built-in* stage
+to collect the signals, and its own two stages turn them into an issue whose
+every link is checked against your own domain before a person is asked to approve
+it.
 
 ## Learn by example
 
-Eight complete, runnable configurations. Every one runs offline with no keys, and
+Nine complete, runnable configurations. Every one runs offline with no keys, and
 each shows the exact lines to change to go live.
 
 | # | Product | Installs |
@@ -459,6 +470,7 @@ each shows the exact lines to change to go live.
 | [06](services/seo-agents/examples/06-mcp-discovery/) | Scribe | Discovery from an **MCP server**, with a stub server so it runs offline. |
 | [07](services/seo-agents/examples/07-signal-inputs/) | Sproutly | **`signal_sources`** — a trends export and a rank tracker the project never heard of. |
 | [08](services/seo-agents/examples/08-custom-pipeline/) | Sproutly | **A different deliverable** — a site audit from tenant-declared stages. |
+| [09](services/seo-agents/examples/09-newsletter/) | Sproutly | **A newsletter** built from the signals, every link checked, ready for your ESP — after a human says yes. |
 
 Start at 01, then jump to whichever is closest to yours.
 

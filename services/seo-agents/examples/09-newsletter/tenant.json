@@ -1,0 +1,63 @@
+{
+  "site_url": "https://sproutly.example.com",
+  "llm_provider": "mock",
+  "traffic_provider": "none",
+  "analytics_provider": "templated",
+  "analytics_options": {
+    "source": "file",
+    "report_path": "data/audience.json",
+    "summary_template": "Issue {{ data.issue }} went to {{ data.subscribers }} subscribers on {{ data.sent_on }}; {{ data.open_rate_pct }}% opened it.",
+    "highlights_template": "[{% for row in data.most_read[:limit] %}{\"label\": {{ row.title|tojson }}, \"url\": {{ row.url|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}]"
+  },
+  "signal_sources": [
+    {
+      "name": "content_updates",
+      "provider": "templated",
+      "options": {
+        "source": "file",
+        "report_path": "data/content.json",
+        "summary_template": "{{ data.published|length }} things went up or changed since {{ data.since }}.",
+        "items_template": "[{% for row in data.published %}{\"label\": {{ row.title|tojson }}, \"url\": {{ row.url|tojson }}, \"note\": {{ row.note|tojson }}}{% if not loop.last %},{% endif %}{% endfor %}]"
+      }
+    },
+    {
+      "name": "keyword_trends",
+      "provider": "templated",
+      "options": {
+        "source": "file",
+        "report_path": "data/keyword_trends.json",
+        "summary_template": "Rising over the last {{ data.window_days }} days: {% for row in data.rising[:3] %}\"{{ row.query }}\" ({{ row.volume }}/mo, {{ row.change_pct }}% up){% if not loop.last %}, {% endif %}{% endfor %}.",
+        "items_template": "[{% for row in data.rising %}{\"label\": {{ row.query|tojson }}, \"volume\": {{ row.volume }}, \"change_pct\": {{ row.change_pct }}}{% if not loop.last %},{% endif %}{% endfor %}]"
+      }
+    }
+  ],
+  "brand_description": "Sproutly sells indoor gardening kits — grow lights, self-watering planters, and starter herb sets — and publishes guides for people growing food in small apartments.",
+  "agent_goal": "Keep the people already on the list growing things successfully, and send them back to the guides and kits that answer what they are stuck on this month.",
+  "agent_type": "newsletter",
+  "pipelines": {
+    "newsletter": {
+      "stages": [
+        {
+          "name": "analyze_context"
+        },
+        {
+          "name": "curate",
+          "class": "newsletter:CurateStage",
+          "options": {
+            "max_items_per_section": 3
+          }
+        },
+        {
+          "name": "compose",
+          "class": "newsletter:ComposeStage",
+          "options": {
+            "newsletter_template": {
+              "file": "newsletter.j2"
+            },
+            "subject_template": "Sproutly Weekly — {{ lead.label }}"
+          }
+        }
+      ]
+    }
+  }
+}

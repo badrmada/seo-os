@@ -1,0 +1,23 @@
+{
+  "issue": 24,
+  "sent_on": "2026-07-31",
+  "subscribers": 1284,
+  "open_rate_pct": 41,
+  "most_read": [
+    {
+      "title": "Keeping basil alive past week three",
+      "url": "https://sproutly.example.com/guides/basil-week-three",
+      "reads": 812
+    },
+    {
+      "title": "Grow lights, ranked by what you are growing",
+      "url": "https://sproutly.example.com/guides/grow-lights",
+      "reads": 604
+    },
+    {
+      "title": "Starting herbs from seed in a north-facing window",
+      "url": "https://sproutly.example.com/guides/north-facing-window",
+      "reads": 431
+    }
+  ]
+}
